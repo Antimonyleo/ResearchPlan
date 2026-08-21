@@ -2,9 +2,9 @@
   "description": "Process-isolated Team U/S/E harness test; still deterministic and not independent model evidence.",
   "conditions": [
     {
-      "id": "rescamp-0.8-process-fixture",
+      "id": "rescamp-current-process-fixture",
       "adapter": "external-command",
-      "command": "python3 benchmark/adapters/fixture_team_s.py --condition rescamp-0.8-fixture",
+      "command": "python3 benchmark/adapters/fixture_team_s.py --condition rescamp-current-fixture",
       "user_adapter": "python3 benchmark/adapters/fixture_team_u.py",
       "evaluator_adapter": "python3 benchmark/adapters/fixture_team_e.py",
       "model_id": "deterministic-fixture",

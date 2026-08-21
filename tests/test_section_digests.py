@@ -9,7 +9,12 @@ The security property must not weaken: a review is valid only while every sectio
 responsible for is byte-identical to what it reviewed.
 """
 
+import argparse
+import contextlib
+import io
+import tempfile
 import unittest
+from pathlib import Path
 
 from common import engine, complete_state
 
@@ -298,12 +303,67 @@ class FailClosedTests(unittest.TestCase):
         state = bind_reviews(state)
         self.assertTrue(engine.validate_state(state, include_reviews=True)["execution_ready"])
 
+    def test_an_external_action_cannot_invent_an_approval_id(self):
+        state = complete_state()
+        state["campaign"]["resources_dispatch"]["approvals"] = [
+            "Someone should probably look at it"]
+        state["campaign"]["ethics_rights_safety"]["human_approval_points"] = []
+        state["campaign"]["ethics_rights_safety"]["external_actions"] = [
+            {"id": "publish", "description": "Publish findings", "approval_id": "does-not-exist"}]
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(i["code"] == "external_action.bad_approval_ref" for i in result["errors"]),
+                        "prose approvals and invented references must fail closed")
+
+    def test_a_work_unit_must_carry_the_approval_derived_from_its_external_action(self):
+        state = complete_state()
+        state["campaign"]["resources_dispatch"]["approvals"] = [
+            {"id": "comms-signoff", "description": "Communications lead authorizes publication"}]
+        state["campaign"]["ethics_rights_safety"]["external_actions"] = [
+            {"id": "publish", "description": "Publish findings", "approval_id": "comms-signoff"}]
+        state["campaign"]["runtime"]["enabled"] = True
+        state["campaign"]["runtime"].update({
+            "continuation_trigger": "queue", "state_store": "state/campaign.json",
+            "event_log": "state/events.jsonl", "checkpoint_policy": "after each unit",
+            "liveness": "leases", "recovery": "retry once", "idempotency": "artifact hashes",
+        })
+        state["campaign"]["work_units"] = [{
+            "id": "publish-unit", "objective": "Publish the approved report",
+            "authoritative_inputs": ["report@sha256"], "permitted_actions": ["publish externally"],
+            "prohibited_actions": ["no changes"], "outputs": ["publication receipt"],
+            "acceptance_test": "receipt exists", "resource_ceiling": "zero dollars",
+            "retry_policy": "no retry", "retry_limit": 0, "escalation": "campaign lead",
+            "external_action_ids": ["publish"], "approval_ids": [],
+        }]
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(i["code"] == "work_unit.approval_mismatch" for i in result["errors"]),
+                        "dispatch approval IDs must be derived from the external actions a unit performs")
+
     def test_a_stale_rendered_bundle_is_reported(self):
         state = self._reviewed()
         state["outputs"] = {"last_rendered_digest": "sha256:" + "0" * 64, "status": "EXECUTION-READY", "manifest": {}}
         result = engine.validate_state(state, include_reviews=True)
         self.assertFalse(result["execution_ready"])
         self.assertTrue(any(i["code"] == "outputs.stale" for i in result["errors"]))
+
+    def test_finalize_replaces_stale_outputs_when_reviews_are_still_current(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "working/review_packets", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = bind_reviews(complete_state())
+            engine.write_json(campaign_dir / engine.STATE_REL, state)
+            engine.render_outputs(campaign_dir, state)
+            state = engine.load_state(campaign_dir)
+            state["interview"]["stopping_note"] += " clarified"
+            state["content_version"] += 1
+            engine.save_state(campaign_dir, state, "interview.note_updated")
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                engine.cmd_finalize(argparse.Namespace(campaign=str(campaign_dir)))
+
+            final = engine.load_state(campaign_dir)
+            self.assertEqual(final["status"], "execution-ready")
+            self.assertEqual(final["outputs"]["last_rendered_digest"], engine.content_digest(final))
 
 
 class BenchmarkBoundaryTests(unittest.TestCase):

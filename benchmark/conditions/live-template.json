@@ -1,14 +1,21 @@
 {
   "description": "Copy and edit. Commands read one JSON request from stdin and emit one JSON response on stdout.",
+  "matched_controls": {
+    "same_model": true,
+    "same_tools_permissions_corpus": true,
+    "same_context_time_token_retry_budget": true,
+    "fresh_sessions": true,
+    "blinded_evaluation": true
+  },
   "conditions": [
     {
-      "id": "rescamp-0.8-live",
+      "id": "rescamp-0.9-live",
       "adapter": "external-command",
-      "command": "python3 benchmark/adapters/my_team_s_adapter.py --condition rescamp-0.8",
+      "command": "python3 benchmark/adapters/my_team_s_adapter.py --condition rescamp-0.9",
       "user_adapter": "python3 benchmark/adapters/my_team_u_adapter.py",
       "evaluator_adapter": "python3 benchmark/adapters/my_team_e_adapter.py",
-      "model_id": "record-exact-provider-model-id",
-      "host_version": "record-exact-host-version",
+      "model_id": "PIN_SAME_EXACT_PROVIDER_MODEL_ID",
+      "host_version": "PIN_SAME_EXACT_HOST_VERSION",
       "skill_commit": "record-git-commit",
       "capabilities": ["elicitation", "campaign-compilation"]
     },
@@ -18,8 +25,8 @@
       "command": "python3 benchmark/adapters/my_team_s_adapter.py --condition neutral",
       "user_adapter": "python3 benchmark/adapters/my_team_u_adapter.py",
       "evaluator_adapter": "python3 benchmark/adapters/my_team_e_adapter.py",
-      "model_id": "same-model-as-tested-condition",
-      "host_version": "same-host-version",
+      "model_id": "PIN_SAME_EXACT_PROVIDER_MODEL_ID",
+      "host_version": "PIN_SAME_EXACT_HOST_VERSION",
       "skill_commit": "none",
       "capabilities": ["elicitation", "campaign-compilation"]
     }

@@ -26,6 +26,8 @@ class SkillStructureTests(unittest.TestCase):
         self.assertNotIn("disable-model-invocation", text)
         self.assertIn("Automatic quality loop", text)
         self.assertIn("manual `benchmark`", text)
+        self.assertIn("Treat unresolved shape as **fog**", text)
+        self.assertIn("Never create placeholder campaign objects", text)
 
     def test_codex_metadata_does_not_change_skill(self):
         """Host policy lives outside SKILL.md, so both hosts read identical bytes."""

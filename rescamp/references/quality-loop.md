@@ -69,6 +69,12 @@ Feed every finding back through Phase D and re-freeze. Repeat only while a pilot
 
 Then freeze. Record the pilot's scope, cost, failures, and repairs in the campaign, and label a campaign frozen without a pilot as reviewed-static so no reader mistakes plan coherence for tested behavior.
 
+The machine-readable record lives at `assurance.pilot`. A passing record names its
+`content_digest`, `authorized_by`, `authority`, `executor_id`, `executed_at`, `scope`,
+`resource_cap`, `evidence`, `failures`, and `repairs`. Any substantive campaign change
+makes that digest stale. `assurance.pilot_required` explicitly applies this gate outside
+the high-assurance profile.
+
 A pilot is required for `high-assurance` and for any campaign whose first irreversible stage is expensive. It is optional for `scoped` work. It is not available when execution authority has not been granted; in that case record it as an unmet condition rather than skipping it silently.
 
 ## Phase F — release decision
@@ -80,5 +86,10 @@ Final status is one of:
 - `draft` — material design decisions remain unresolved.
 
 Every status must state the highest independence rung reached and whether a pilot was run. `execution-ready` never means validated.
+
+A reviewer may recommend `accepted-risk`, but cannot authorize it. A major or critical
+finding remains blocking until a separate record in `assurance.risk_acceptances` binds
+the exact finding digest and current campaign digest to an identified authority and
+evidence of the decision.
 
 Never average away a required blocking reviewer. Never allow polished prose to override a critical defect.

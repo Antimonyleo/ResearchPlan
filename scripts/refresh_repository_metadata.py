@@ -21,7 +21,7 @@ def github_slug(url: str) -> str | None:
 
 
 def get_json(url: str, token: str | None) -> dict:
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "rescamp-repository-audit/0.8.6"}
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "rescamp-repository-audit/0.9.0"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     with urlopen(Request(url, headers=headers), timeout=20) as response:

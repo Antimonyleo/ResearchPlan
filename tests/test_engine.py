@@ -50,6 +50,91 @@ class EngineTests(unittest.TestCase):
         result = engine.validate_state(state, include_reviews=False)
         self.assertTrue(result["valid"], result["errors"])
 
+    def test_enabled_runtime_requires_a_machine_readable_concurrency_ceiling(self):
+        state = complete_state()
+        state["campaign"]["runtime"].update({
+            "enabled": True, "continuation_trigger": "queue", "state_store": "state/campaign.json",
+            "event_log": "state/events.jsonl", "checkpoint_policy": "after each unit",
+            "liveness": "leases", "recovery": "retry once", "idempotency": "artifact hashes",
+        })
+        state["campaign"]["work_units"] = [{
+            "id": "u1", "objective": "Analyze one batch", "authoritative_inputs": ["batch@sha256"],
+            "permitted_actions": ["read"], "prohibited_actions": ["no external writes"],
+            "outputs": ["result.json"], "acceptance_test": "schema validates",
+            "resource_ceiling": "one agent-hour", "retry_policy": "no retry", "escalation": "lead",
+        }]
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(item["code"] == "resources.max_concurrency" for item in result["errors"]))
+
+    def test_execution_ready_methods_and_stages_require_operational_fields(self):
+        state = complete_state()
+        state["campaign"]["methods"][0].pop("inputs")
+        state["campaign"]["stages"][0].pop("owner")
+        result = engine.validate_state(state, include_reviews=False)
+        missing = {(item["code"], item["path"]) for item in result["errors"]}
+        self.assertIn(("method.incomplete", "campaign.methods.0"), missing)
+        self.assertIn(("stage.incomplete", "campaign.stages.0"), missing)
+
+    def test_high_assurance_campaign_cannot_release_without_a_current_pilot(self):
+        state = add_passing_reviews(complete_state("observational", "high-assurance"))
+        state["assurance"]["pilot"] = {}
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertFalse(result["execution_ready"])
+        self.assertTrue(any(item["code"] == "pilot.missing" for item in result["errors"]))
+
+    def test_explicit_pilot_requirement_applies_to_standard_campaigns(self):
+        state = add_passing_reviews(complete_state())
+        state["assurance"]["pilot_required"] = True
+        state["assurance"]["pilot"] = {}
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertTrue(any(item["code"] == "pilot.missing" for item in result["errors"]))
+
+    def test_pilot_without_execution_authority_cannot_release(self):
+        state = add_passing_reviews(complete_state("observational", "high-assurance"))
+        state["assurance"]["pilot"] = {
+            "status": "passed", "content_digest": engine.content_digest(state),
+            "scope": "one representative item", "resource_cap": "one agent-hour",
+            "executed_at": engine.now_iso(), "evidence": ["pilot-log@sha256"],
+            "failures": [], "repairs": [],
+        }
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertTrue(any(item["code"] == "pilot.authority" for item in result["errors"]))
+
+    def test_campaign_repair_stales_the_pilot(self):
+        state = complete_state("observational", "high-assurance")
+        state["assurance"]["pilot"] = {
+            "status": "passed", "content_digest": engine.content_digest(state),
+            "authorized_by": "principal-investigator", "authority": "campaign owner",
+            "executor_id": "pilot-session-1", "executed_at": engine.now_iso(),
+            "scope": "one representative item", "resource_cap": "one agent-hour",
+            "evidence": ["pilot-log@sha256"], "failures": [], "repairs": [],
+        }
+        state["campaign"]["mission"]["scope"] += " repaired"
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(item["code"] == "pilot.stale" for item in result["errors"]))
+
+    def test_passing_pilot_requires_scope_limits_executor_and_evidence(self):
+        state = complete_state("observational", "high-assurance")
+        state["assurance"]["pilot"] = {
+            "status": "passed", "content_digest": engine.content_digest(state),
+            "authorized_by": "principal-investigator", "authority": "campaign owner",
+        }
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(item["code"] == "pilot.incomplete" for item in result["errors"]))
+
+    def test_legacy_schema_cannot_silently_release(self):
+        state = add_passing_reviews(complete_state())
+        state["schema_version"] = "3.0"
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertFalse(result["execution_ready"])
+        self.assertTrue(any(item["code"] == "schema.unsupported" for item in result["errors"]))
+
+    def test_work_unit_deadline_must_be_an_iso_timestamp(self):
+        state = complete_state()
+        state["campaign"]["work_units"] = [{"id": "u1", "deadline_at": "tomorrow afternoon"}]
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(item["code"] == "work_unit.bad_deadline" for item in result["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

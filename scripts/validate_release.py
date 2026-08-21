@@ -15,12 +15,22 @@ import time
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.8.6"
+VERSION = "0.9.0"
+REPOSITORY_INPUT_ROOTS = ("rescamp", "benchmark", "scripts", "tests", "docs")
+REPOSITORY_INPUT_FILES = (
+    ".gitignore", "AGENTS.md", "CHANGELOG.md", "CONTRIBUTING.md",
+    "LICENSE", "Makefile", "README.md", "SECURITY.md",
+)
 
 
 def run(command: list[str], cwd: Path, timeout: int = 180, env: dict[str, str] | None = None) -> dict[str, Any]:
     started = time.monotonic()
-    proc = subprocess.run(command, cwd=cwd, text=True, capture_output=True, timeout=timeout, env=env, check=False)
+    child_env = dict(os.environ if env is None else env)
+    child_env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    proc = subprocess.run(
+        command, cwd=cwd, text=True, capture_output=True, timeout=timeout,
+        env=child_env, check=False,
+    )
     return {
         "command": command,
         "returncode": proc.returncode,
@@ -35,6 +45,8 @@ def digest_tree(root: Path) -> str:
     for path in sorted(p for p in root.rglob("*") if p.is_file() and "__pycache__" not in p.parts and path_allowed(p)):
         digest.update(path.relative_to(root).as_posix().encode("utf-8"))
         digest.update(b"\0")
+        digest.update(b"x" if os.access(path, os.X_OK) else b"-")
+        digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
@@ -42,6 +54,45 @@ def digest_tree(root: Path) -> str:
 
 def path_allowed(path: Path) -> bool:
     return path.suffix not in {".pyc", ".pyo"}
+
+
+def repository_input_digest(root: Path) -> str:
+    """Bind release evidence to every maintained input, excluding generated QA output."""
+    paths: list[Path] = []
+    for name in REPOSITORY_INPUT_ROOTS:
+        base = root / name
+        if base.exists():
+            paths.extend(path for path in base.rglob("*")
+                         if path.is_file()
+                         and "__pycache__" not in path.parts
+                         and "benchmark/runs" not in path.relative_to(root).as_posix()
+                         and path.relative_to(root).as_posix() != "docs/RELEASE_REPORT.md"
+                         and path_allowed(path))
+    paths.extend(root / name for name in REPOSITORY_INPUT_FILES if (root / name).is_file())
+    digest = hashlib.sha256()
+    for path in sorted(set(paths)):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def repository_provenance(root: Path) -> dict[str, Any]:
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=False
+    )
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=root, text=True, capture_output=True, check=False,
+    )
+    dirty_paths = [line[3:] for line in status.stdout.splitlines() if len(line) >= 4]
+    return {
+        "repository_input_sha256": repository_input_digest(root),
+        "git_commit": commit.stdout.strip() if commit.returncode == 0 else None,
+        "git_dirty": bool(dirty_paths) if status.returncode == 0 else None,
+        "dirty_paths": dirty_paths,
+    }
 
 
 def compile_python(root: Path) -> list[str]:
@@ -204,6 +255,7 @@ def main() -> int:
         "elapsed_seconds": round(time.monotonic() - started, 3),
         "root": str(root),
         "skill_tree_sha256": digest_tree(root / "rescamp") if (root / "rescamp").exists() else None,
+        "repository_provenance": repository_provenance(root),
         "errors": errors,
         "warnings": warnings,
         "checks": checks,

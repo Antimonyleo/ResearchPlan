@@ -17,7 +17,7 @@ Do not infer level 4 from a polished plan.
 
 - **Team U** receives the hidden brief and answers only what is asked.
 - **Team S** receives the vague initial goal and tested condition.
-- **Team E** receives frozen, blinded transcripts and artifacts plus a rubric. It cannot edit them.
+- **Team E** receives frozen, protocol-blinded transcripts and artifacts plus a rubric. It must not edit them. Strong filesystem blinding requires a separate account, container, or remote evaluator; a same-user process is not an OS security boundary.
 
 Use separate processes or sessions. A single sequential model run is a harness smoke test, not independent evidence.
 

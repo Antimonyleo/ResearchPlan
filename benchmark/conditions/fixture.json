@@ -1,7 +1,7 @@
 {
   "description": "Deterministic harness smoke test only; not a live model comparison.",
   "conditions": [
-    {"id": "rescamp-0.8-fixture", "adapter": "fixture", "capabilities": ["elicitation", "campaign-compilation"]},
+    {"id": "rescamp-current-fixture", "adapter": "fixture", "capabilities": ["elicitation", "campaign-compilation"]},
     {"id": "no-skill-fixture", "adapter": "fixture", "capabilities": ["elicitation", "campaign-compilation"]},
     {"id": "exhaustive-form-fixture", "adapter": "fixture", "capabilities": ["elicitation", "campaign-compilation"]}
   ]

@@ -4,7 +4,7 @@ You evaluate frozen transcripts and artifacts under a randomized condition label
 
 ## Evaluation order
 
-1. Verify the transcript and artifact manifest before judging prose.
+1. Verify the transcript, artifact hashes, and archetype-overlay digest before judging prose. Do not edit the read-only staged artifacts.
 2. Map each material hidden dimension to the first turn where Team S directly elicited it and to its final resolution, blocker, safe default, or omission.
 3. Identify unsupported assumptions, repeated/compound/low-value questions, user correction effort, and stopping-rule defects.
 4. Check required campaign features and archetype-specific requirements.

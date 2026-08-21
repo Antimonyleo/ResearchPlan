@@ -35,7 +35,14 @@ def update_claude_override(path: Path) -> None:
             raise SystemExit(f"Refusing to modify invalid JSON settings file {path}: {exc}")
     else:
         data = {}
-    overrides = data.setdefault("skillOverrides", {})
+    if not isinstance(data, dict):
+        raise SystemExit(f"Refusing to modify {path}: settings root must be a JSON object")
+    overrides = data.get("skillOverrides")
+    if overrides is None:
+        overrides = {}
+        data["skillOverrides"] = overrides
+    if not isinstance(overrides, dict):
+        raise SystemExit(f"Refusing to modify {path}: skillOverrides must be a JSON object")
     overrides["rescamp"] = "user-invocable-only"
     temp = path.with_suffix(path.suffix + ".tmp")
     temp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -111,9 +118,11 @@ def main() -> int:
     args = parser.parse_args()
     project = Path(args.project).expanduser().resolve()
     hosts = sorted(HOSTS) if args.host in {"all", "both"} else [resolve_host(args.host)]
-    installed = []
-    for host in hosts:
-        installed.append((host, install_one(host, args.scope, project, args.force, args.symlink)))
+    if not args.force:
+        for host in hosts:
+            dest = destination(host, args.scope, project)
+            if dest.exists() or dest.is_symlink():
+                raise SystemExit(f"Destination exists; use --force: {dest}")
     for host in hosts:
         entry = HOSTS[host]
         if entry.get("settings_writer") != "claude_override" or args.no_claude_override:
@@ -122,6 +131,9 @@ def main() -> int:
         settings = (Path.home() / rel) if args.scope == "user" else (project / rel)
         update_claude_override(settings)
         print(f"{host} explicit-only override: {settings}")
+    installed = []
+    for host in hosts:
+        installed.append((host, install_one(host, args.scope, project, args.force, args.symlink)))
     source_hash = digest_tree(SOURCE)
     print(f"Canonical skill tree SHA-256: {source_hash}")
     for host, path in installed:

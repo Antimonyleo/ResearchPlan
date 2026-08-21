@@ -15,8 +15,7 @@ class AutomaticLoopTests(unittest.TestCase):
             for rel in ("state", "working", "outputs", "artifacts"):
                 (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
             state = complete_state(profile="standard")
-            engine.write_json(campaign_dir / engine.STATE_REL, state)
-            engine.append_event(campaign_dir, "test", {})
+            engine.save_state(campaign_dir, state, "test")
             digest, rubric, paths = engine.freeze_and_packets(campaign_dir, state)
             self.assertEqual(len(paths), 2)
             for path in paths:
@@ -45,8 +44,7 @@ class AutomaticLoopTests(unittest.TestCase):
             state = complete_state(profile="standard")
             state["interview"]["stopping_reason"] = ""
             state["interview"]["stopping_note"] = ""
-            engine.write_json(campaign_dir / engine.STATE_REL, state)
-            engine.append_event(campaign_dir, "test", {})
+            engine.save_state(campaign_dir, state, "test")
             args = argparse.Namespace(campaign=str(campaign_dir), reason="material-completeness", note="resolved", no_auto_quality=False)
             with contextlib.redirect_stdout(io.StringIO()):
                 engine.cmd_stop(args)

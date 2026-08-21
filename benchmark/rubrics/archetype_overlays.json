@@ -1,5 +1,5 @@
 {
-  "version": "0.8.6",
+  "version": "0.9.0",
   "rule": "Apply only overlays relevant to the scenario. They refine, but never replace, the universal rubric.",
   "overlays": {
     "experimental": ["construct/intervention exactness", "controls and measurement validity", "replication/randomization/blinding where applicable", "safety and material handling", "confirmatory versus exploratory analysis"],

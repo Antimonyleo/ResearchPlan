@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.9.0
+
+This release closes the fail-open and evidence-boundary defects found by the independent review, then tests the joined system rather than only its components.
+
+### Readiness and authority
+
+- Interview guidance now keeps decisions that are not yet sharp enough as unresolved draft state instead of inventing placeholder campaign objects to satisfy validation.
+- High-assurance and explicitly pilot-gated campaigns now require a passed, authority-bearing pilot record bound to the exact campaign digest. A later repair makes the pilot stale.
+- Major and critical findings remain blocking until a separate identified authority accepts the exact finding against the current campaign digest. A reviewer cannot approve their own risk.
+- External actions, work units, and structured approval IDs are bound end to end. Malformed, duplicate, invented, or omitted approval/action references fail closed.
+- Runtime campaigns require a positive machine-readable concurrency ceiling. Work units carry campaign-owned retry limits and optional timezone-aware deadlines.
+- Required method and stage fields reject blank values and accept an explicit justified `not-applicable` record where appropriate. `set` and atomic `apply` reject unknown dict fields by default.
+- Schema 3.1 fails closed on older state instead of silently interpreting it as current. Release status is now `draft`, `plan-ready-execution-blocked`, or `execution-ready`.
+
+### Dispatch and audit
+
+- Queue initialization reruns compiler and review validation instead of trusting the writable status string.
+- Claims enforce approvals, dependencies, concurrency, deadlines, retry exhaustion, and dependency-artifact hashes inside the queue transaction.
+- Campaign and queue event logs use anchored SHA-256 chains bound to canonical state. Strict audits and queue mutations reject deletion, truncation, reordering, unlogged state changes, stale rendered state, unexpected output files, and artifact/manifest rewrites.
+- Rendered `campaign.json` is a current dispatch contract with its content digest, validation result, and adjacent manifest reference rather than stale prior-output metadata.
+- A public-CLI integration test covers finalize → strict audit → queue init → approval → claim → artifact completion → queue audit.
+- Malformed JSON containers and scalar types now return structured validation/render refusal instead of tracebacks; numeric prose and blank-only required lists no longer satisfy completeness checks.
+
+### Benchmark and hosts
+
+- Team S now receives only the public conversation on every turn. Fixture prose no longer exposes private dimension IDs.
+- Evaluators receive random candidate labels, relevant archetype overlays with a digest, and read-only opaque artifact copies from a temporary tree, hashed before and after evaluation and retained only after Team E exits. Strong blinding still requires an OS-isolated evaluator.
+- Scenario, config, adapter-output, evaluation, identity, and duplicate-run validation is standard-library and fail-closed. Unmatched live runs are labeled uncontrolled rather than comparative evidence.
+- Standalone scoring/comparison cannot promote self-authored provenance to live evidence, and the live-matrix generator now emits the exact conservative matched-control contract consumed by the harness.
+- Release archives use an explicit maintained-file allowlist, excluding host session state, caches, campaign workspaces, and benchmark runs; package digests include executable bits.
+- `scripts/host_acceptance.py` records host versions, installed skill-tree digests, response hashes, and required expected artifacts. Its Claude adapter uses a session-only visibility override so headless slash-command dispatch does not weaken the installed interactive user-only policy. These opt-in receipts are deliberately separate from deterministic release evidence.
+
+The deterministic suite now has 175 tests. Public benchmark fixtures remain synthetic, host probes do not establish plan quality, and no matched private-holdout or downstream-outcome study has been run.
+
 ## 0.8.6
 
 An independent Codex review of the published 0.8.5 tree. Its verdict — "not yet a complete tool… a working happy path, not reliably fail-closed" — was fair. Four of its findings reproduced; one did not.
@@ -15,9 +49,9 @@ An independent Codex review of the published 0.8.5 tree. Its verdict — "not ye
 
 `fixture_team_u` still prefixes each answer with the dimension id, contrary to `benchmark/prompts/team_u.md`. Parsing visible text is fair, but it means the built-in fixtures do not model a clean information boundary. Stated in the source at the point where it matters. A live Team U must not name dimension ids.
 
-### Not reproduced
+### Scope clarification
 
-Codex reported that the repository describes tested ChatGPT support. It does not — no file mentions ChatGPT. `install.py` registers `claude-code` and `codex` only, and the README says "Claude Code, Codex, and other Agent Skills hosts".
+The review distinguished Codex from ChatGPT. The repository registers and tests `claude-code` and `codex`; it made no ChatGPT-support claim.
 
 ### Still open, and agreed
 

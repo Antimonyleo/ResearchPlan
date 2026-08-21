@@ -93,6 +93,18 @@ class DigestStabilityTests(unittest.TestCase):
             second = engine.render_outputs(campaign_dir, engine.load_state(campaign_dir))
             self.assertEqual(second["status"], "EXECUTION-READY")
 
+    def test_missing_required_pilot_is_plan_ready_but_execution_blocked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "working/review_packets", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = add_passing_reviews(complete_state("observational", "high-assurance"))
+            state["assurance"]["pilot"] = {}
+            engine.write_json(campaign_dir / engine.STATE_REL, state)
+            result = engine.render_outputs(campaign_dir, state)
+            self.assertEqual(result["status"], "PLAN-READY; EXECUTION BLOCKED")
+            self.assertEqual(engine.load_state(campaign_dir)["status"], "plan-ready-execution-blocked")
+
 
 class ReviewIngestTests(unittest.TestCase):
     def _record(self, state, **overrides):
@@ -165,6 +177,14 @@ class BundleContentTests(unittest.TestCase):
         prompt = engine.render_campaign_prompt(state, "EXECUTION-READY")
         self.assertIn("production tools", prompt)
         self.assertIn("not external validation", prompt)
+
+    def test_prompt_reports_digest_bound_pilot_status(self):
+        state = add_passing_reviews(complete_state("observational", "high-assurance"))
+        prompt = engine.render_campaign_prompt(state, "EXECUTION-READY")
+        self.assertIn("**Pilot:** passed", prompt)
+        self.assertIn("one representative item", prompt)
+        self.assertIn(state["assurance"]["pilot"]["content_digest"], prompt)
+        self.assertNotIn("No pilot run is recorded", prompt)
 
 
 class ObjectVocabularyTests(unittest.TestCase):
@@ -265,6 +285,18 @@ class CliSafetyTests(unittest.TestCase):
                 capture_output=True, text=True,
             )
             self.assertEqual(good.returncode, 0, good.stderr)
+
+    def test_set_rejects_an_unknown_final_dict_field(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign = self._campaign(temp)
+            bad = subprocess.run(
+                [sys.executable, str(ENGINE), "set", str(campaign), "campaign.mission.scop", "Bounded"],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertIn("scope", bad.stderr + bad.stdout)
+            state = json.loads((campaign / engine.STATE_REL).read_text())
+            self.assertNotIn("scop", state["campaign"]["mission"])
 
     def test_add_accepts_an_array_and_still_checks_fields(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -414,13 +446,33 @@ class IntegrityClaimTests(unittest.TestCase):
         self.assertFalse(result["execution_ready"])
         self.assertTrue(any(item["code"] == "review.unresolved_critical" for item in result["errors"]))
 
-    def test_explicitly_accepted_critical_risk_does_not_block(self):
+    def test_reviewer_cannot_accept_their_own_critical_risk(self):
         state = add_passing_reviews(complete_state())
         state["reviews"]["records"][0]["findings"] = [{
             "severity": "critical", "action": "accepted-risk",
-            "description": "Bounded risk accepted by the principal investigator.",
+            "description": "Bounded risk the reviewer recommends accepting.",
         }]
-        self.assertTrue(engine.validate_state(state, include_reviews=True)["execution_ready"])
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertFalse(result["execution_ready"])
+        self.assertTrue(any(item["code"] == "risk_acceptance.missing" for item in result["errors"]))
+
+    def test_separate_authority_can_accept_an_exact_digest_bound_finding(self):
+        state = add_passing_reviews(complete_state())
+        role = state["reviews"]["records"][0]["role"]
+        finding = {
+            "severity": "major", "action": "accepted-risk",
+            "description": "A bounded residual risk remains after mitigation.",
+        }
+        state["reviews"]["records"][0]["findings"] = [finding]
+        state["assurance"]["risk_acceptances"] = [{
+            "finding_digest": engine.finding_digest(role, finding),
+            "content_digest": engine.content_digest(state),
+            "accepted_by": "principal-investigator", "authority": "campaign owner",
+            "accepted_at": engine.now_iso(), "scope": "this campaign only",
+            "evidence": "signed risk decision RA-1",
+        }]
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertTrue(result["execution_ready"], result["errors"])
 
     def test_claims_reach_the_execution_prompt(self):
         state = add_passing_reviews(complete_state())
@@ -502,6 +554,24 @@ class ApplyCommandTests(unittest.TestCase):
             state = json.loads((campaign / engine.STATE_REL).read_text())
             self.assertEqual(state["campaign"]["methods"], [],
                              "a partial write would leave the campaign in a state nobody intended")
+
+    def test_unknown_dict_field_makes_apply_atomic(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign = self._campaign(temp)
+            payload = {
+                "campaign.methods": [{"id": "m1", "purpose": "p", "outputs": ["o"], "limitations": ["l"]}],
+                "campaign.mission": {"decision_or_purpose": "Decide", "scop": "typo",
+                                     "completion_definition": "Memo"},
+            }
+            result = subprocess.run(
+                [sys.executable, str(ENGINE), "apply", str(campaign), "--json", json.dumps(payload)],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Nothing was written", result.stderr + result.stdout)
+            state = json.loads((campaign / engine.STATE_REL).read_text())
+            self.assertEqual(state["campaign"]["methods"], [])
+            self.assertEqual(state["campaign"]["mission"]["scope"], "")
 
 
 if __name__ == "__main__":

@@ -6,11 +6,11 @@ ResCamp is first a campaign compiler. Activate the workflow layer only when the 
 
 ### Runtime profile
 
-Define trigger, environment, concurrency, worker limit, delegation depth, lease duration, heartbeat, stale threshold, checkpoint path, budget ledger, approval channel, retry policy, and shutdown behavior.
+Define the continuation trigger, state store, event log, checkpoint policy, liveness mechanism, recovery rule, and idempotency rule. An enabled runtime also requires `resources_dispatch.max_concurrency` as a positive integer. Lease duration remains an operator/worker invocation choice bounded by any work-unit deadline.
 
 ### Work unit
 
-Each work unit has one objective, authoritative inputs, dependencies, allowed and prohibited actions, exact output schema/path, acceptance test, resource ceiling, retry limit, failure taxonomy, escalation target, and idempotency key.
+Each work unit has one objective, authoritative inputs, dependencies, allowed and prohibited actions, outputs, an acceptance test, resource ceiling, retry policy and integer retry limit, escalation target, approval IDs, external-action IDs, and an optional timezone-aware deadline.
 
 ### Canonical state
 
@@ -18,15 +18,17 @@ Use one durable database or atomic state file plus an append-only event log. Wor
 
 ## Dispatcher invariants
 
-Do not dispatch when:
+The included queue mechanically refuses dispatch when:
 
 - prerequisites or approvals are absent;
-- the content version is stale;
-- the budget governor denies the request;
+- the finalized campaign or its reviews are stale;
 - another valid lease owns the work;
-- required tools have not passed canaries;
-- the output destination cannot be verified;
+- the campaign concurrency ceiling is reached;
+- a work-unit deadline or retry limit is exhausted;
+- a dependency artifact no longer matches its recorded hash;
 - a stop condition or safety boundary is active.
+
+Budgets, prose resource ceilings, tool-use restrictions, and real-world approval authority are attestations. The queue reports them as such; it does not pretend to meter spend or verify a person's authority.
 
 ## Recovery
 
@@ -58,4 +60,4 @@ This loop is inspired by recent autonomous-science systems but does not prove sc
 
 ## Included queue utility
 
-For a finalized campaign whose `runtime.enabled` is true, `scripts/workflow.py` provides a dependency-free SQLite state machine for `init`, `claim`, `heartbeat`, `complete`, `fail`, `approve`, `stop`, `reconcile`, `status`, and `audit`. It stores work-unit specs, lease tokens, approval records, append-only events, and artifact hashes. It does not execute worker commands or decide whether scientific acceptance criteria are substantively satisfied.
+For a finalized campaign whose `runtime.enabled` is true, `scripts/workflow.py` provides a dependency-free SQLite state machine for `init`, `claim`, `heartbeat`, `complete`, `fail`, `approve`, `stop`, `reconcile`, `status`, and `audit`. Initialization reruns compiler and review validation. The queue stores work-unit specs, lease tokens, approval attestations, hash-chained events, and artifact hashes. It does not execute worker commands or decide whether scientific acceptance criteria are substantively satisfied.

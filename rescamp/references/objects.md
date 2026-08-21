@@ -8,10 +8,10 @@ validation blocks on; the rest are optional but are rendered when present.
 Every field of these objects is rendered into `CAMPAIGN_PROMPT.md`, including keys outside
 the spec, so record only what changes the research decision.
 
-Two caveats. `add` enforces this vocabulary; `set` with a whole subtree does **not**. A
-misspelled field loaded via `set` is stored, never validated, and then rendered into
-`CAMPAIGN_PROMPT.md` as authoritative content, sitting beside the real field it was meant
-to be. That is the hazard: not that the typo disappears, but that it does not.
+`add` and `apply` enforce object fields. `set` rejects unknown dotted fields and checks
+whole dict-valued sections; use `add` or `apply`, not `set`, to replace object lists. The
+explicit `--allow-unknown` or `--create-missing` escape hatches are for schema
+development, not normal campaign compilation.
 
 And `sketch`, top-level `assumptions`, and `contradictions` are campaign state that the
 prompt does not render — they inform the interview and the review, not the execution brief.
@@ -103,13 +103,13 @@ One method. Heading is `id` plus `name`.
 | `id` | recommended | Stable identifier used by cross-references. |
 | `purpose` | **yes** | Purpose. |
 | `inquiry_ids` | no | Answers inquiries. |
-| `inputs` | no | Inputs. |
+| `inputs` | **yes** | Inputs. |
 | `outputs` | **yes** | Outputs. |
-| `assumptions` | no | Assumptions. |
+| `assumptions` | **yes** | Assumptions. |
 | `limitations` | **yes** | Limitations. |
-| `cost` | no | Cost. |
-| `dependencies` | no | Dependencies. |
-| `can_change_decision` | no | Decision it can change. |
+| `cost` | **yes** | Cost. |
+| `dependencies` | **yes** | Dependencies. |
+| `can_change_decision` | **yes** | Decision it can change. |
 | `name` | no | Name. |
 
 ## `campaign.tools`
@@ -154,9 +154,9 @@ One stage. Heading is `id` plus `name`.
 | `inputs` | no | Inputs. |
 | `activities` | **yes** | Activities. |
 | `outputs` | **yes** | Outputs. |
-| `owner` | no | Owner. |
-| `budget` | no | Budget. |
-| `pace` | no | Expected pace. |
+| `owner` | **yes** | Owner. |
+| `budget` | **yes** | Budget. |
+| `pace` | **yes** | Expected pace. |
 | `gate_id` | **yes** | Promotion gate. |
 | `name` | no | Name. |
 
@@ -203,8 +203,10 @@ One work unit. Heading is `id` plus `objective`.
 | `retry_policy` | **yes** | Retry and failure classes. |
 | `escalation` | **yes** | Escalation and handoff. |
 | `dependency_ids` | no | Depends on work units (queue). |
+| `external_action_ids` | no | Declared external actions; their approvals must appear in `approval_ids`. |
 | `approval_ids` | no | Required approvals before dispatch (queue). |
 | `retry_limit` | no | Maximum retry attempts (queue). |
+| `deadline_at` | no | Absolute ISO-8601 deadline with timezone. |
 | `objective` | **yes** | Objective. |
 
 ## `campaign.claims`

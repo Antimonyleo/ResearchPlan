@@ -9,9 +9,9 @@
   },
   "conditions": [
     {
-      "id": "rescamp-0.8-live",
+      "id": "rescamp-0.9-live",
       "adapter": "external-command",
-      "command": "REPLACE_WITH_TEAM_S_ADAPTER --skill /absolute/path/to/v0.8/rescamp",
+      "command": "REPLACE_WITH_TEAM_S_ADAPTER --skill /absolute/path/to/v0.9/rescamp",
       "user_adapter": "REPLACE_WITH_TEAM_U_ADAPTER",
       "evaluator_adapter": "REPLACE_WITH_TEAM_E_ADAPTER",
       "model_id": "PIN_EXACT_MODEL",
@@ -25,8 +25,8 @@
       "command": "REPLACE_WITH_TEAM_S_ADAPTER --skill /absolute/path/to/previous/rescamp",
       "user_adapter": "REPLACE_WITH_TEAM_U_ADAPTER",
       "evaluator_adapter": "REPLACE_WITH_TEAM_E_ADAPTER",
-      "model_id": "SAME_MODEL",
-      "host_version": "SAME_HOST",
+      "model_id": "PIN_EXACT_MODEL",
+      "host_version": "PIN_EXACT_HOST",
       "skill_commit": "PIN_COMMIT",
       "capabilities": ["elicitation", "campaign-compilation"]
     },
@@ -36,8 +36,8 @@
       "command": "REPLACE_WITH_TEAM_S_ADAPTER --condition neutral",
       "user_adapter": "REPLACE_WITH_TEAM_U_ADAPTER",
       "evaluator_adapter": "REPLACE_WITH_TEAM_E_ADAPTER",
-      "model_id": "SAME_MODEL",
-      "host_version": "SAME_HOST",
+      "model_id": "PIN_EXACT_MODEL",
+      "host_version": "PIN_EXACT_HOST",
       "skill_commit": "none",
       "capabilities": ["elicitation", "campaign-compilation"]
     }

@@ -15,7 +15,19 @@ trees can stay byte-identical.
 | `claude-code` | `~/.claude/skills/rescamp` | `.claude/skills/rescamp` | `/rescamp <goal>` | `skillOverrides.rescamp: user-invocable-only` in `settings.json` (user) or `settings.local.json` (project) |
 | `codex` | `~/.agents/skills/rescamp` | `.agents/skills/rescamp` | `$rescamp <goal>` | `policy.allow_implicit_invocation: false` in `agents/openai.yaml` |
 
+The Claude Code override requires version 2.1.129 or newer.
+
 Codex also reads an organization scope at `/etc/codex/skills/`; the installer does not write there.
+
+The source repository's `scripts/host_acceptance.py` can exercise an explicit mode through
+either installed CLI and record the host version, installed skill-tree digest, response
+hashes, elapsed time, and expected artifacts. It is an opt-in live check, not part of the
+installed skill and not evidence of comparative model quality. Non-help modes require at
+least one `--expect`; the resulting receipt proves transport, a non-error response, and
+artifact presence, not that an existing artifact changed or that its research content is sound.
+Claude Code's non-interactive SDK path dispatches skills through the model-facing command
+surface, so this adapter supplies a session-only `skillOverrides.rescamp: on` setting while
+sending the explicit `/rescamp` prompt. It does not alter the installed interactive policy.
 
 To add a host, append a row, ship its metadata file in the bundle if it needs one, and add an
 entry to the `HOSTS` registry in the repository's `scripts/install.py` (that installer lives in

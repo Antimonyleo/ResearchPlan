@@ -67,6 +67,8 @@ def complete_state(archetype: str = "evidence-synthesis", profile: str = "standa
         "inputs": ["authorized sources"], "outputs": ["analysis artifact"],
         "assumptions": ["sources are authentic within documented limits"],
         "limitations": ["incomplete evidence may prevent adjudication"], "cost": "bounded",
+        "dependencies": {"status": "not-applicable", "reason": "The method has no upstream method"},
+        "can_change_decision": "Whether the evidence warrants the bounded conclusion",
     }]
     camp["tools"] = [{
         "id": "tool-1", "name": "Evidence processing workflow", "identity_version": "documented-v1",
@@ -87,8 +89,12 @@ def complete_state(archetype: str = "evidence-synthesis", profile: str = "standa
         "stop_pivot_no_go_rules": ["Stop if rights are absent", "Report inconclusive when evidence cannot adjudicate"],
     }
     camp["stages"] = [
-        {"id": "stage-1", "purpose": "Dossier and canary", "activities": ["verify scope", "test tool"], "outputs": ["dossier", "canary artifact"], "gate_id": "gate-1", "prerequisite_stage_ids": []},
-        {"id": "stage-2", "purpose": "Evidence analysis and challenge", "activities": ["analyze evidence", "test rival account"], "outputs": ["analysis", "claims matrix"], "gate_id": "gate-2", "prerequisite_stage_ids": ["stage-1"]},
+        {"id": "stage-1", "purpose": "Dossier and canary", "activities": ["verify scope", "test tool"],
+         "outputs": ["dossier", "canary artifact"], "owner": "campaign lead", "budget": "two agent-hours",
+         "pace": "one checkpoint", "gate_id": "gate-1", "prerequisite_stage_ids": []},
+        {"id": "stage-2", "purpose": "Evidence analysis and challenge", "activities": ["analyze evidence", "test rival account"],
+         "outputs": ["analysis", "claims matrix"], "owner": "campaign lead", "budget": "six agent-hours",
+         "pace": "complete after stage-1", "gate_id": "gate-2", "prerequisite_stage_ids": ["stage-1"]},
     ]
     camp["gates"] = [
         {"id": "gate-1", "stage_id": "stage-1", "criteria": ["scope and rights verified", "canary passes"], "required_evidence": ["dossier", "canary log"], "owner": "campaign lead", "on_fail": "repair or stop"},
@@ -129,7 +135,20 @@ def complete_state(archetype: str = "evidence-synthesis", profile: str = "standa
     return state
 
 
+def add_passing_pilot(state):
+    state["assurance"]["pilot"] = {
+        "status": "passed", "content_digest": engine.content_digest(state),
+        "authorized_by": "principal-investigator", "authority": "campaign owner",
+        "executor_id": "pilot-session-1", "executed_at": engine.now_iso(),
+        "scope": "one representative item", "resource_cap": "one agent-hour",
+        "evidence": ["pilot-log@sha256"], "failures": [], "repairs": [],
+    }
+    return state
+
+
 def add_passing_reviews(state, mode="independent-subagent"):
+    if state["profile"] == "high-assurance" or state.get("assurance", {}).get("pilot_required") is True:
+        add_passing_pilot(state)
     digest = engine.content_digest(state)
     rubric = engine.rubric_digest(state["profile"])
     records = []

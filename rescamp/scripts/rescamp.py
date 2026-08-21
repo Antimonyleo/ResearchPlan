@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ResCamp 0.8 durable campaign state, validation, review, and rendering.
+"""ResCamp 0.9 durable campaign state, validation, review, and rendering.
 
 The language model conducts research design and synthesis. This dependency-free utility
 keeps canonical state, enforces proportional gates, prepares immutable review packets,
@@ -20,8 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-VERSION = "0.8.6"
-SCHEMA_VERSION = "3.0"
+VERSION = "0.9.0"
+SCHEMA_VERSION = "3.1"
 SKILL_DIR = Path(__file__).resolve().parent.parent
 STATE_REL = Path("state/campaign.json")
 EVENTS_REL = Path("state/events.jsonl")
@@ -114,7 +114,8 @@ OBJECT_SPECS: dict[str, dict[str, Any]] = {
     },
     "campaign.methods": {
         "label": "method", "title": "name",
-        "required": ("purpose", "outputs", "limitations"),
+        "required": ("purpose", "inputs", "outputs", "assumptions", "limitations", "cost",
+                     "dependencies", "can_change_decision"),
         "fields": (
             ("purpose", "Purpose"), ("inquiry_ids", "Answers inquiries"), ("inputs", "Inputs"),
             ("outputs", "Outputs"), ("assumptions", "Assumptions"), ("limitations", "Limitations"),
@@ -143,7 +144,7 @@ OBJECT_SPECS: dict[str, dict[str, Any]] = {
     },
     "campaign.stages": {
         "label": "stage", "title": "name",
-        "required": ("purpose", "activities", "outputs", "gate_id"),
+        "required": ("purpose", "activities", "outputs", "owner", "budget", "pace", "gate_id"),
         "fields": (
             ("purpose", "Purpose"), ("prerequisite_stage_ids", "Prerequisites"), ("inputs", "Inputs"),
             ("activities", "Activities"), ("outputs", "Outputs"), ("owner", "Owner"),
@@ -178,8 +179,10 @@ OBJECT_SPECS: dict[str, dict[str, Any]] = {
             ("acceptance_test", "Verification and acceptance"), ("resource_ceiling", "Resource ceiling"),
             ("retry_policy", "Retry and failure classes"), ("escalation", "Escalation and handoff"),
             ("dependency_ids", "Depends on work units (queue)"),
+            ("external_action_ids", "External actions performed by this work unit"),
             ("approval_ids", "Required approvals before dispatch (queue)"),
             ("retry_limit", "Maximum retry attempts (queue)"),
+            ("deadline_at", "Absolute ISO-8601 deadline enforced by the queue"),
         ),
     },
     "campaign.claims": {
@@ -231,7 +234,8 @@ SECTION_SPECS: dict[str, dict[str, Any]] = {
     },
     "campaign.resources_dispatch": {
         "required": ("dispatch_rules", "budgets"),
-        "optional": ("access_constraints", "concurrency", "approvals"),
+        "optional": ("access_constraints", "concurrency", "max_concurrency", "approvals"),
+        "note": "max_concurrency is required as a positive integer when runtime.enabled is true.",
     },
     "campaign.runtime": {
         "required": ("continuation_trigger", "state_store", "event_log", "checkpoint_policy",
@@ -268,6 +272,10 @@ def allowed_keys(spec: dict[str, Any]) -> set[str]:
     keys.update(spec["required"])
     keys.update(name for name, _ in spec["fields"])
     return keys
+
+
+def allowed_section_keys(spec: dict[str, Any]) -> set[str]:
+    return set(spec["required"]) | set(spec["optional"])
 
 
 def now_iso() -> str:
@@ -314,14 +322,82 @@ def write_json(path: Path, value: Any) -> None:
     atomic_write(path, json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def append_event(campaign_dir: Path, event_type: str, payload: dict[str, Any]) -> None:
+EVENT_GENESIS_HASH = "sha256:" + ("0" * 64)
+
+
+def inspect_event_chain(path: Path) -> tuple[dict[str, Any], list[str]]:
+    """Return the append anchor and any structural/hash-chain defects.
+
+    Records written before the chain fields existed remain readable as a legacy
+    prefix. Their exact JSON values are folded into the first anchored hash, so once
+    canonical state records that anchor, later deletion, editing, or reordering is
+    detectable without rewriting the append-only log.
+    """
+    head = EVENT_GENESIS_HASH
+    count = 0
+    errors: list[str] = []
+    saw_chained = False
+    if not path.exists():
+        return {"count": count, "head": head}, errors
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            errors.append(f"event log contains a blank record at line {line_number}")
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            errors.append(f"event log contains invalid JSON at line {line_number}")
+            continue
+        if not isinstance(record, dict):
+            errors.append(f"event log record {line_number} is not an object")
+            continue
+        count += 1
+        chain_fields = {"sequence", "previous_hash", "event_hash"}
+        present = chain_fields.intersection(record)
+        if not present:
+            if saw_chained:
+                errors.append(f"event log hash chain has a legacy record after chained records at line {line_number}")
+            head = sha256_json({
+                "legacy_record": record,
+                "sequence": count,
+                "previous_hash": head,
+            })
+            continue
+        saw_chained = True
+        if present != chain_fields:
+            errors.append(f"event log hash chain fields are incomplete at line {line_number}")
+            continue
+        if record.get("sequence") != count:
+            errors.append(f"event log hash chain sequence mismatch at line {line_number}")
+        if record.get("previous_hash") != head:
+            errors.append(f"event log hash chain predecessor mismatch at line {line_number}")
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        expected = sha256_json(body)
+        if record.get("event_hash") != expected:
+            errors.append(f"event log hash chain digest mismatch at line {line_number}")
+        head = expected
+    return {"count": count, "head": head}, errors
+
+
+def append_event(campaign_dir: Path, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
     path = campaign_dir / EVENTS_REL
     path.parent.mkdir(parents=True, exist_ok=True)
-    record = {"at": now_iso(), "type": event_type, "payload": payload}
+    anchor, errors = inspect_event_chain(path)
+    if errors:
+        raise SystemExit("Refusing to append to an invalid event log:\n- " + "\n- ".join(errors))
+    record = {
+        "sequence": anchor["count"] + 1,
+        "previous_hash": anchor["head"],
+        "at": now_iso(),
+        "type": event_type,
+        "payload": payload,
+    }
+    record["event_hash"] = sha256_json(record)
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(canonical_json(record) + "\n")
         handle.flush()
         os.fsync(handle.fileno())
+    return {"count": record["sequence"], "head": record["event_hash"]}
 
 
 def resolve_campaign(path: str | Path) -> Path:
@@ -333,8 +409,29 @@ def resolve_campaign(path: str | Path) -> Path:
     raise SystemExit(f"Campaign not found: {candidate}")
 
 
-def load_state(campaign_dir: Path) -> dict[str, Any]:
-    return read_json(campaign_dir / STATE_REL)
+def verify_state_history(campaign_dir: Path, state: dict[str, Any]) -> None:
+    """Refuse a sanctioned mutation when state no longer matches its prior event."""
+    event_path = campaign_dir / EVENTS_REL
+    if not event_path.exists() or not event_path.read_text(encoding="utf-8").strip():
+        return
+    anchor, errors = inspect_event_chain(event_path)
+    if errors:
+        raise SystemExit("Campaign event history is corrupt:\n- " + "\n- ".join(errors))
+    expected = last_event_state_digest(event_path)
+    if expected is None:
+        raise SystemExit("Campaign event history does not bind canonical state; migrate or reinitialize")
+    if state.get("event_chain") != anchor or expected != event_state_digest(state):
+        raise SystemExit(
+            "Canonical campaign state does not match its event history; run audit and repair "
+            "the unlogged change before continuing"
+        )
+
+
+def load_state(campaign_dir: Path, verify_event: bool = False) -> dict[str, Any]:
+    state = read_json(campaign_dir / STATE_REL)
+    if verify_event:
+        verify_state_history(campaign_dir, state)
+    return state
 
 
 def substantive_state(state: dict[str, Any], deep: bool = True) -> dict[str, Any]:
@@ -344,13 +441,45 @@ def substantive_state(state: dict[str, Any], deep: bool = True) -> dict[str, Any
     would make a successful render mutate the digest its own reviews were bound to.
     """
     value = copy.deepcopy(state) if deep else dict(state)
-    for key in ("updated_at", "reviews", "outputs", "last_validation", "status"):
+    for key in ("updated_at", "reviews", "outputs", "last_validation", "status", "event_chain"):
         value.pop(key, None)
+    assurance = value.get("assurance")
+    if isinstance(assurance, dict):
+        # Evidence records bind to this digest, so including them would make their own
+        # binding circular. The policy decision remains substantive and review-bound.
+        value["assurance"] = {"pilot_required": bool(assurance.get("pilot_required"))}
     return value
 
 
 def content_digest(state: dict[str, Any]) -> str:
     return sha256_json(substantive_state(state))
+
+
+def event_state_digest(state: dict[str, Any]) -> str:
+    """Bind the append-only log to the full persisted state it produced."""
+    value = copy.deepcopy(state)
+    value.pop("event_chain", None)
+    # Validation output is a reproducible cache written by `validate`, not campaign
+    # authority. Everything else, including reviews and the output manifest, is bound.
+    value.pop("last_validation", None)
+    return sha256_json(value)
+
+
+def last_event_state_digest(path: Path) -> str | None:
+    """Read the state anchor from the final event; chain validity is checked separately."""
+    if not path.exists():
+        return None
+    for line in reversed(path.read_text(encoding="utf-8").splitlines()):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        payload = record.get("payload", {}) if isinstance(record, dict) else {}
+        value = payload.get("state_digest") if isinstance(payload, dict) else None
+        return value if isinstance(value, str) else None
+    return None
 
 
 def rubric_payload(profile: str) -> dict[str, Any]:
@@ -378,15 +507,21 @@ def rubric_digest(profile: str) -> str:
     return sha256_json(rubric_payload(profile))
 
 
+def finding_digest(role: str, finding: dict[str, Any]) -> str:
+    """Stable identity for an exact finding in one review role."""
+    return sha256_json({"role": role, "finding": finding})
+
+
 def save_state(campaign_dir: Path, state: dict[str, Any], event_type: str, payload: dict[str, Any] | None = None) -> None:
     state["updated_at"] = now_iso()
-    write_json(campaign_dir / STATE_REL, state)
     # Record the section digests with every event. Without them the log says which path
     # changed but not what it changed to, so a section emptied before any review left no
     # recoverable trace and a deletion was indistinguishable from an edit.
     event = dict(payload or {})
     event["section_digests"] = section_digests(state)
-    append_event(campaign_dir, event_type, event)
+    event["state_digest"] = event_state_digest(state)
+    state["event_chain"] = append_event(campaign_dir, event_type, event)
+    write_json(campaign_dir / STATE_REL, state)
 
 
 def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: str) -> dict[str, Any]:
@@ -438,7 +573,7 @@ def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: s
             },
             "stages": [],
             "gates": [],
-            "resources_dispatch": {"budgets": [], "access_constraints": [], "concurrency": "", "dispatch_rules": [], "approvals": []},
+            "resources_dispatch": {"budgets": [], "access_constraints": [], "concurrency": "", "max_concurrency": None, "dispatch_rules": [], "approvals": []},
             "roles": [],
             "runtime": {"enabled": False, "continuation_trigger": "", "state_store": "", "event_log": "", "checkpoint_policy": "", "liveness": "", "recovery": "", "idempotency": ""},
             "work_units": [],
@@ -451,6 +586,7 @@ def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: s
         "assumptions": [],
         "contradictions": [],
         "blockers": [],
+        "assurance": {"pilot_required": profile == "high-assurance", "pilot": {}, "risk_acceptances": []},
         "reviews": {"frozen_content_digest": "", "rubric_digest": "", "records": []},
         "outputs": {"last_rendered_digest": "", "manifest": {}},
         "last_validation": {},
@@ -470,7 +606,7 @@ def get_by_path(data: Any, dotted: str) -> Any:
 # Engine-owned state. Writing these directly would bypass the checks that make them mean
 # anything: `reviews` has ingest-review, `status` is derived from validation, `outputs` and
 # `last_validation` are rendered records.
-PROTECTED_PATHS = ("reviews", "status", "outputs", "last_validation")
+PROTECTED_PATHS = ("reviews", "status", "outputs", "last_validation", "event_chain")
 
 
 def guard_protected_path(dotted: str) -> None:
@@ -509,6 +645,12 @@ def set_by_path(data: Any, dotted: str, value: Any, create_missing: bool = True)
     if isinstance(current, list):
         current[int(last)] = value
     else:
+        if not create_missing and last not in current:
+            known = ", ".join(sorted(current))
+            raise SystemExit(
+                f"Unknown final field '{last}' in '{dotted}'.\n"
+                f"known keys at '{'.'.join(parts[:-1]) or '<root>'}': {known}"
+            )
         current[last] = value
 
 
@@ -548,16 +690,45 @@ def cmd_init(args: argparse.Namespace) -> None:
     for rel in ("state", "working", "working/review_packets", "outputs", "artifacts"):
         (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
     state = default_state(args.goal, args.profile, archetypes, campaign_id)
+    initial_payload = {
+        "goal": args.goal,
+        "profile": args.profile,
+        "archetypes": archetypes,
+        "section_digests": section_digests(state),
+        "state_digest": event_state_digest(state),
+    }
+    state["event_chain"] = append_event(
+        campaign_dir, "campaign.initialized", initial_payload,
+    )
     write_json(campaign_dir / STATE_REL, state)
-    append_event(campaign_dir, "campaign.initialized", {"goal": args.goal, "profile": args.profile, "archetypes": archetypes})
     print(campaign_dir)
 
 
 def cmd_set(args: argparse.Namespace) -> None:
     guard_protected_path(args.path)
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     value = parse_json_arg(args.value)
+    section = SECTION_SPECS.get(args.path)
+    object_spec = spec_for(args.path)
+    if section is not None:
+        if not isinstance(value, dict):
+            raise SystemExit(f"{args.path} must be an object")
+        unknown = sorted(set(value) - allowed_section_keys(section))
+        if unknown and not args.create_missing:
+            raise SystemExit(
+                f"unknown field(s) in {args.path}: {', '.join(unknown)}\n"
+                f"known fields: {', '.join(sorted(allowed_section_keys(section)))}"
+            )
+    elif object_spec is not None:
+        if not isinstance(value, list):
+            raise SystemExit(f"{args.path} must be a list of objects")
+        malformed = [index for index, item in enumerate(value) if not isinstance(item, dict)]
+        if malformed:
+            raise SystemExit(
+                f"{args.path} must contain only objects; malformed item(s): "
+                + ", ".join(str(index) for index in malformed)
+            )
     # Typing `campaign.evalation.criteria` used to succeed, create a junk key, silently
     # discard the content, and leave the agent staring at "criteria is missing".
     set_by_path(state, args.path, value, create_missing=args.create_missing)
@@ -573,7 +744,7 @@ def cmd_set(args: argparse.Namespace) -> None:
 def cmd_add(args: argparse.Namespace) -> None:
     guard_protected_path(args.path)
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     collection = get_by_path(state, args.path)
     if not isinstance(collection, list):
         raise SystemExit(f"Target path is not a list: {args.path}")
@@ -618,7 +789,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
     the execution prompt as authoritative content.
     """
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     payload = parse_json_arg(args.json)
     if not isinstance(payload, dict):
         raise SystemExit("--json must decode to an object mapping dotted paths to values")
@@ -629,8 +800,17 @@ def cmd_apply(args: argparse.Namespace) -> None:
     for path, value in payload.items():
         spec = spec_for(path)
         if spec is None:
-            if path not in SECTION_SPECS and not args.allow_unknown:
+            section = SECTION_SPECS.get(path)
+            if section is None and not args.allow_unknown:
                 errors.append(f"{path}: unknown section; see `rescamp.py schema list`")
+            elif section is not None:
+                if not isinstance(value, dict):
+                    errors.append(f"{path}: expected an object")
+                elif not args.allow_unknown:
+                    unknown = sorted(set(value) - allowed_section_keys(section))
+                    if unknown:
+                        errors.append(f"{path}: unknown field(s) {', '.join(unknown)}; "
+                                      f"known: {', '.join(sorted(allowed_section_keys(section)))}")
             continue
         if not isinstance(value, list):
             errors.append(f"{path}: expected a list of objects")
@@ -657,7 +837,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
 
 def cmd_dimension(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     dims = state["intent_dimensions"]
     found = next((item for item in dims if item.get("id") == args.id), None)
     payload = {
@@ -682,7 +862,7 @@ def cmd_dimension(args: argparse.Namespace) -> None:
 
 def cmd_turn(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     turns = state["interview"]["turns"]
     number = len(turns) + 1
     if number > state["interview"]["hard_limit"] and not state["interview"].get("extension_authorized"):
@@ -708,7 +888,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
     if args.reason not in STOP_REASONS:
         raise SystemExit("Invalid stopping reason")
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     state["interview"]["stopping_reason"] = args.reason
     state["interview"]["stopping_note"] = args.note
     state["status"] = "candidate"
@@ -771,9 +951,43 @@ def _ids(items: Iterable[Any]) -> tuple[set[str], list[str]]:
 def _nonempty(value: Any) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
-    if isinstance(value, (list, dict)):
-        return bool(value)
-    return value is not None
+    if isinstance(value, list):
+        return bool(value) and all(_nonempty(item) for item in value)
+    if isinstance(value, dict):
+        return bool(value) and any(_nonempty(item) for item in value.values())
+    if isinstance(value, bool):
+        return False
+    return False
+
+
+def _required_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _required_list(value: Any) -> bool:
+    return isinstance(value, list) and bool(value) and all(_nonempty(item) for item in value)
+
+
+def _displayable(value: Any) -> bool:
+    """Keep explicit scalars visible without treating them as filled prose fields."""
+    return isinstance(value, (bool, int, float)) or _nonempty(value)
+
+
+def _operational_value(value: Any) -> bool:
+    """Accept a real value, or an explicit not-applicable decision with its reason."""
+    if isinstance(value, dict):
+        return value.get("status") == "not-applicable" and _nonempty(value.get("reason"))
+    return _nonempty(value)
+
+
+def _is_iso_timestamp(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
 
 
 def _graph_cycle(nodes: set[str], edges: list[tuple[str, str]]) -> list[str]:
@@ -818,13 +1032,254 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         target = errors if level == "error" else warnings
         target.append({"code": code, "message": message, "path": path})
 
+    if not isinstance(state, dict):
+        issue("error", "structure.type", "Campaign state must be an object", "")
+        return {
+            "rescamp_version": VERSION, "checked_at": now_iso(),
+            "content_digest": sha256_json(state), "rubric_digest": "",
+            "valid": False, "execution_ready": False, "release_status": "draft",
+            "errors": errors, "warnings": warnings,
+            "counts": {},
+            "review": {"required": [], "current": [], "missing": [], "blocking": [],
+                       "independence_ok": False},
+        }
+
+    # Validation must describe malformed JSON, not throw while walking it. Work on a
+    # sanitized copy so callers retain the exact input and the reported digest still
+    # fingerprints that input.
+    input_digest = content_digest(state)
+    state = copy.deepcopy(state)
+
+    def require_object(container: dict[str, Any], key: str, path: str) -> dict[str, Any]:
+        if key not in container:
+            issue("error", "structure.type", f"{path} is missing; expected an object", path)
+            container[key] = {}
+        elif not isinstance(container[key], dict):
+            issue("error", "structure.type", f"{path} must be an object", path)
+            container[key] = {}
+        return container[key]
+
+    def require_list(container: dict[str, Any], key: str, path: str) -> list[Any]:
+        if key not in container:
+            container[key] = []
+        elif not isinstance(container[key], list):
+            issue("error", "structure.type", f"{path} must be a list", path)
+            container[key] = []
+        return container[key]
+
+    def require_object_list(container: dict[str, Any], key: str, path: str) -> list[dict[str, Any]]:
+        items = require_list(container, key, path)
+        valid: list[dict[str, Any]] = []
+        for index, item in enumerate(items):
+            if isinstance(item, dict):
+                valid.append(item)
+            else:
+                item_path = f"{path}.{index}"
+                issue("error", "structure.type", f"{item_path} must be an object", item_path)
+        container[key] = valid
+        return valid
+
+    def require_string(container: dict[str, Any], key: str, path: str) -> str:
+        if key not in container:
+            return ""
+        if not isinstance(container[key], str):
+            issue("error", "structure.type", f"{path} must be a string", path)
+            container[key] = ""
+        return container[key]
+
+    def require_string_list(container: dict[str, Any], key: str, path: str) -> list[str]:
+        if key not in container:
+            return []
+        items = require_list(container, key, path)
+        valid: list[str] = []
+        for index, item in enumerate(items):
+            if isinstance(item, str):
+                valid.append(item)
+            else:
+                item_path = f"{path}.{index}"
+                issue("error", "structure.type", f"{item_path} must be a string", item_path)
+        container[key] = valid
+        return valid
+
+    def check_string_list(container: dict[str, Any], key: str, path: str) -> None:
+        """Report a malformed list while preserving it for its domain-specific check."""
+        if key not in container:
+            return
+        items = container[key]
+        if not isinstance(items, list):
+            issue("error", "structure.type", f"{path} must be a list", path)
+            return
+        for index, item in enumerate(items):
+            if not isinstance(item, str):
+                item_path = f"{path}.{index}"
+                issue("error", "structure.type", f"{item_path} must be a string", item_path)
+
+    interview = require_object(state, "interview", "interview")
+    assurance = require_object(state, "assurance", "assurance")
+    camp = require_object(state, "campaign", "campaign")
+    reviews = require_object(state, "reviews", "reviews")
+    require_object(state, "outputs", "outputs")
+    if "host_profile" in state:
+        require_object(state, "host_profile", "host_profile")
+
+    for key in ("title", "campaign_id", "profile"):
+        if key not in state or not isinstance(state.get(key), str):
+            issue("error", "structure.type", f"{key} must be a string", key)
+            state[key] = ""
+    if "content_version" not in state or isinstance(state.get("content_version"), bool) \
+            or not isinstance(state.get("content_version"), int):
+        issue("error", "structure.type", "content_version must be an integer", "content_version")
+        state["content_version"] = 0
+
+    for key in ("constitution", "mission", "dossier", "evaluation", "resources_dispatch",
+                "runtime", "ethics_rights_safety", "reporting", "kickoff"):
+        require_object(camp, key, f"campaign.{key}")
+
+    archetypes = require_list(state, "archetypes", "archetypes")
+    valid_archetypes: list[str] = []
+    for index, archetype in enumerate(archetypes):
+        if isinstance(archetype, str):
+            valid_archetypes.append(archetype)
+        else:
+            path = f"archetypes.{index}"
+            issue("error", "structure.type", f"{path} must be a string", path)
+    state["archetypes"] = valid_archetypes
+
+    require_object_list(state, "intent_dimensions", "intent_dimensions")
+    require_list(state, "assumptions", "assumptions")
+    require_object_list(state, "contradictions", "contradictions")
+    require_object_list(state, "blockers", "blockers")
+    require_object_list(interview, "turns", "interview.turns")
+    configured_profile = state.get("profile")
+    configured_limits = PROFILES.get(configured_profile, PROFILES["standard"]) \
+        if isinstance(configured_profile, str) else PROFILES["standard"]
+    for limit in ("soft_limit", "hard_limit"):
+        if limit in interview and (isinstance(interview[limit], bool) or not isinstance(interview[limit], int)):
+            path = f"interview.{limit}"
+            issue("error", "structure.type", f"{path} must be an integer", path)
+            interview[limit] = configured_limits[limit.split("_")[0]]
+
+    for key in ("inquiries", "methods", "tools", "canaries", "stages", "gates", "roles",
+                "work_units", "claims", "deliverables"):
+        items = require_object_list(camp, key, f"campaign.{key}")
+        for index, item in enumerate(items):
+            if "id" in item:
+                require_string(item, "id", f"campaign.{key}.{index}.id")
+    require_object_list(reviews, "records", "reviews.records")
+
+    dossier = camp["dossier"]
+    for key in ("objects", "context", "source_hierarchy", "access_rights", "alternatives"):
+        require_list(dossier, key, f"campaign.dossier.{key}")
+    constitution = camp["constitution"]
+    require_list(constitution, "rules", "campaign.constitution.rules")
+
+    for index, dimension in enumerate(state["intent_dimensions"]):
+        for key in ("id", "status", "importance"):
+            if key in dimension:
+                require_string(dimension, key, f"intent_dimensions.{index}.{key}")
+    for key in ("stopping_reason",):
+        if key in interview:
+            require_string(interview, key, f"interview.{key}")
+    for index, method in enumerate(camp["methods"]):
+        require_string_list(method, "inquiry_ids", f"campaign.methods.{index}.inquiry_ids")
+    for index, tool in enumerate(camp["tools"]):
+        if "id" in tool:
+            require_string(tool, "id", f"campaign.tools.{index}.id")
+    for index, canary in enumerate(camp["canaries"]):
+        if "tool_id" in canary:
+            require_string(canary, "tool_id", f"campaign.canaries.{index}.tool_id")
+    for index, stage in enumerate(camp["stages"]):
+        require_string_list(stage, "prerequisite_stage_ids",
+                            f"campaign.stages.{index}.prerequisite_stage_ids")
+        if "gate_id" in stage:
+            require_string(stage, "gate_id", f"campaign.stages.{index}.gate_id")
+    for index, gate in enumerate(camp["gates"]):
+        if "stage_id" in gate:
+            require_string(gate, "stage_id", f"campaign.gates.{index}.stage_id")
+    for index, unit in enumerate(camp["work_units"]):
+        require_string_list(unit, "dependency_ids", f"campaign.work_units.{index}.dependency_ids")
+        for key in ("external_action_ids", "approval_ids"):
+            check_string_list(unit, key, f"campaign.work_units.{index}.{key}")
+    for index, claim in enumerate(camp["claims"]):
+        if "inquiry_id" in claim:
+            require_string(claim, "inquiry_id", f"campaign.claims.{index}.inquiry_id")
+    if "first_gate_id" in camp["kickoff"]:
+        require_string(camp["kickoff"], "first_gate_id", "campaign.kickoff.first_gate_id")
+    for key, items in (("contradictions", state["contradictions"]), ("blockers", state["blockers"])):
+        for index, item in enumerate(items):
+            for field in ("id", "status", "importance", "severity"):
+                if field in item:
+                    require_string(item, field, f"{key}.{index}.{field}")
+
+    for index, record in enumerate(reviews["records"]):
+        for key in ("role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest"):
+            if key in record:
+                require_string(record, key, f"reviews.records.{index}.{key}")
+        if "reviewed_sections" in record and not isinstance(record["reviewed_sections"], dict):
+            path = f"reviews.records.{index}.reviewed_sections"
+            issue("error", "structure.type", f"{path} must be an object", path)
+            record["reviewed_sections"] = {}
+        findings = require_object_list(record, "findings", f"reviews.records.{index}.findings")
+        for finding_index, finding in enumerate(findings):
+            for key in ("severity", "action", "description"):
+                if key in finding:
+                    require_string(
+                        finding, key,
+                        f"reviews.records.{index}.findings.{finding_index}.{key}",
+                    )
+        if "execution_evidence" in record and not isinstance(record["execution_evidence"], dict):
+            path = f"reviews.records.{index}.execution_evidence"
+            issue("error", "structure.type", f"{path} must be an object", path)
+            record["execution_evidence"] = {}
+        evidence = record.get("execution_evidence")
+        if isinstance(evidence, dict) and "executor_id" in evidence:
+            require_string(evidence, "executor_id", f"reviews.records.{index}.execution_evidence.executor_id")
+
+    if state.get("schema_version") != SCHEMA_VERSION:
+        issue("error", "schema.unsupported",
+              f"Campaign schema {state.get('schema_version')!r} is not current {SCHEMA_VERSION!r}; "
+              "migrate explicitly before release", "schema_version")
+
     profile = state.get("profile")
-    if profile not in PROFILES:
+    if not isinstance(profile, str) or profile not in PROFILES:
         issue("error", "profile.invalid", f"Unknown profile {profile!r}", "profile")
         return {"valid": False, "execution_ready": False, "errors": errors, "warnings": warnings}
     unknown_archetypes = sorted(set(state.get("archetypes", [])) - ARCHETYPES)
     if unknown_archetypes:
         issue("error", "archetype.invalid", ", ".join(unknown_archetypes), "archetypes")
+
+    pilot_required = profile == "high-assurance" or assurance.get("pilot_required") is True
+    pilot = assurance.get("pilot", {})
+    if pilot_required and not isinstance(pilot, dict):
+        issue("error", "pilot.malformed", "assurance.pilot must be an object", "assurance.pilot")
+    elif pilot_required and not pilot:
+        issue("error", "pilot.missing", "This campaign requires a completed, digest-bound pilot", "assurance.pilot")
+    elif pilot_required:
+        if not _nonempty(pilot.get("authorized_by")) or not _nonempty(pilot.get("authority")):
+            issue("error", "pilot.authority",
+                  "A required pilot needs the identity and authority that authorized execution",
+                  "assurance.pilot")
+        if pilot.get("status") != "passed":
+            issue("error", "pilot.not_passed", "The required pilot has not passed", "assurance.pilot.status")
+        if pilot.get("content_digest") != input_digest:
+            issue("error", "pilot.stale",
+                  "The required pilot was executed against an older campaign digest; rerun it after repairs",
+                  "assurance.pilot.content_digest")
+        missing_pilot_fields = [
+            field for field in ("executor_id", "scope", "resource_cap")
+            if not _nonempty(pilot.get(field))
+        ]
+        if not _is_iso_timestamp(pilot.get("executed_at")):
+            missing_pilot_fields.append("executed_at")
+        list_fields = ("evidence", "failures", "repairs")
+        missing_pilot_fields.extend(field for field in list_fields if not isinstance(pilot.get(field), list))
+        if not _required_list(pilot.get("evidence")):
+            if "evidence" not in missing_pilot_fields:
+                missing_pilot_fields.append("evidence")
+        if missing_pilot_fields:
+            issue("error", "pilot.incomplete",
+                  "Required pilot record missing valid fields: " + ", ".join(sorted(missing_pilot_fields)),
+                  "assurance.pilot")
 
     interview = state.get("interview", {})
     turns = interview.get("turns", [])
@@ -855,22 +1310,25 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         importance = dim.get("importance", "material")
         if importance in {"critical", "material"} and dim.get("status") not in COMPLETE_DIMENSION_STATUSES:
             issue("error", "dimension.unresolved", f"Material dimension {dim.get('id', index)} is unresolved", path)
-        if dim.get("status") in {"explicit-default", "deferred", "not-applicable", "blocked"} and not str(dim.get("reason", "")).strip():
+        if dim.get("status") in {"explicit-default", "deferred", "not-applicable", "blocked"} \
+                and not _required_text(dim.get("reason")):
             issue("error", "dimension.reason", f"Status {dim.get('status')} requires a reason", path)
 
     camp = state.get("campaign", {})
     mission = camp.get("mission", {})
     for field in ("decision_or_purpose", "scope", "completion_definition"):
-        if not _nonempty(mission.get(field)):
+        if not _required_text(mission.get(field)):
             issue("error", "mission.missing", f"Mission field {field} is missing", f"campaign.mission.{field}")
     constitution = camp.get("constitution", {})
-    if not constitution.get("worker_inheritance") or len(constitution.get("rules", [])) < 3:
+    rules = constitution.get("rules")
+    if not constitution.get("worker_inheritance") or not isinstance(rules, list) \
+            or len(rules) < 3 or not all(_required_text(rule) for rule in rules):
         issue("error", "constitution.weak", "Constitution needs inherited verification/provenance/safety/reporting rules", "campaign.constitution")
 
     dossier = camp.get("dossier", {})
-    if not dossier.get("objects"):
+    if not _required_list(dossier.get("objects")):
         issue("error", "dossier.objects", "Exact objects, cases, corpus, population, or system are missing", "campaign.dossier.objects")
-    if not dossier.get("source_hierarchy"):
+    if not _required_list(dossier.get("source_hierarchy")):
         issue("error", "dossier.sources", "Source/evidence hierarchy is missing", "campaign.dossier.source_hierarchy")
 
     inquiry_ids, inquiry_dups = _ids(camp.get("inquiries", []))
@@ -880,8 +1338,13 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         issue("error", "inquiry.none", "At least one central inquiry is required", "campaign.inquiries")
     for index, item in enumerate(camp.get("inquiries", [])):
         path = f"campaign.inquiries.{index}"
-        for field in ("question_or_claim", "importance", "admissible_support", "counterevidence_or_rival", "verification_or_adjudication", "reporting_rule"):
-            if not _nonempty(item.get(field)):
+        field_checks = {
+            "question_or_claim": _required_text, "importance": _required_text,
+            "admissible_support": _required_list, "counterevidence_or_rival": _required_list,
+            "verification_or_adjudication": _required_text, "reporting_rule": _required_text,
+        }
+        for field, check in field_checks.items():
+            if not check(item.get(field)):
                 issue("error", "inquiry.incomplete", f"Inquiry {item.get('id', index)} missing {field}", path)
 
     method_ids, method_dups = _ids(camp.get("methods", []))
@@ -891,8 +1354,17 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         issue("error", "method.none", "At least one method is required", "campaign.methods")
     for index, item in enumerate(camp.get("methods", [])):
         path = f"campaign.methods.{index}"
-        if not _nonempty(item.get("purpose")) or not _nonempty(item.get("outputs")) or not _nonempty(item.get("limitations")):
-            issue("error", "method.incomplete", f"Method {item.get('id', index)} needs purpose, outputs, and limitations", path)
+        method_checks = {
+            "purpose": _required_text, "inputs": _required_list, "outputs": _required_list,
+            "assumptions": _required_list, "limitations": _required_list,
+            "cost": _required_text, "dependencies": _operational_value,
+            "can_change_decision": _required_text,
+        }
+        for field, check in method_checks.items():
+            if not check(item.get(field)):
+                issue("error", "method.incomplete",
+                      f"Method {item.get('id', index)} missing {field}; use a value or "
+                      "{'status': 'not-applicable', 'reason': '...'}", path)
         linked = set(item.get("inquiry_ids", []))
         unknown = sorted(linked - inquiry_ids)
         if unknown:
@@ -911,8 +1383,12 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     for index, canary in enumerate(camp.get("canaries", [])):
         if canary.get("tool_id") not in tool_ids:
             issue("error", "canary.bad_tool_ref", f"Canary {canary.get('id')} references unknown tool", f"campaign.canaries.{index}")
-        for field in ("production_like_test", "expected_artifacts", "sanity_checks", "downstream_acceptance"):
-            if not _nonempty(canary.get(field)):
+        canary_checks = {
+            "production_like_test": _required_text, "expected_artifacts": _required_list,
+            "sanity_checks": _required_list, "downstream_acceptance": _required_text,
+        }
+        for field, check in canary_checks.items():
+            if not check(canary.get(field)):
                 issue("error", "canary.incomplete", f"Canary {canary.get('id')} missing {field}", f"campaign.canaries.{index}")
 
     evaluation = camp.get("evaluation", {})
@@ -922,8 +1398,13 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
               "before production evidence was inspected. This is an attestation by whoever compiled "
               "the campaign; nothing here can verify when the freeze actually happened.",
               "campaign.evaluation")
-    for field in ("criteria", "comparators_or_adjudication", "missing_evidence_policy", "exploration_confirmation_policy", "stop_pivot_no_go_rules"):
-        if not _nonempty(evaluation.get(field)):
+    evaluation_checks = {
+        "criteria": _required_list, "comparators_or_adjudication": _required_list,
+        "missing_evidence_policy": _required_text, "exploration_confirmation_policy": _required_text,
+        "stop_pivot_no_go_rules": _required_list,
+    }
+    for field, check in evaluation_checks.items():
+        if not check(evaluation.get(field)):
             issue("error", "evaluation.incomplete", f"Evaluation field {field} is missing", f"campaign.evaluation.{field}")
 
     stage_ids, stage_dups = _ids(camp.get("stages", []))
@@ -940,8 +1421,13 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             if prereq not in stage_ids:
                 issue("error", "stage.bad_prereq", f"Unknown prerequisite {prereq}", path)
             edges.append((prereq, stage.get("id", "")))
-        for field in ("purpose", "activities", "outputs", "gate_id"):
-            if not _nonempty(stage.get(field)):
+        stage_checks = {
+            "purpose": _required_text, "activities": _required_list, "outputs": _required_list,
+            "owner": _required_text, "budget": _required_text, "pace": _required_text,
+            "gate_id": _required_text,
+        }
+        for field, check in stage_checks.items():
+            if not check(stage.get(field)):
                 issue("error", "stage.incomplete", f"Stage {stage.get('id', index)} missing {field}", path)
         if stage.get("gate_id") not in gate_ids:
             issue("error", "stage.bad_gate", f"Stage {stage.get('id')} references unknown gate", path)
@@ -952,41 +1438,83 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         path = f"campaign.gates.{index}"
         if gate.get("stage_id") not in stage_ids:
             issue("error", "gate.bad_stage", f"Gate {gate.get('id')} references unknown stage", path)
-        for field in ("criteria", "required_evidence", "owner", "on_fail"):
-            if not _nonempty(gate.get(field)):
+        gate_checks = {"criteria": _required_list, "required_evidence": _required_list,
+                       "owner": _required_text, "on_fail": _required_text}
+        for field, check in gate_checks.items():
+            if not check(gate.get(field)):
                 issue("error", "gate.incomplete", f"Gate {gate.get('id', index)} missing {field}", path)
 
     resources = camp.get("resources_dispatch", {})
-    if not resources.get("dispatch_rules"):
+    if not _required_list(resources.get("dispatch_rules")):
         issue("error", "dispatch.rules", "Fail-closed dispatch rules are missing", "campaign.resources_dispatch.dispatch_rules")
-    if profile != "scoped" and not resources.get("budgets"):
+    if profile != "scoped" and not _required_list(resources.get("budgets")):
         issue("error", "resources.budget", "Resource/budget ceiling is missing", "campaign.resources_dispatch.budgets")
 
     runtime = camp.get("runtime", {})
     work_unit_ids, work_unit_dups = _ids(camp.get("work_units", []))
     if work_unit_dups:
         issue("error", "work_unit.duplicate", f"Duplicate work-unit IDs: {', '.join(work_unit_dups)}", "campaign.work_units")
+    for index, unit in enumerate(camp.get("work_units", [])):
+        if unit.get("deadline_at") is not None and not _is_iso_timestamp(unit.get("deadline_at")):
+            issue("error", "work_unit.bad_deadline",
+                  f"Work unit {unit.get('id', index)} deadline_at must be an ISO-8601 timestamp with timezone",
+                  f"campaign.work_units.{index}.deadline_at")
     if runtime.get("enabled"):
+        maximum = resources.get("max_concurrency")
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
+            issue("error", "resources.max_concurrency",
+                  "Enabled runtime requires resources_dispatch.max_concurrency as a positive integer",
+                  "campaign.resources_dispatch.max_concurrency")
         for field in ("continuation_trigger", "state_store", "event_log", "checkpoint_policy", "liveness", "recovery", "idempotency"):
-            if not _nonempty(runtime.get(field)):
+            if not _required_text(runtime.get(field)):
                 issue("error", "runtime.incomplete", f"Runtime field {field} is missing", f"campaign.runtime.{field}")
         if not work_unit_ids:
             issue("error", "work_unit.none", "Enabled continuous workflow needs bounded work units", "campaign.work_units")
         for index, unit in enumerate(camp.get("work_units", [])):
-            for field in ("objective", "authoritative_inputs", "permitted_actions", "prohibited_actions", "outputs", "acceptance_test", "resource_ceiling", "retry_policy", "escalation"):
-                if not _nonempty(unit.get(field)):
+            unit_checks = {
+                "objective": _required_text, "authoritative_inputs": _required_list,
+                "permitted_actions": _required_list, "prohibited_actions": _required_list,
+                "outputs": _required_list, "acceptance_test": _required_text,
+                "resource_ceiling": _required_text, "retry_policy": _required_text,
+                "escalation": _required_text,
+            }
+            for field, check in unit_checks.items():
+                if not check(unit.get(field)):
                     issue("error", "work_unit.incomplete", f"Work unit {unit.get('id', index)} missing {field}", f"campaign.work_units.{index}")
     elif camp.get("work_units"):
         issue("warning", "runtime.disabled_with_units", "Work units exist while runtime is disabled", "campaign.runtime")
 
     ethics = camp.get("ethics_rights_safety", {})
     external_actions = ethics.get("external_actions", [])
-    approvals = ethics.get("human_approval_points", []) + resources.get("approvals", [])
-    if external_actions and not approvals:
+    approval_sources = (
+        ("campaign.resources_dispatch.approvals", resources.get("approvals", [])),
+        ("campaign.ethics_rights_safety.human_approval_points", ethics.get("human_approval_points", [])),
+    )
+    require_dispatchable_approvals = runtime.get("enabled") is True or bool(external_actions)
+    approval_ids: set[str] = set()
+    approval_count = 0
+    for approval_path, records in approval_sources:
+        if not isinstance(records, list):
+            if require_dispatchable_approvals:
+                issue("error", "approval.malformed", "Approval declarations must be lists", approval_path)
+            continue
+        approval_count += len(records)
+        for approval_index, record in enumerate(records):
+            if not isinstance(record, dict) or not isinstance(record.get("id"), str) \
+                    or not record["id"].strip() or record["id"] != record["id"].strip():
+                if require_dispatchable_approvals:
+                    issue("error", "approval.malformed",
+                          "Runtime approvals must be structured objects with non-empty string IDs",
+                          f"{approval_path}.{approval_index}")
+                continue
+            approval_id = record["id"]
+            if approval_id in approval_ids:
+                issue("error", "approval.duplicate", f"Duplicate approval ID {approval_id!r}",
+                      f"{approval_path}.{approval_index}")
+            approval_ids.add(approval_id)
+    if external_actions and approval_count == 0:
         issue("error", "approval.missing", "External actions exist without human approval points", "campaign.ethics_rights_safety")
-    # Prose in human_approval_points satisfied the check above regardless of what it said,
-    # and nothing tied an approval to the action or work unit it was supposed to gate.
-    approval_ids = {str(item.get("id")) for item in approvals if isinstance(item, dict) and item.get("id")}
+    external_action_by_id: dict[str, dict[str, Any]] = {}
     for index, action in enumerate(external_actions):
         if not isinstance(action, dict):
             issue("error", "external_action.malformed",
@@ -994,20 +1522,78 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                   "see `rescamp.py schema campaign.ethics_rights_safety`",
                   f"campaign.ethics_rights_safety.external_actions.{index}")
             continue
+        raw_action_id = action.get("id")
+        action_id = raw_action_id if isinstance(raw_action_id, str) else ""
+        if not action_id.strip() or action_id != action_id.strip():
+            issue("error", "external_action.malformed", f"external_actions[{index}] needs a non-empty id",
+                  f"campaign.ethics_rights_safety.external_actions.{index}")
+        elif action_id in external_action_by_id:
+            issue("error", "external_action.duplicate", f"Duplicate external action ID {action_id!r}",
+                  f"campaign.ethics_rights_safety.external_actions.{index}")
+        else:
+            external_action_by_id[action_id] = action
         gate = action.get("approval_id")
-        if not _nonempty(gate):
+        if not isinstance(gate, str) or not gate.strip():
             issue("error", "external_action.ungated",
                   f"External action {action.get('id', index)!r} names no approval_id. An external action "
                   "must point at the specific approval that authorizes it, not at generic approval prose.",
                   f"campaign.ethics_rights_safety.external_actions.{index}")
-        elif approval_ids and gate not in approval_ids:
+        elif gate != gate.strip() or gate not in approval_ids:
             issue("error", "external_action.bad_approval_ref",
                   f"External action {action.get('id', index)!r} references unknown approval {gate!r}",
                   f"campaign.ethics_rights_safety.external_actions.{index}")
 
+    for index, unit in enumerate(camp.get("work_units", [])):
+        path = f"campaign.work_units.{index}"
+        declared_actions = unit.get("external_action_ids", [])
+        supplied_approvals = unit.get("approval_ids", [])
+        actions_valid = isinstance(declared_actions, list) and all(
+            isinstance(item, str) and bool(item.strip()) and item == item.strip()
+            for item in declared_actions
+        )
+        approvals_valid = isinstance(supplied_approvals, list) and all(
+            isinstance(item, str) and bool(item.strip()) and item == item.strip()
+            for item in supplied_approvals
+        )
+        if not actions_valid:
+            issue("error", "work_unit.bad_external_actions",
+                  f"Work unit {unit.get('id', index)} external_action_ids must be a list of non-empty string IDs", path)
+        if not approvals_valid:
+            issue("error", "work_unit.bad_approvals",
+                  f"Work unit {unit.get('id', index)} approval_ids must be a list of non-empty string IDs", path)
+        if not actions_valid or not approvals_valid:
+            continue
+        if len(declared_actions) != len(set(declared_actions)):
+            issue("error", "work_unit.duplicate_external_actions",
+                  f"Work unit {unit.get('id', index)} has duplicate external_action_ids", path)
+        if len(supplied_approvals) != len(set(supplied_approvals)):
+            issue("error", "work_unit.duplicate_approvals",
+                  f"Work unit {unit.get('id', index)} has duplicate approval_ids", path)
+        unknown_actions = sorted(set(declared_actions) - set(external_action_by_id))
+        if unknown_actions:
+            issue("error", "work_unit.bad_external_action_ref",
+                  f"Work unit {unit.get('id', index)} references unknown external actions: "
+                  + ", ".join(unknown_actions), path)
+        unknown_approvals = sorted(set(supplied_approvals) - approval_ids)
+        if unknown_approvals:
+            issue("error", "work_unit.bad_approval_ref",
+                  f"Work unit {unit.get('id', index)} references unknown approvals: "
+                  + ", ".join(unknown_approvals), path)
+        derived_approvals = {
+            external_action_by_id[action_id].get("approval_id", "").strip()
+            for action_id in declared_actions if action_id in external_action_by_id
+            and isinstance(external_action_by_id[action_id].get("approval_id"), str)
+            and external_action_by_id[action_id].get("approval_id", "").strip()
+        }
+        missing_approvals = sorted(derived_approvals - set(supplied_approvals))
+        if missing_approvals:
+            issue("error", "work_unit.approval_mismatch",
+                  f"Work unit {unit.get('id', index)} must carry approvals derived from its external actions: "
+                  + ", ".join(missing_approvals), path)
+
     # 3. Rendered outputs must still match the state they were rendered from.
     rendered = state.get("outputs", {}).get("last_rendered_digest")
-    if rendered and rendered != content_digest(state):
+    if rendered and rendered != input_digest:
         issue("error", "outputs.stale",
               "The rendered bundle was produced from an older campaign version; re-render before "
               "relying on it or auditing it.", "outputs.last_rendered_digest")
@@ -1019,8 +1605,13 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         path = f"campaign.claims.{index}"
         if claim.get("inquiry_id") not in inquiry_ids:
             issue("error", "claim.bad_inquiry_ref", f"Claim {claim.get('id')} references unknown inquiry", path)
-        for field in ("statement", "support", "counterevidence_or_objections", "verification", "status", "reporting_rule"):
-            if not _nonempty(claim.get(field)):
+        claim_checks = {
+            "statement": _required_text, "support": _required_list,
+            "counterevidence_or_objections": _required_list, "verification": _required_text,
+            "status": _required_text, "reporting_rule": _required_text,
+        }
+        for field, check in claim_checks.items():
+            if not check(claim.get(field)):
                 issue("error", "claim.incomplete", f"Claim {claim.get('id', index)} missing {field}", path)
 
     deliverable_ids, deliverable_dups = _ids(camp.get("deliverables", []))
@@ -1030,21 +1621,22 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         issue("error", "deliverable.none", "At least one deliverable is required", "campaign.deliverables")
     for index, item in enumerate(camp.get("deliverables", [])):
         for field in ("name", "path", "acceptance_test", "owner"):
-            if not _nonempty(item.get(field)):
+            if not _required_text(item.get(field)):
                 issue("error", "deliverable.incomplete", f"Deliverable {item.get('id', index)} missing {field}", f"campaign.deliverables.{index}")
 
     reporting = camp.get("reporting", {})
-    if not reporting.get("negative_result_policy") or not reporting.get("deviation_policy"):
+    if not _required_text(reporting.get("negative_result_policy")) \
+            or not _required_text(reporting.get("deviation_policy")):
         issue("error", "reporting.incomplete", "Negative-result and deviation policies are required", "campaign.reporting")
 
     kickoff = camp.get("kickoff", {})
-    if not _nonempty(kickoff.get("command")):
+    if not _required_text(kickoff.get("command")):
         issue("error", "kickoff.no_command", "Kickoff command is missing; the bundle would ship an empty KICKOFF.md", "campaign.kickoff.command")
-    if not _nonempty(kickoff.get("first_gate_id")):
+    if not _required_text(kickoff.get("first_gate_id")):
         issue("error", "kickoff.no_gate", "Kickoff must name the first executable gate", "campaign.kickoff.first_gate_id")
     elif kickoff.get("first_gate_id") not in gate_ids:
         issue("error", "kickoff.bad_gate", f"Kickoff references unknown gate {kickoff.get('first_gate_id')}", "campaign.kickoff.first_gate_id")
-    if not ethics.get("constraints"):
+    if not _required_list(ethics.get("constraints")):
         issue("error", "ethics.none", "Ethics, rights, and safety constraints are required; record 'not applicable' with a reason if genuinely none", "campaign.ethics_rights_safety.constraints")
 
     for index, contradiction in enumerate(state.get("contradictions", [])):
@@ -1068,7 +1660,7 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
 
     review_summary: dict[str, Any] = {"required": [], "current": [], "missing": [], "blocking": [], "independence_ok": True}
     if include_reviews:
-        current_content = content_digest(state)
+        current_content = input_digest
         current_rubric = rubric_digest(profile)
         records = state.get("reviews", {}).get("records", [])
         leaves = section_digests(state)
@@ -1082,20 +1674,43 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             issue("error", "review.missing", "Missing current reviews: " + ", ".join(missing), "reviews.records")
         if blocking:
             issue("error", "review.blocking", "Non-passing required reviews: " + ", ".join(blocking), "reviews.records")
-        # A `pass` verdict must not launder an unresolved critical defect. Severity is
-        # the reviewer's judgment of the finding; the verdict is their summary, and the
-        # summary does not get to override the judgment.
+        acceptances = assurance.get("risk_acceptances", [])
+        if not isinstance(acceptances, list):
+            issue("error", "risk_acceptance.malformed", "risk_acceptances must be a list",
+                  "assurance.risk_acceptances")
+            acceptances = []
+        current_acceptances = [item for item in acceptances if isinstance(item, dict)
+                               and item.get("content_digest") == current_content]
+        # A verdict is only a review summary. Major and critical findings remain
+        # blocking until a different, authorized actor accepts that exact finding.
         for role, record in sorted(role_map.items()):
             for finding in record.get("findings", []):
-                if finding.get("severity") != "critical" or finding.get("action") == "accepted-risk":
+                severity = finding.get("severity")
+                if severity not in {"major", "critical"}:
                     continue
-                issue("error", "review.unresolved_critical",
-                      f"Review {role} records an unresolved critical finding "
-                      f"({finding.get('action', 'unclassified')}): {finding.get('description', '')}",
+                digest = finding_digest(role, finding)
+                accepted = any(
+                    item.get("finding_digest") == digest
+                    and _nonempty(item.get("accepted_by"))
+                    and item.get("accepted_by") != record.get("reviewer_id")
+                    and _nonempty(item.get("authority"))
+                    and _is_iso_timestamp(item.get("accepted_at"))
+                    and _nonempty(item.get("scope"))
+                    and _nonempty(item.get("evidence"))
+                    for item in current_acceptances
+                )
+                if accepted:
+                    continue
+                code = ("risk_acceptance.missing" if finding.get("action") == "accepted-risk"
+                        else f"review.unresolved_{severity}")
+                issue("error", code,
+                      f"Review {role} records an unresolved {severity} finding "
+                      f"({finding.get('action', 'unclassified')}): {finding.get('description', '')}. "
+                      f"Separate acceptance must bind finding {digest} to the current campaign digest.",
                       "reviews.records")
                 if record.get("verdict") == "pass":
                     issue("warning", "review.verdict_conflict",
-                          f"Review {role} returned verdict 'pass' while recording a critical finding",
+                          f"Review {role} returned verdict 'pass' while recording a {severity} finding",
                           "reviews.records")
         review_summary["attested_modes"] = {role: item.get("mode") for role, item in sorted(role_map.items())}
         review_summary["independence_is_self_attested"] = True
@@ -1131,13 +1746,26 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             if sequential:
                 issue("warning", "review.sequential", "Standard review used sequential passes; disclose limited independence", "reviews.records")
 
+    execution_blocking_prefixes = (
+        "pilot.", "review.", "risk_acceptance.", "approval.", "external_action.", "outputs.stale",
+    )
+    plan_ready = bool(errors) and all(
+        item["code"].startswith(execution_blocking_prefixes)
+        or (item["code"] == "interview.not_executable"
+            and interview.get("stopping_reason") == "blocked-by-external-dependency")
+        for item in errors
+    )
+    release_status = "execution-ready" if not errors else (
+        "plan-ready-execution-blocked" if plan_ready else "draft"
+    )
     result = {
         "rescamp_version": VERSION,
         "checked_at": now_iso(),
-        "content_digest": content_digest(state),
+        "content_digest": input_digest,
         "rubric_digest": rubric_digest(profile),
         "valid": not errors,
         "execution_ready": not errors,
+        "release_status": release_status,
         "errors": errors,
         "warnings": warnings,
         "counts": {
@@ -1233,7 +1861,7 @@ ROLE_SCOPES: dict[str, dict[str, Any]] = {
         "sections": ("constitution", "tools", "canaries", "stages", "gates", "resources_dispatch",
                      "roles", "runtime", "work_units", "deliverables", "kickoff", "reporting",
                      "ethics_rights_safety"),
-        "top_level": ("goal_verbatim", "profile", "archetypes", "blockers"),
+        "top_level": ("goal_verbatim", "profile", "archetypes", "blockers", "assurance"),
         "note": "Operations, reproducibility, and the approval and external-action boundaries. Inquiry and method detail is omitted by design; do not infer it is absent.",
     },
     "ethics-claim-integrity": {
@@ -1412,7 +2040,7 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
 
 def cmd_quality_loop(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     pre = validate_state(state, include_reviews=False)
     write_json(campaign_dir / VALIDATION_REL, pre)
     digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
@@ -1490,7 +2118,7 @@ def review_record_errors(record: dict[str, Any]) -> list[str]:
 
 def cmd_ingest_review(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     record = read_json(Path(args.file))
     errors = review_record_errors(record)
     if errors:
@@ -1561,7 +2189,7 @@ def _fmt_value(value: Any, indent: str = "  ") -> str:
     if isinstance(value, str):
         return value.strip()
     if isinstance(value, dict):
-        rows = [f"\n{indent}- **{_humanize(k)}:** {_fmt_value(v, indent + '  ')}" for k, v in value.items() if _nonempty(v)]
+        rows = [f"\n{indent}- **{_humanize(k)}:** {_fmt_value(v, indent + '  ')}" for k, v in value.items() if _displayable(v)]
         return "".join(rows)
     if isinstance(value, list):
         rows = []
@@ -1611,12 +2239,12 @@ def _render_objects(items: Any, path: str, heading: str = "###", fallback: str =
         rendered_keys = {"id"} | ({title_key} if title else set())
         lines: list[str] = []
         for key in ordered:
-            if key in rendered_keys or not _nonempty(item.get(key)):
+            if key in rendered_keys or not _displayable(item.get(key)):
                 continue
             rendered_keys.add(key)
             lines.append(_labelled(labels.get(key, _humanize(key)), item[key]))
         for key in item:
-            if key in rendered_keys or not _nonempty(item[key]):
+            if key in rendered_keys or not _displayable(item[key]):
                 continue
             lines.append(_labelled(_humanize(key), item[key]))
         missing = [key for key in spec["required"] if not _nonempty(item.get(key))]
@@ -1648,8 +2276,19 @@ def _coverage_note(state: dict[str, Any]) -> str:
     modes = sorted({record.get("mode", "") for record in reviews}) if reviews else []
     lines.append(f"**Challenge applied:** {', '.join(modes) if modes else 'none ingested'}. "
                  "Independence is self-attested; agent review checks internal coherence and is not "
-                 "external validation. No pilot run is recorded by this tool, so treat the campaign "
-                 "as reviewed-static unless a pilot is documented elsewhere.")
+                 "external validation.")
+    pilot = state.get("assurance", {}).get("pilot", {})
+    if isinstance(pilot, dict) and pilot.get("status") == "passed":
+        lines.append(
+            f"**Pilot:** passed against `{pilot.get('content_digest', 'unrecorded digest')}`; "
+            f"scope: {pilot.get('scope', 'unrecorded')}; resource cap: "
+            f"{pilot.get('resource_cap', 'unrecorded')}; executor: {pilot.get('executor_id', 'unrecorded')}. "
+            "Execution authority is recorded as an attestation, not independently proven."
+        )
+    elif state.get("profile") == "high-assurance" or state.get("assurance", {}).get("pilot_required") is True:
+        lines.append("**Pilot:** required but no passing current pilot is recorded; execution remains blocked.")
+    else:
+        lines.append("**Pilot:** not required and not recorded; this is reviewed-static plan evidence only.")
     lines.append("")
     lines.append("Deterministic validation checked presence, cross-references, and budgets. It did not "
                  "judge whether any statement here is true, sufficient, or wise.")
@@ -1672,7 +2311,7 @@ def render_campaign_prompt(state: dict[str, Any], status: str) -> str:
     parts.append(_section("7. Frozen evaluation or adjudication instrument", f"**Frozen before production (asserted, not verified):** {evaluation.get('frozen_before_production_asserted')}\n\n**Criteria**\n{_md_list(evaluation.get('criteria'))}\n\n**Comparators, controls, cases, or adjudication rules**\n{_md_list(evaluation.get('comparators_or_adjudication'))}\n\n**Missing-evidence policy:** {evaluation.get('missing_evidence_policy','')}\n\n**Exploration versus confirmation:** {evaluation.get('exploration_confirmation_policy','')}\n\n**Stop, pivot, and no-go rules**\n{_md_list(evaluation.get('stop_pivot_no_go_rules'))}"))
     parts.append(_section("8. Staged funnel and promotion gates", f"**Stages**\n\n{_render_objects(camp.get('stages'), 'campaign.stages')}\n\n**Gates**\n\n{_render_objects(camp.get('gates'), 'campaign.gates')}"))
     resources = camp["resources_dispatch"]
-    parts.append(_section("9. Resources and fail-closed dispatch", f"**Budgets**\n{_md_list(resources.get('budgets'))}\n\n**Access constraints**\n{_md_list(resources.get('access_constraints'))}\n\n**Concurrency:** {resources.get('concurrency','')}\n\n**Dispatch rules**\n{_md_list(resources.get('dispatch_rules'))}\n\n**Approvals**\n{_md_list(resources.get('approvals'))}"))
+    parts.append(_section("9. Resources and fail-closed dispatch", f"**Budgets**\n{_md_list(resources.get('budgets'))}\n\n**Access constraints**\n{_md_list(resources.get('access_constraints'))}\n\n**Concurrency:** {resources.get('concurrency','')}\n\n**Machine concurrency ceiling:** {resources.get('max_concurrency') if resources.get('max_concurrency') is not None else 'not enabled'}\n\n**Dispatch rules**\n{_md_list(resources.get('dispatch_rules'))}\n\n**Approvals**\n{_md_list(resources.get('approvals'))}"))
     parts.append(_section("10. Delegation", f"**Roles**\n\n{_render_objects(camp.get('roles'), 'campaign.roles')}\n\n**Bounded work units**\n\nDelegates return artifacts and concise findings, not unbounded narrative. A local brief may narrow scope but may not weaken the constitution.\n\n{_render_objects(camp.get('work_units'), 'campaign.work_units')}"))
     runtime = camp["runtime"]
     parts.append(_section("11. Durable operations and recovery", f"**Continuous runtime enabled:** {runtime.get('enabled')}\n\n**Continuation trigger:** {runtime.get('continuation_trigger','')}\n\n**State store:** {runtime.get('state_store','')}\n\n**Event log:** {runtime.get('event_log','')}\n\n**Checkpoint policy:** {runtime.get('checkpoint_policy','')}\n\n**Liveness:** {runtime.get('liveness','')}\n\n**Recovery:** {runtime.get('recovery','')}\n\n**Idempotency:** {runtime.get('idempotency','')}\n\nA conversational session is not a scheduler."))
@@ -1864,16 +2503,35 @@ def runbook(state: dict[str, Any]) -> str:
     return f"""# Operator runbook\n\n**Continuous runtime enabled:** {runtime.get('enabled')}\n\n## Start/resume trigger\n\n{runtime.get('continuation_trigger') or 'No autonomous continuation is authorized.'}\n\n## Canonical state and events\n\n- State: {runtime.get('state_store') or 'Not applicable'}\n- Events: {runtime.get('event_log') or 'Not applicable'}\n- Checkpoints: {runtime.get('checkpoint_policy') or 'Not applicable'}\n\n## Liveness and recovery\n\n- Liveness: {runtime.get('liveness') or 'Not applicable'}\n- Recovery: {runtime.get('recovery') or 'Not applicable'}\n- Idempotency: {runtime.get('idempotency') or 'Not applicable'}\n\n## Resource governor\n\n{_md_list(resources.get('budgets'))}\n\n## Fail-closed dispatch\n\n{_md_list(resources.get('dispatch_rules'))}\n\n## Approvals\n\n{_md_list(resources.get('approvals'))}\n"""
 
 
+def render_blocking_errors(validation: dict[str, Any]) -> list[dict[str, str]]:
+    """Errors that make the original state unsafe for renderers to dereference."""
+    return [item for item in validation.get("errors", [])
+            if item.get("code") in {"structure.type", "profile.invalid"}]
+
+
+def render_refusal(validation: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rendered": False,
+        "status": "NOT RENDERED — MALFORMED STATE",
+        "output_dir": None,
+        "manifest": {},
+        "validation": validation,
+        "next_action": "Repair the malformed state fields reported by validation, then rerun the command",
+    }
+
+
 def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool = False) -> dict[str, Any]:
     validation = validate_state(state, include_reviews=True)
+    if render_blocking_errors(validation):
+        return render_refusal(validation)
     if force_draft:
         status = "NOT EXECUTION-READY — DRAFT"
-    elif validation["execution_ready"]:
+    elif validation["release_status"] == "execution-ready":
         status = "EXECUTION-READY"
-    elif not validate_state(state, include_reviews=False)["valid"]:
-        status = "NOT EXECUTION-READY — DESIGN BLOCKERS"
+    elif validation["release_status"] == "plan-ready-execution-blocked":
+        status = "PLAN-READY; EXECUTION BLOCKED"
     else:
-        status = "PLAN-READY; EXECUTION BLOCKED BY REVIEW/APPROVAL"
+        status = "NOT EXECUTION-READY — DESIGN BLOCKERS"
 
     out_dir = campaign_dir / OUTPUT_DIR_REL
     if out_dir.exists():
@@ -1882,11 +2540,26 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
     # Set the derived status before snapshotting so outputs/campaign.json agrees
     # with canonical state. `status` is excluded from the content digest, so this
     # does not invalidate reviews bound to the frozen content.
-    state["status"] = "execution-ready" if validation["execution_ready"] and not force_draft else "not-execution-ready"
+    state["status"] = "draft" if force_draft else validation["release_status"]
+    state["last_validation"] = validation
+    snapshot = copy.deepcopy(state)
+    # The snapshot cannot embed its own artifact hash without becoming recursive.
+    # Point to the adjacent manifest and never carry a prior render's manifest into
+    # the new execution contract. The canonical state receives the full manifest
+    # after all output bytes have been written.
+    snapshot["outputs"] = {
+        "last_rendered_digest": content_digest(state),
+        "status": status,
+        "manifest_path": "MANIFEST.sha256",
+    }
+    # This anchor covers the canonical campaign event log, which is not copied into
+    # outputs/. Keeping a one-event-old anchor in this standalone snapshot would imply
+    # it could audit a log it does not contain.
+    snapshot.pop("event_chain", None)
     files: dict[str, str] = {
         "CAMPAIGN_PROMPT.md": render_campaign_prompt(state, status),
         "KICKOFF.md": render_kickoff(state, status),
-        "campaign.json": json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+        "campaign.json": json.dumps(snapshot, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         "ROADMAP.md": render_roadmap(state, status),
         "TASK_BRIEF_TEMPLATE.md": task_brief_template(state),
         "REVIEW_REPORT.md": render_review_report(state, validation),
@@ -1911,20 +2584,40 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
     manifest["MANIFEST.sha256"] = sha256_bytes(("\n".join(manifest_lines) + "\n").encode("utf-8"))
     state["outputs"] = {"last_rendered_digest": content_digest(state), "status": status, "manifest": manifest}
     save_state(campaign_dir, state, "outputs.rendered", {"status": status, "files": sorted(files)})
-    return {"status": status, "output_dir": str(out_dir), "manifest": manifest, "validation": validation}
+    return {"rendered": True, "status": status, "output_dir": str(out_dir),
+            "manifest": manifest, "validation": validation}
 
 
 def cmd_render(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
-    result = render_outputs(campaign_dir, state, force_draft=(args.draft or args.command == "draft"))
+    validation = validate_state(state, include_reviews=True)
+    if render_blocking_errors(validation):
+        result = render_refusal(validation)
+    else:
+        verify_state_history(campaign_dir, state)
+        result = render_outputs(campaign_dir, state,
+                                force_draft=(args.draft or args.command == "draft"))
     print(json.dumps(result, indent=2, ensure_ascii=False))
+    if not result["rendered"]:
+        raise SystemExit(2)
 
 
 def cmd_finalize(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
     pre = validate_state(state, include_reviews=False)
+    if render_blocking_errors(pre):
+        write_json(campaign_dir / VALIDATION_REL, pre)
+        print(json.dumps(render_refusal(pre), indent=2, ensure_ascii=False))
+        raise SystemExit(2)
+    verify_state_history(campaign_dir, state)
+    rendered = state.get("outputs", {}).get("last_rendered_digest")
+    if rendered and rendered != content_digest(state):
+        # Finalize is about to replace the bundle. Do not turn that replaceable cache
+        # mismatch into a design defect or an unnecessary review round.
+        state["outputs"] = {"last_rendered_digest": "", "manifest": {}}
+        pre = validate_state(state, include_reviews=False)
     write_json(campaign_dir / VALIDATION_REL, pre)
     if not pre["valid"]:
         digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
@@ -1937,11 +2630,13 @@ def cmd_finalize(args: argparse.Namespace) -> None:
     if state["reviews"].get("frozen_content_digest") != current_digest or state["reviews"].get("rubric_digest") != rubric_digest(state["profile"]):
         _, _, paths = freeze_and_packets(campaign_dir, state)
         state = load_state(campaign_dir)
-        result = render_outputs(campaign_dir, state, force_draft=True)
-        result["next_action"] = "Execute and ingest required review packets, then rerun finalize"
-        result["review_packets"] = [str(path) for path in paths]
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        raise SystemExit(3)
+        _, needs_review = review_status(state)
+        if needs_review:
+            result = render_outputs(campaign_dir, state, force_draft=True)
+            result["next_action"] = "Execute and ingest required review packets, then rerun finalize"
+            result["review_packets"] = [str(path) for path in paths if path.stem in needs_review]
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            raise SystemExit(3)
     final_validation = validate_state(state, include_reviews=True)
     if not final_validation["valid"]:
         result = render_outputs(campaign_dir, state, force_draft=True)
@@ -1978,11 +2673,22 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 def cmd_audit(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    # Audit must inspect rather than reject corrupted state at the load boundary.
+    state = load_state(campaign_dir, verify_event=False)
     errors: list[str] = []
     event_path = campaign_dir / EVENTS_REL
     if not event_path.exists() or not event_path.read_text(encoding="utf-8").strip():
         errors.append("missing or empty event log")
+    else:
+        event_anchor, event_errors = inspect_event_chain(event_path)
+        errors.extend(event_errors)
+        if state.get("event_chain") != event_anchor:
+            errors.append("event log anchor does not match canonical state")
+        logged_state = last_event_state_digest(event_path)
+        if logged_state is None:
+            errors.append("final event does not bind the canonical state")
+        elif logged_state != event_state_digest(state):
+            errors.append("canonical state does not match the final event")
     out_dir = campaign_dir / OUTPUT_DIR_REL
     manifest_path = out_dir / "MANIFEST.sha256"
     verified: dict[str, bool] = {}
@@ -1996,8 +2702,16 @@ def cmd_audit(args: argparse.Namespace) -> None:
         for line in manifest_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
+            if "  " not in line:
+                errors.append("malformed MANIFEST.sha256 line")
+                continue
             digest, name = line.split("  ", 1)
-            path = out_dir / name
+            relative = Path(name)
+            if relative.is_absolute() or ".." in relative.parts:
+                errors.append(f"manifest artifact path escapes outputs: {name}")
+                verified[name] = False
+                continue
+            path = out_dir / relative
             actual = sha256_bytes(path.read_bytes()) if path.exists() else None
             ok = actual is not None and actual == digest
             if ok and recorded and name in recorded and recorded[name] != actual:
@@ -2013,6 +2727,13 @@ def cmd_audit(args: argparse.Namespace) -> None:
         for name in sorted(set(recorded) - set(verified)):
             errors.append(f"artifact recorded in state is missing from the manifest: {name}")
             verified[name] = False
+        actual_files = {
+            path.relative_to(out_dir).as_posix()
+            for path in out_dir.rglob("*") if path.is_file()
+        }
+        unexpected = sorted(actual_files - set(recorded))
+        for name in unexpected:
+            errors.append(f"unexpected output artifact not recorded in state: {name}")
     elif recorded:
         errors.append("state records a rendered bundle but MANIFEST.sha256 is missing; "
                       "the outputs directory has been removed or emptied")
@@ -2070,7 +2791,7 @@ def cmd_host_probe(args: argparse.Namespace) -> None:
     profile = probe_host(args.host_id, declared)
     if args.campaign:
         campaign_dir = resolve_campaign(args.campaign)
-        state = load_state(campaign_dir)
+        state = load_state(campaign_dir, verify_event=True)
         state["host_profile"] = profile
         save_state(campaign_dir, state, "host.probed", {"host_id": args.host_id})
     print(json.dumps(profile, indent=2, ensure_ascii=False))
@@ -2128,7 +2849,7 @@ def cmd_guide(args: argparse.Namespace) -> None:
 
 def cmd_profile(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir)
+    state = load_state(campaign_dir, verify_event=True)
     if args.profile not in PROFILES:
         raise SystemExit("Invalid profile")
     state["profile"] = args.profile

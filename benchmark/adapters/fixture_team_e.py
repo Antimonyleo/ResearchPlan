@@ -11,7 +11,7 @@ bench = importlib.util.module_from_spec(spec)
 assert spec.loader
 spec.loader.exec_module(bench)
 payload = json.loads(sys.stdin.read())
-condition = payload.get("condition_for_fixture", "rescamp-0.8-fixture")
+condition = payload.get("condition_for_fixture", "rescamp-current-fixture")
 # The harness intentionally omits the condition in a real blinded evaluation. The
 # process fixture infers behavior class from the transcript only.
 transcript = payload["transcript"]
@@ -22,6 +22,6 @@ if max_q > 1:
 elif turns <= 2:
     inferred = "no-skill-fixture"
 else:
-    inferred = "rescamp-0.8-fixture"
+    inferred = "rescamp-current-fixture"
 result = bench.fixture_team_e(payload["hidden_scenario"], transcript, payload["final_response"], inferred)
 print(json.dumps(result, ensure_ascii=False))

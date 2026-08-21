@@ -4,7 +4,7 @@ description: Explicitly invoked research-campaign compiler. Turns a vague inquir
 license: MIT
 compatibility: Requires a coding agent with filesystem access; Python 3.9+ enables durable state, validation, review packets, rendering, and benchmarks.
 metadata:
-  version: "0.8.6"
+  version: "0.9.0"
   invocation: "explicit"
 ---
 
@@ -69,6 +69,8 @@ For every answer:
 5. Choose the next question by expected decision impact × uncertainty × answer utility ÷ user burden.
 
 Use public research for publicly knowable facts. Never ask again for information already supplied. Accept “I do not know”: research it, offer a reversible default, or record a real blocker. Never invent access, data rights, consent, approval, credentials, budget, deadline, risk tolerance, or authority.
+
+Treat unresolved shape as **fog**, not a blank to fill. When a material decision is not yet precise enough to encode, keep its intent dimension `unresolved` or `partial` and record the dependency or blocker. Never create placeholder campaign objects merely to satisfy validation. Drafts may remain incomplete; execution-ready campaigns may not.
 
 Question budgets are safeguards, not targets:
 

@@ -49,17 +49,14 @@ def main() -> int:
         })
     payload = {
         "description": args.description,
-        # Unverified operator declarations. The harness does not read or check these,
-        # so they start as "unverified" rather than asserting controls on the
-        # operator's behalf. Set each to true only after you have actually matched it,
-        # and note that blinding is currently imperfect: a Team S that writes an
-        # artifact leaks its condition to the evaluator through the artifact path.
-        "matched_controls_declared_by_operator": {
-            "same_model": "unverified",
-            "same_tools_permissions_corpus": "unverified",
-            "same_context_time_token_retry_budget": "unverified",
-            "fresh_sessions": "unverified",
-            "blinded_evaluation": "unverified",
+        # These are operator declarations consumed by benchmark.load_config. Start
+        # fail-closed; set a value true only after that control is actually in place.
+        "matched_controls": {
+            "same_model": False,
+            "same_tools_permissions_corpus": False,
+            "same_context_time_token_retry_budget": False,
+            "fresh_sessions": False,
+            "blinded_evaluation": False,
         },
         "conditions": conditions,
     }

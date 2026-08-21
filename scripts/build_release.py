@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and build deterministic ResCamp 0.8.6 release archives."""
+"""Validate and build deterministic ResCamp 0.9.0 release archives."""
 from __future__ import annotations
 
 import argparse
@@ -15,16 +15,21 @@ import zipfile
 from pathlib import Path
 from typing import Iterable
 
-VERSION = "0.8.6"
+VERSION = "0.9.0"
 TOP = f"rescamp-v{VERSION}"
 FIXED_ZIP_TIME = (2026, 8, 20, 0, 0, 0)
+RELEASE_ROOTS = ("benchmark", "docs", "qa", "rescamp", "scripts", "tests")
+RELEASE_FILES = (
+    ".gitignore", "AGENTS.md", "CHANGELOG.md", "CONTRIBUTING.md",
+    "LICENSE", "Makefile", "README.md", "SECURITY.md",
+)
 
 
 def excluded(relative: Path) -> bool:
     parts = set(relative.parts)
     if parts & {".git", "__pycache__", "dist", ".dist"}:
         return True
-    if len(relative.parts) >= 2 and relative.parts[0:2] == ("benchmark", "runs"):
+    if len(relative.parts) >= 2 and relative.parts[:2] == ("benchmark", "runs"):
         return True
     if relative.suffix in {".pyc", ".pyo"} or relative.name == ".DS_Store":
         return True
@@ -32,8 +37,14 @@ def excluded(relative: Path) -> bool:
 
 
 def copy_source(source: Path, destination: Path) -> None:
+    """Copy only maintained release inputs, never host/session working state."""
     destination.mkdir(parents=True, exist_ok=True)
-    for path in sorted(source.rglob("*")):
+    candidates = [source / name for name in RELEASE_FILES if (source / name).is_file()]
+    for name in RELEASE_ROOTS:
+        root = source / name
+        if root.exists():
+            candidates.extend(root.rglob("*"))
+    for path in sorted(candidates):
         rel = path.relative_to(source)
         if excluded(rel):
             continue
@@ -70,8 +81,32 @@ def tree_digest(root: Path) -> str:
     for path in sorted(p for p in root.rglob("*") if p.is_file() and not excluded(p.relative_to(root))):
         digest.update(path.relative_to(root).as_posix().encode("utf-8"))
         digest.update(b"\0")
+        digest.update(b"x" if os.access(path, os.X_OK) else b"-")
+        digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def zip_tree_digest(archive_path: Path, prefix: str) -> str:
+    """Digest one tree directly from ZIP bytes and stored executable-mode bits."""
+    root = prefix.rstrip("/") + "/"
+    digest = hashlib.sha256()
+    with zipfile.ZipFile(archive_path) as archive:
+        entries = sorted(
+            (info for info in archive.infolist()
+             if not info.is_dir() and info.filename.startswith(root)),
+            key=lambda info: info.filename,
+        )
+        for info in entries:
+            relative = info.filename[len(root):]
+            digest.update(relative.encode("utf-8"))
+            digest.update(b"\0")
+            mode = (info.external_attr >> 16) & 0o777
+            digest.update(b"x" if mode & 0o111 else b"-")
+            digest.update(b"\0")
+            digest.update(archive.read(info))
+            digest.update(b"\0")
     return digest.hexdigest()
 
 
@@ -112,7 +147,7 @@ ResCamp {VERSION} uses one canonical `rescamp/SKILL.md` and one portable support
 
 ## Scope of this evidence
 
-The checks establish packaging, state-machine, validator, benchmark-harness, workflow-queue, information-boundary, and regression behavior. They do **not** establish that a live model using ResCamp is superior to another agent. No authenticated Claude or Codex subagent runtime was available during release construction; process-isolated deterministic Team U/S/E fixtures and static reviewer roles are labeled accordingly.
+The automated release checks establish packaging, state-machine, validator, benchmark-harness, workflow-queue, information-boundary, and regression behavior. They do **not** establish that a live model using ResCamp is superior to another agent. Authenticated host acceptance is opt-in and separate from this deterministic release check; its receipts are not consumed by this report. Process-isolated Team U/S/E fixtures and static reviewer roles are labeled accordingly.
 
 ## Results
 
@@ -120,6 +155,7 @@ The checks establish packaging, state-machine, validator, benchmark-harness, wor
 - Public benchmark scenarios: **{scenario.get('count')}** across **{len(scenario.get('domains', []))} domains** and **{len(scenario.get('archetypes', []))} research archetypes**.
 - Canonical `SKILL.md`: **{skill.get('skill_md_lines')} lines**, **{skill.get('skill_md_words')} words**, conservative estimate **{skill.get('conservative_token_estimate')} tokens**.
 - Canonical skill tree SHA-256: `{check.get('skill_tree_sha256')}`.
+- Repository input SHA-256: `{check.get('repository_provenance', {}).get('repository_input_sha256')}` at git commit `{check.get('repository_provenance', {}).get('git_commit')}`; dirty={check.get('repository_provenance', {}).get('git_dirty')}.
 - Static structural checks (substring, existence, and count assertions; not reviews and not independent): {', '.join(f'`{role}`={verdict}' for role, verdict in sorted(static_verdicts.items()))}.
 - Release errors: **{len(check.get('errors', []))}**; warnings: **{len(check.get('warnings', []))}**.
 
@@ -142,8 +178,9 @@ The selected cases span experimental/computational, humanities, and qualitative 
 3. **Current-plan QA, and who does what:** interview completion automatically freezes a digest, runs deterministic checks, writes proportional reviewer *input* packets, and classifies findings. Executing those reviewers and repairing defects are the model's work, not the script's; `finalize` is the fail-closed gate that refuses an execution-ready bundle without ingested passing reviews bound to the current digest. Reviewer independence is self-attested and recorded for audit, never proven.
 4. **Manual comparative benchmark:** version, baseline, model, or external-tool comparisons are deliberate commands with matched Team U/S/E boundaries.
 5. **Discipline-neutral research logic:** experimental controls and predictions are translated to rival interpretations, negative cases, objections, source criticism, counterfactuals, or adjudication rules where appropriate.
-6. **Optional continuous workflow:** the SQLite queue persists work units, leases, approvals, retries, events, and artifact hashes but never launches models, grants approvals, or substitutes for a real scheduler.
-7. **Anthropic campaign architecture translated, not preserved wholesale:** the shared constitution, exact mission, dossier, method diversity, tool qualification, frozen evaluation, staged gates, resource governor, bounded delegation, claim discipline, closeout, and kickoff are translations of the released binder-design campaign. Durable recovery and the challenge stage are extrapolations. The inquiry/prediction/reconciliation loop derives from the Little Scientist paper, not the binder campaign. The paper's external adjudicator — two independent contract labs — has no equivalent here; agent review checks internal coherence only. See `docs/PAPER_ANTHROPIC_BINDER.md` and `docs/DESIGN_BASIS.md`.
+6. **Optional continuous workflow:** the SQLite queue revalidates finalized campaigns and enforces structured approvals, dependencies, concurrency, deadlines, retries, leases, event integrity, and artifact hashes. It never launches models, grants real-world authority, or substitutes for a scheduler.
+7. **Pilots and risks are explicit contracts:** required pilots and major/critical risk acceptances are separately authorized and digest-bound. Authority remains attested rather than independently proven.
+8. **Anthropic campaign architecture translated, not preserved wholesale:** the shared constitution, exact mission, dossier, method diversity, tool qualification, frozen evaluation, staged gates, resource governor, bounded delegation, claim discipline, closeout, and kickoff are translations of the released binder-design campaign. Durable recovery and the challenge stage are extrapolations. The inquiry/prediction/reconciliation loop derives from the Little Scientist paper, not the binder campaign. The paper's external adjudicator — two independent contract labs — has no equivalent here; agent review checks internal coherence only. See `docs/PAPER_ANTHROPIC_BINDER.md` and `docs/DESIGN_BASIS.md`.
 
 ## Remaining validation required for strong behavioral claims
 
@@ -219,14 +256,11 @@ def main() -> int:
         shutil.copy2(out / "validation.stderr.txt", evidence_root / "validation.stderr.txt")
         zip_paths(evidence_zip, [(evidence_root, evidence_root.name)])
 
-        # Extract and prove that GitHub and standalone skill packages contain identical skill bytes.
-        extract_a, extract_b = temp / "extract-github", temp / "extract-skill"
-        with zipfile.ZipFile(github_zip) as zf:
-            zf.extractall(extract_a)
-        with zipfile.ZipFile(skill_zip) as zf:
-            zf.extractall(extract_b)
-        github_skill_digest = tree_digest(extract_a / TOP / "rescamp")
-        standalone_skill_digest = tree_digest(extract_b / "rescamp")
+        # Prove the archives carry the same bytes and executable bits as the source.
+        # Python's extractall does not portably restore mode bits, so verify ZIP metadata
+        # directly instead of testing the extraction library.
+        github_skill_digest = zip_tree_digest(github_zip, f"{TOP}/rescamp")
+        standalone_skill_digest = zip_tree_digest(skill_zip, "rescamp")
         source_skill_digest = tree_digest(root / "rescamp")
         if len({github_skill_digest, standalone_skill_digest, source_skill_digest}) != 1:
             raise SystemExit("skill tree mismatch across source/GitHub/standalone packages")

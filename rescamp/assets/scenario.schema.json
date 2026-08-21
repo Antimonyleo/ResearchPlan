@@ -5,10 +5,17 @@
   "type": "object",
   "required": ["id", "title", "domain", "archetypes", "profile", "initial_request", "hidden_brief", "material_dimensions", "forbidden_assumptions", "required_campaign_features", "critical_defects"],
   "properties": {
-    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$"},
-    "title": {"type": "string"},
-    "domain": {"type": "string"},
-    "archetypes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "title": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "archetypes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["experimental", "computational", "observational", "qualitative-field", "humanities-interpretive", "conceptual-normative", "evidence-synthesis", "policy-program-evaluation", "design-engineering", "creative-practice", "mixed-methods"]
+      }
+    },
     "profile": {"enum": ["scoped", "standard", "high-assurance"]},
     "initial_request": {"type": "string", "minLength": 1},
     "hidden_brief": {
@@ -17,7 +24,7 @@
       "properties": {
         "facts": {"type": "object"},
         "knowledge_limits": {"type": "array", "items": {"type": "string"}},
-        "answer_policy": {"type": "string"},
+        "answer_policy": {"type": "string", "minLength": 1},
         "evolution_rules": {"type": "array", "items": {"type": "object"}}
       }
     },
@@ -28,17 +35,58 @@
         "type": "object",
         "required": ["id", "importance", "expected_by_turn", "acceptable_resolution"],
         "properties": {
-          "id": {"type": "string"},
+          "id": {"type": "string", "minLength": 1},
           "importance": {"enum": ["low", "material", "critical"]},
           "expected_by_turn": {"type": "integer", "minimum": 0},
-          "acceptable_resolution": {"type": "array", "items": {"type": "string"}},
-          "answer_key": {}
+          "acceptable_resolution": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+          "answer_key": {},
+          "forces_blocker": {"type": "boolean"},
+          "branch": {"type": "string", "minLength": 1}
         }
       }
     },
-    "forbidden_assumptions": {"type": "array", "items": {"type": "object"}},
-    "required_campaign_features": {"type": "array", "items": {"type": "object"}},
-    "critical_defects": {"type": "array", "items": {"type": "object"}},
-    "question_budget": {"type": "object"}
+    "forbidden_assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "severity"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "severity": {"enum": ["minor", "major", "critical"]}
+        }
+      }
+    },
+    "required_campaign_features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "critical_defects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "severity"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1},
+          "severity": {"enum": ["minor", "major", "critical"]}
+        }
+      }
+    },
+    "question_budget": {
+      "type": "object",
+      "required": ["soft", "hard"],
+      "properties": {
+        "soft": {"type": "integer", "minimum": 0},
+        "hard": {"type": "integer", "minimum": 0}
+      }
+    }
   }
 }

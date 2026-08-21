@@ -24,7 +24,7 @@ Generate a live matrix:
 
 ```bash
 python3 scripts/create_benchmark_matrix.py \
-  --condition 'rescamp-0.8=python3 my_team_s.py --skill /path/to/v0.8/rescamp' \
+  --condition 'rescamp-0.9=python3 my_team_s.py --skill /path/to/v0.9/rescamp' \
   --condition 'rescamp-previous=python3 my_team_s.py --skill /path/to/previous/rescamp' \
   --condition 'neutral=python3 my_team_s.py --condition neutral' \
   --user-adapter 'python3 my_team_u.py' \
@@ -34,4 +34,6 @@ python3 scripts/create_benchmark_matrix.py \
   --output benchmark/conditions/live.json
 ```
 
-Public fixtures verify harness behavior only. Use private holdouts, fresh sessions, matched budgets, exact commits, repeated runs, blinded domain experts, and downstream external outcomes for release claims.
+Live comparative evidence requires a complete `matched_controls` declaration plus identical model, host, and capability pins across at least two live conditions. Otherwise the harness labels it `live-adapter-unmatched-controls`. Public fixtures remain synthetic harness checks only; use private holdouts, repeated runs, blinded domain experts, and downstream external outcomes for release claims.
+
+The matrix generator writes every matched-control declaration as `false`; change a value only after the control is actually in place. Standalone `score` and `compare` inputs have no verifiable run/config provenance, so their output is always labeled `unspecified`. Preserve matrix-run manifests when making evidence claims.

@@ -6,7 +6,7 @@ Does the tested condition produce a more faithful, proportionate, scientifically
 
 ## Minimum live matrix
 
-- ResCamp 0.8;
+- ResCamp 0.9;
 - the immediately previous ResCamp version;
 - the same model with a neutral no-skill instruction;
 - optional external systems, only on matched claimed capabilities.
@@ -15,7 +15,7 @@ Use fresh sessions, randomized condition order, identical tools and permissions,
 
 ## Three-team separation
 
-Team U knows the hidden brief and answers only what is asked. Team S sees only the vague request and tested condition. Team E sees frozen blinded artifacts and cannot edit them. Private scenario keys and evaluator-only critical defects must never enter Team S context.
+Team U knows the hidden brief and answers only what is asked. Team S sees only the vague request and public conversation. Team E sees a private evaluator transcript plus frozen artifacts copied to a temporary directory under a random candidate label; retained evidence is written only after Team E exits. Private scenario keys and evaluator-only annotations must never enter Team S context. The harness hides condition-bearing payload and path names and hashes source and staged artifacts before and after evaluation. This is protocol-level blinding and mutation detection, not an OS security boundary; a strong blinding claim requires a separate account, container, or remote evaluator without access to run directories.
 
 ## Primary endpoints
 

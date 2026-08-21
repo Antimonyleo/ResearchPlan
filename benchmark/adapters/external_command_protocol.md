@@ -16,7 +16,7 @@ Each adapter is a stateless command. The harness writes one JSON object to stdin
     "initial_request": "..."
   },
   "history": [{"role": "user", "message": "..."}],
-  "condition": {"id": "rescamp-0.8-live"},
+  "condition": {"id": "rescamp-0.9-live"},
   "run_dir": "/absolute/path"
 }
 ```
@@ -24,14 +24,14 @@ Each adapter is a stateless command. The harness writes one JSON object to stdin
 Team S returns one of:
 
 ```json
-{"action":"ask","message":"one question","dimension_ids":["scope"],"question_count":1,"usage":{"tokens":123,"cost_usd":0.01}}
+{"action":"ask","message":"one question","branch":"scope-object","question_count":1,"usage":{"tokens":123,"cost_usd":0.01}}
 ```
 
 ```json
-{"action":"final","message":"summary","declared_resolutions":["scope"],"declared_features":["frozen-evaluation"],"readiness_claimed":false,"artifacts":["/path/to/CAMPAIGN_PROMPT.md"],"usage":{"tokens":999,"cost_usd":0.1}}
+{"action":"final","message":"summary","declared_features":["frozen-evaluation"],"readiness_claimed":false,"artifacts":["CAMPAIGN_PROMPT.md"],"usage":{"tokens":999,"cost_usd":0.1}}
 ```
 
-`dimension_ids` are evaluator annotations supplied by the adapter; the tested agent need not see hidden answer keys. A postprocessor may assign them from the transcript.
+Artifacts must be regular files inside `run_dir`. Team S receives only the public transcript; hidden dimension IDs and Team U's private annotations never return in a later Team S request.
 
 ## Team U request
 
@@ -39,7 +39,7 @@ Team S returns one of:
 {
   "protocol":"rescamp-team-u-v1",
   "hidden_scenario": {"...":"complete private brief"},
-  "assistant_question": {"message":"...","dimension_ids":["scope"]},
+  "assistant_question": {"message":"...","branch":"scope-object"},
   "history": []
 }
 ```
@@ -60,12 +60,15 @@ Team U must answer only what was asked, obey knowledge limits, and not rescue we
   "blinded_label":"8a9d...",
   "hidden_scenario": {"...":"complete brief and rubric anchors"},
   "transcript": [],
-  "final_response": {},
-  "rubric": {}
+  "final_response": {"artifacts":["artifact-001.md"]},
+  "artifact_manifest": [{"id":"artifact-001","name":"artifact-001.md","path":"/opaque/candidate/path/artifact-001.md","bytes":123,"sha256":"sha256:..."}],
+  "rubric": {},
+  "archetype_overlays": {},
+  "archetype_overlays_digest": "sha256:..."
 }
 ```
 
-Return all fields required by `benchmark.py score`: asked/resolved dimensions, unsupported assumptions, question diagnostics, 0–4 rubric ratings, critical defects, and readiness truthfulness. Team E must not edit Team S artifacts and should not receive the condition name.
+The harness replaces Team S paths with read-only copies under a random candidate ID in a temporary directory outside the condition-bearing run tree. It verifies the source and copy hashes again after evaluation, then persists a verified copy, and rejects missing, outside-run, or changed files. Team E must not receive the condition or run name through its payload or artifact path. This is protocol-level blinding, not an OS security boundary: run Team E in a separate account, container, or remote service without access to benchmark run directories before claiming strong blinding. Return all fields required by `benchmark.py score`: asked/resolved dimensions, unsupported assumptions, question diagnostics, 0–4 rubric ratings, critical defects, and readiness truthfulness.
 
 ## Isolation requirements
 
