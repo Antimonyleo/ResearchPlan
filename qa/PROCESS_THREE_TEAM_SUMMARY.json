@@ -1,0 +1,82 @@
+{
+  "benchmark_version": "0.8.5",
+  "conditions": {
+    "exhaustive-process-fixture": {
+      "critical_defect_rate": 0.0,
+      "evidence_class": "synthetic-fixture",
+      "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+      "mean_burden_score": 81.5,
+      "mean_interview_turns": 3.0,
+      "median": 80.61,
+      "n": 4,
+      "score_mean_ci95": [
+        80.463,
+        null,
+        null
+      ]
+    },
+    "no-skill-process-fixture": {
+      "critical_defect_rate": 0.5,
+      "evidence_class": "synthetic-fixture",
+      "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+      "mean_burden_score": 100.0,
+      "mean_interview_turns": 2.0,
+      "median": 33.416,
+      "n": 4,
+      "score_mean_ci95": [
+        35.901,
+        null,
+        null
+      ]
+    },
+    "rescamp-0.8-process-fixture": {
+      "critical_defect_rate": 0.0,
+      "evidence_class": "synthetic-fixture",
+      "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+      "mean_burden_score": 100.0,
+      "mean_interview_turns": 7.25,
+      "median": 85.579,
+      "n": 4,
+      "score_mean_ci95": [
+        85.443,
+        null,
+        null
+      ]
+    }
+  },
+  "evidence_class": "synthetic-fixture",
+  "evidence_note": "Synthetic fixture output. Team E ratings are hardcoded constants selected by condition id, so scores are predetermined by the fixture and are NOT model-performance estimates or measurements.",
+  "failures": [],
+  "pairwise_matched": {
+    "exhaustive-process-fixture minus no-skill-process-fixture": {
+      "difference_mean_ci95": [
+        44.563,
+        null,
+        null
+      ],
+      "matched_on_mutual_success": true,
+      "n": 4
+    },
+    "exhaustive-process-fixture minus rescamp-0.8-process-fixture": {
+      "difference_mean_ci95": [
+        -4.98,
+        null,
+        null
+      ],
+      "matched_on_mutual_success": true,
+      "n": 4
+    },
+    "no-skill-process-fixture minus rescamp-0.8-process-fixture": {
+      "difference_mean_ci95": [
+        -49.542,
+        null,
+        null
+      ],
+      "matched_on_mutual_success": true,
+      "n": 4
+    }
+  },
+  "run_id": "20260821T020623Z",
+  "scenario_count": 4,
+  "score_count": 12
+}

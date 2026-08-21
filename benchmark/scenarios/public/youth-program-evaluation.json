@@ -1,0 +1,168 @@
+{
+  "archetypes": [
+    "policy-program-evaluation",
+    "mixed-methods"
+  ],
+  "critical_defects": [
+    {
+      "description": "Ignores nonrandom assignment",
+      "id": "selection-bias",
+      "severity": "critical"
+    },
+    {
+      "description": "Omits harms and displacement",
+      "id": "benefit-only",
+      "severity": "major"
+    }
+  ],
+  "domain": "public policy",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not treat all sites as randomized.",
+      "id": "single-design",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Reveal lottery variation only when design/comparator is asked.",
+    "facts": {
+      "assignment": "oversubscribed sites used lotteries; others did not",
+      "decision": "expand, redesign, or stop after next fiscal year",
+      "equity": "distribution across race, gender, disability, neighborhood",
+      "outcomes": "employment, earnings, education, wellbeing, unintended harms",
+      "participants": "ages 16-24"
+    },
+    "knowledge_limits": [
+      "long-term administrative linkage permission",
+      "implementation fidelity"
+    ]
+  },
+  "id": "youth-program-evaluation",
+  "initial_request": "Tell us if our youth jobs program works and should be expanded.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "expand/redesign/stop with explicit thresholds",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "decision-thresholds",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "training, placement, mentoring pathways",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "theory-of-change",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "lottery sites support stronger causal estimate; others need quasi-experimental/contribution analysis",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "design-variation",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "employment, earnings, education, wellbeing, displacement/stigma",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "outcomes-harms",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "distributional effects and accessibility",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "equity",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "administrative linkage needs permission and privacy controls",
+      "expected_by_turn": 6,
+      "forces_blocker": true,
+      "id": "data-consent",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "site fidelity and qualitative participant/employer evidence",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "implementation",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "predefined integration of impacts, cost, equity, and feasibility",
+      "expected_by_turn": 8,
+      "forces_blocker": false,
+      "id": "decision-integration",
+      "importance": "material"
+    }
+  ],
+  "profile": "high-assurance",
+  "question_budget": {
+    "hard": 18,
+    "soft": 12
+  },
+  "required_campaign_features": [
+    {
+      "description": "mechanisms and implementation",
+      "id": "theory-of-change"
+    },
+    {
+      "description": "randomized and nonrandomized sites separated",
+      "id": "design-stratification"
+    },
+    {
+      "description": "distributional impacts",
+      "id": "equity-analysis"
+    },
+    {
+      "description": "quantitative and qualitative integration rule",
+      "id": "mixed-integration"
+    },
+    {
+      "description": "linkage approval gate",
+      "id": "data-approval"
+    }
+  ],
+  "title": "Evaluation of a youth employment program"
+}

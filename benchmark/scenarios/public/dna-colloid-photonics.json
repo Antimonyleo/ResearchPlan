@@ -1,0 +1,152 @@
+{
+  "archetypes": [
+    "experimental",
+    "computational",
+    "design-engineering"
+  ],
+  "critical_defects": [
+    {
+      "description": "Ignores angular dispersion of the photonic response",
+      "id": "no-angle-dispersion",
+      "severity": "major"
+    },
+    {
+      "description": "Claims readiness without deposition access/approval",
+      "id": "false-execution-ready",
+      "severity": "critical"
+    }
+  ],
+  "domain": "materials science",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not assume in-house silicon deposition.",
+      "id": "invent-deposition-access",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Answer only what is asked; do not volunteer the target wavelength until scope or success is asked.",
+    "facts": {
+      "available_assets": "colloid synthesis, SEM, optical spectroscopy; no silicon deposition in-house",
+      "budget": "USD 60k excluding staff",
+      "decision": "whether to fund a six-month feasibility campaign",
+      "target": "near-infrared stop band around telecom wavelengths"
+    },
+    "knowledge_limits": [
+      "exact achievable silicon conformality",
+      "best lattice tolerance"
+    ]
+  },
+  "id": "dna-colloid-photonics",
+  "initial_request": "Work out whether our DNA-programmed colloids could become a useful silicon photonic material.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "fund or stop a six-month feasibility campaign",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "decision",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "a reproducible near-infrared stop band centered near 1550 nm with defined angle tolerance",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "target-performance",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "pyrochlore-like colloidal lattice with silicon coating; compare uncoated and titania controls",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "construct-scope",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "synthesis, SEM, spectroscopy available; silicon deposition external",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "available-capabilities",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "USD 60k and six months",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "budget-time",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "freeze simulation/optical metrics and no-go thresholds before fabrication",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "evaluation-freeze",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "user approval required before external deposition purchase",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "external-approval",
+      "importance": "material"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "screen geometry cheaply before expensive fabrication",
+      "id": "multifidelity-funnel"
+    },
+    {
+      "description": "validate electromagnetic and image-analysis pipelines",
+      "id": "tool-canaries"
+    },
+    {
+      "description": "uncoated and alternative coating controls",
+      "id": "positive-negative-controls"
+    },
+    {
+      "description": "predefine fabrication and optical no-go rules",
+      "id": "no-go-thresholds"
+    }
+  ],
+  "title": "DNA-programmed colloidal photonic material"
+}

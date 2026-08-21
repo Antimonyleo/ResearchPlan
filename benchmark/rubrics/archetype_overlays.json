@@ -1,0 +1,17 @@
+{
+  "version": "0.8.5",
+  "rule": "Apply only overlays relevant to the scenario. They refine, but never replace, the universal rubric.",
+  "overlays": {
+    "experimental": ["construct/intervention exactness", "controls and measurement validity", "replication/randomization/blinding where applicable", "safety and material handling", "confirmatory versus exploratory analysis"],
+    "computational": ["dataset and leakage boundaries", "baselines and held-out evaluation", "software/model/hardware versions", "seeds and ablations", "reproducible environments and compute ceilings"],
+    "observational": ["target population and estimand", "sampling and measurement", "confounding and identification assumptions", "missingness and sensitivity analyses", "causal-language discipline and external validity"],
+    "qualitative-field": ["access, positionality, consent and cultural safety", "sampling logic", "recording/storage and coding protocol", "negative cases and reflexivity", "stopping/saturation rationale and stakeholder checks where appropriate"],
+    "humanities-interpretive": ["corpus/canon and period boundaries", "provenance, editions, language and source criticism", "rival readings and negative evidence", "anachronism and translation policy", "standards for warranted interpretive claims"],
+    "conceptual-normative": ["question type, definitions and premises", "argument structure", "counterexamples and objections", "jurisdiction/tradition/source hierarchy where relevant", "separation of descriptive evidence from normative inference"],
+    "evidence-synthesis": ["search sources and reproducibility", "inclusion/exclusion and screening", "quality appraisal and extraction", "heterogeneity/publication bias", "currency and update policy"],
+    "policy-program-evaluation": ["decision owner and theory of change", "implementation context and comparators", "intended/unintended and distributional outcomes", "causal or contribution logic", "feasibility, rights and decision thresholds"],
+    "design-engineering": ["users/use conditions and requirements", "interfaces/constraints/hazards", "alternatives and failure modes", "verification versus validation", "lifecycle, standards and acceptance tests"],
+    "creative-practice": ["research contribution", "practice/process records and artifacts", "critical framework and reflective method", "evaluation/critique process", "rights and evidentiary relationship between practice and claim"],
+    "mixed-methods": ["why each method is needed", "sequence/concurrency and sampling relationship", "integration point", "conflict-resolution rule", "how integrated evidence changes the conclusion"]
+  }
+}

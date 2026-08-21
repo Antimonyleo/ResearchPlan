@@ -1,0 +1,155 @@
+{
+  "archetypes": [
+    "humanities-interpretive"
+  ],
+  "critical_defects": [
+    {
+      "description": "Uses modern network categories without historical justification",
+      "id": "anachronism",
+      "severity": "major"
+    },
+    {
+      "description": "Treats missing records as proof of no relationship",
+      "id": "absence-equals-evidence",
+      "severity": "critical"
+    }
+  ],
+  "domain": "history",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not treat surviving records as a complete network.",
+      "id": "complete-archive",
+      "severity": "critical"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Reveal period/place only after scope is asked; do not resolve the thesis for the assistant.",
+    "facts": {
+      "access": "one archive requires travel",
+      "argument": "whether informal kinship networks mediated formal institutions",
+      "period": "1840-1875",
+      "place": "one Mediterranean port",
+      "sources": "customs ledgers, correspondence, newspapers in three languages"
+    },
+    "knowledge_limits": [
+      "survival bias of records",
+      "translation capacity for one language"
+    ]
+  },
+  "id": "port-city-archive",
+  "initial_request": "I have some shipping records and want to write about merchant networks in the 1800s.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "1840-1875 in the named port",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "period-place",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "how kinship networks interacted with formal commercial institutions",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "interpretive-question",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "customs ledgers, selected correspondence, newspapers; documented inclusion rules",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "corpus-boundary",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "three languages; one needs a translator",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "language-editions",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "travel-dependent archive and digitization limits",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "archive-access",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "survival, elite, state-record, and newspaper biases",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "source-criticism",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "institutional, class, ethnic, and kinship explanations",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "rival-readings",
+      "importance": "material"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "item-level archival provenance",
+      "id": "source-provenance"
+    },
+    {
+      "description": "translation and quotation verification",
+      "id": "translation-policy"
+    },
+    {
+      "description": "structured alternative readings",
+      "id": "rival-interpretations"
+    },
+    {
+      "description": "limits of silence/absence",
+      "id": "negative-evidence"
+    },
+    {
+      "description": "fallback if archive access fails",
+      "id": "travel-contingency"
+    }
+  ],
+  "title": "Merchant networks in a nineteenth-century port city"
+}

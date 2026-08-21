@@ -1,0 +1,36 @@
+{
+  "id": "private-case-001",
+  "title": "Private holdout case",
+  "domain": "domain label",
+  "archetypes": [
+    "evidence-synthesis"
+  ],
+  "profile": "standard",
+  "initial_request": "A deliberately vague starting request.",
+  "hidden_brief": {
+    "facts": {},
+    "knowledge_limits": [],
+    "answer_policy": "Answer only what is asked and do not rescue weak questions.",
+    "evolution_rules": []
+  },
+  "material_dimensions": [
+    {
+      "id": "decision",
+      "importance": "critical",
+      "expected_by_turn": 1,
+      "acceptable_resolution": [
+        "explicit user answer"
+      ],
+      "answer_key": "hidden answer",
+      "forces_blocker": false,
+      "branch": "scope-object"
+    }
+  ],
+  "forbidden_assumptions": [],
+  "required_campaign_features": [],
+  "critical_defects": [],
+  "question_budget": {
+    "soft": 8,
+    "hard": 12
+  }
+}

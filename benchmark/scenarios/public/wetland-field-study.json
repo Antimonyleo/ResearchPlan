@@ -1,0 +1,153 @@
+{
+  "archetypes": [
+    "experimental",
+    "observational",
+    "qualitative-field"
+  ],
+  "critical_defects": [
+    {
+      "description": "Ignores observation error",
+      "id": "no-detectability",
+      "severity": "major"
+    },
+    {
+      "description": "Plans prohibited nest disturbance",
+      "id": "permit-breach",
+      "severity": "critical"
+    }
+  ],
+  "domain": "ecology",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not equate raw counts with habitat benefit without detectability.",
+      "id": "counts-equal-use",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Reveal site counts only after comparator/design is asked.",
+    "facts": {
+      "constraints": "permit and disturbance limits",
+      "decision": "continue current restoration or modify hydrology/vegetation",
+      "outcomes": "abundance, occupancy, nesting success, habitat variables",
+      "sites": "four restored and four comparable unrestored wetlands",
+      "timeline": "two breeding seasons"
+    },
+    "knowledge_limits": [
+      "baseline equivalence",
+      "rare species detectability"
+    ]
+  },
+  "id": "wetland-field-study",
+  "initial_request": "Find out whether our wetland restoration is helping birds.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "continue or modify restoration",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "decision",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "four restored and four comparable unrestored sites",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "sites-comparator",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "abundance, occupancy, nesting success and habitat variables",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "outcomes",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "repeat surveys and detection model",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "detection",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "document pre-restoration differences and landscape context",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "baseline-confounding",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "survey permits and nest-disturbance limits",
+      "expected_by_turn": 6,
+      "forces_blocker": true,
+      "id": "permits-disturbance",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "two breeding seasons and weather effects",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "season-replication",
+      "importance": "material"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "restored versus matched unrestored",
+      "id": "comparator"
+    },
+    {
+      "description": "repeat-detection protocol",
+      "id": "detection-model"
+    },
+    {
+      "description": "wildlife permits and disturbance controls",
+      "id": "permit-gate"
+    },
+    {
+      "description": "predefined hydrology/vegetation modification criteria",
+      "id": "adaptive-rule"
+    }
+  ],
+  "title": "Wetland restoration and bird use"
+}

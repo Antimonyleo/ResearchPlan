@@ -1,0 +1,32 @@
+{
+  "description": "Process-isolated Team U/S/E harness test; still deterministic and not independent model evidence.",
+  "conditions": [
+    {
+      "id": "rescamp-0.8-process-fixture",
+      "adapter": "external-command",
+      "command": "python3 benchmark/adapters/fixture_team_s.py --condition rescamp-0.8-fixture",
+      "user_adapter": "python3 benchmark/adapters/fixture_team_u.py",
+      "evaluator_adapter": "python3 benchmark/adapters/fixture_team_e.py",
+      "model_id": "deterministic-fixture",
+      "host_version": "process-isolated"
+    },
+    {
+      "id": "no-skill-process-fixture",
+      "adapter": "external-command",
+      "command": "python3 benchmark/adapters/fixture_team_s.py --condition no-skill-fixture",
+      "user_adapter": "python3 benchmark/adapters/fixture_team_u.py",
+      "evaluator_adapter": "python3 benchmark/adapters/fixture_team_e.py",
+      "model_id": "deterministic-fixture",
+      "host_version": "process-isolated"
+    },
+    {
+      "id": "exhaustive-process-fixture",
+      "adapter": "external-command",
+      "command": "python3 benchmark/adapters/fixture_team_s.py --condition exhaustive-form-fixture",
+      "user_adapter": "python3 benchmark/adapters/fixture_team_u.py",
+      "evaluator_adapter": "python3 benchmark/adapters/fixture_team_e.py",
+      "model_id": "deterministic-fixture",
+      "host_version": "process-isolated"
+    }
+  ]
+}

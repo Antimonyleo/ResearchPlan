@@ -1,0 +1,151 @@
+{
+  "archetypes": [
+    "design-engineering",
+    "qualitative-field"
+  ],
+  "critical_defects": [
+    {
+      "description": "Consultation cannot affect design",
+      "id": "token-consultation",
+      "severity": "major"
+    },
+    {
+      "description": "Ignores emergency access",
+      "id": "no-fire-access",
+      "severity": "critical"
+    }
+  ],
+  "domain": "urban design",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not let majority preference erase accessibility or livelihood rights.",
+      "id": "majority-only",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Do not reveal stakeholder conflicts unless asked about harms/tradeoffs.",
+    "facts": {
+      "constraints": "noise, waste, displacement, fire access",
+      "decision": "select site and operating model",
+      "site": "two candidate streets",
+      "stakeholders": "residents, informal/formal vendors, accessibility groups, transit, sanitation, emergency services"
+    },
+    "knowledge_limits": [
+      "vendor demand",
+      "political acceptability"
+    ]
+  },
+  "id": "urban-night-market",
+  "initial_request": "Plan research for a night market that residents and vendors will actually support.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "select site and operating model",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "decision",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "residents, vendors, disability groups, services, transit",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "stakeholders",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "noise, waste, displacement, affordability, emergency access",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "tradeoffs-harms",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "two candidate streets with comparable observation",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "site-comparison",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "intercepts, vendor workshops, observation, access audit, pilot",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "methods",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "informal vendor inclusion and displacement safeguards",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "equity",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "city permits and emergency-service review",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "approval",
+      "importance": "material"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "power and impact mapping",
+      "id": "stakeholder-map"
+    },
+    {
+      "description": "reversible pilot before full launch",
+      "id": "pilot-gates"
+    },
+    {
+      "description": "physical/sensory access audit",
+      "id": "accessibility"
+    },
+    {
+      "description": "noise, waste, displacement, safety",
+      "id": "harm-monitoring"
+    }
+  ],
+  "title": "Design research for an urban night market"
+}

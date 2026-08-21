@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/rescamp/campaign.schema.json",
+  "title": "ResCamp campaign state",
+  "type": "object",
+  "required": ["schema_version", "rescamp_version", "campaign_id", "goal_verbatim", "profile", "archetypes", "intent_dimensions", "interview", "campaign", "reviews"],
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "rescamp_version": {"type": "string"},
+    "campaign_id": {"type": "string"},
+    "goal_verbatim": {"type": "string"},
+    "profile": {"enum": ["scoped", "standard", "high-assurance"]},
+    "archetypes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "intent_dimensions": {"type": "array", "items": {"type": "object"}},
+    "interview": {"type": "object"},
+    "campaign": {
+      "type": "object",
+      "required": ["constitution", "mission", "dossier", "inquiries", "methods", "tools", "canaries", "evaluation", "stages", "gates", "resources_dispatch", "roles", "runtime", "work_units", "ethics_rights_safety", "reporting", "claims", "deliverables", "kickoff"]
+    },
+    "reviews": {"type": "object"}
+  }
+}

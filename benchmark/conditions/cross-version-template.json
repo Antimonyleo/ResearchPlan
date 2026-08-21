@@ -1,0 +1,45 @@
+{
+  "description": "Template only. Generate an executable matrix with scripts/create_benchmark_matrix.py.",
+  "matched_controls": {
+    "same_model": true,
+    "same_tools_permissions_corpus": true,
+    "same_context_time_token_retry_budget": true,
+    "fresh_sessions": true,
+    "blinded_evaluation": true
+  },
+  "conditions": [
+    {
+      "id": "rescamp-0.8-live",
+      "adapter": "external-command",
+      "command": "REPLACE_WITH_TEAM_S_ADAPTER --skill /absolute/path/to/v0.8/rescamp",
+      "user_adapter": "REPLACE_WITH_TEAM_U_ADAPTER",
+      "evaluator_adapter": "REPLACE_WITH_TEAM_E_ADAPTER",
+      "model_id": "PIN_EXACT_MODEL",
+      "host_version": "PIN_EXACT_HOST",
+      "skill_commit": "PIN_COMMIT",
+      "capabilities": ["elicitation", "campaign-compilation"]
+    },
+    {
+      "id": "previous-version-live",
+      "adapter": "external-command",
+      "command": "REPLACE_WITH_TEAM_S_ADAPTER --skill /absolute/path/to/previous/rescamp",
+      "user_adapter": "REPLACE_WITH_TEAM_U_ADAPTER",
+      "evaluator_adapter": "REPLACE_WITH_TEAM_E_ADAPTER",
+      "model_id": "SAME_MODEL",
+      "host_version": "SAME_HOST",
+      "skill_commit": "PIN_COMMIT",
+      "capabilities": ["elicitation", "campaign-compilation"]
+    },
+    {
+      "id": "neutral-no-skill-live",
+      "adapter": "external-command",
+      "command": "REPLACE_WITH_TEAM_S_ADAPTER --condition neutral",
+      "user_adapter": "REPLACE_WITH_TEAM_U_ADAPTER",
+      "evaluator_adapter": "REPLACE_WITH_TEAM_E_ADAPTER",
+      "model_id": "SAME_MODEL",
+      "host_version": "SAME_HOST",
+      "skill_commit": "none",
+      "capabilities": ["elicitation", "campaign-compilation"]
+    }
+  ]
+}

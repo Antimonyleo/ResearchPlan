@@ -1,0 +1,359 @@
+{
+  "checked_at": "2026-08-21T02:06:23Z",
+  "checks": {
+    "canonical_skill": {
+      "count": 1,
+      "paths": [
+        "rescamp/SKILL.md"
+      ]
+    },
+    "dual_host_install": {
+      "command": [
+        "/home/hao/software/miniconda3/bin/python3",
+        "scripts/install.py",
+        "--host",
+        "both",
+        "--scope",
+        "user"
+      ],
+      "elapsed_seconds": 0.054,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "claude-code explicit-only override: /tmp/rescamp-release-jds1l8lq/home/.claude/settings.json\nCanonical skill tree SHA-256: 60f456eb4539dc98c73c1684b3da66e7cc1c112e650a31f9c86fec4ef5f1b40b\nInstalled identical skill for claude-code: /tmp/rescamp-release-jds1l8lq/home/.claude/skills/rescamp\nInstalled identical skill for codex: /tmp/rescamp-release-jds1l8lq/home/.agents/skills/rescamp\n"
+    },
+    "full_fixture_matrix": {
+      "command": [
+        "/home/hao/software/miniconda3/bin/python3",
+        "rescamp/scripts/benchmark.py",
+        "run",
+        "--scenarios",
+        "benchmark/scenarios/public",
+        "--config",
+        "benchmark/conditions/fixture.json",
+        "--output",
+        "/tmp/rescamp-release-jds1l8lq/fixture",
+        "--jobs",
+        "6",
+        "--timeout",
+        "30"
+      ],
+      "elapsed_seconds": 0.195,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\n  \"benchmark_version\": \"0.8.5\",\n  \"evidence_class\": \"synthetic-fixture\",\n  \"evidence_note\": \"Synthetic fixture output. Team E ratings are hardcoded constants selected by condition id, so scores are predetermined by the fixture and are NOT model-performance estimates or measurements.\",\n  \"conditions\": {\n    \"exhaustive-form-fixture\": {\n      \"n\": 18,\n      \"score_mean_ci95\": [\n        80.005,\n        null,\n        null\n      ],\n      \"interval_suppressed_because\": \"fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity\",\n      \"evidence_class\": \"synthetic-fixture\",\n      \"median\": 80.567,\n      \"critical_defect_rate\": 0.0,\n      \"mean_interview_turns\": 2.889,\n      \"mean_burden_score\": 80.667\n    },\n    \"no-skill-fixture\": {\n      \"n\": 18,\n      \"score_mean_ci95\": [\n        35.222,\n        null,\n        null\n      ],\n      \"interval_suppressed_because\": \"fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity\",\n      \"evidence_class\": \"synthetic-fixture\",\n      \"median\": 33.516,\n      \"critical_defect_rate\": 0.3889,\n      \"mean_interview_turns\": 2.0,\n      \"mean_burden_score\": 100.0\n    },\n    \"rescamp-0.8-fixture\": {\n      \"n\": 18,\n      \"score_mean_ci95\": [\n        85.272,\n        null,\n        null\n      ],\n      \"interval_suppressed_because\": \"fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity\",\n      \"evidence_class\": \"synthetic-fixture\",\n      \"median\": 85.58,\n      \"critical_defect_rate\": 0.0,\n      \"mean_interview_turns\": 7.167,\n      \"mean_burden_score\": 100.0\n    }\n  },\n  \"pairwise_matched\": {\n    \"exhaustive-form-fixture minus no-skill-fixture\": {\n      \"n\": 18,\n      \"matched_on_mutual_success\": true,\n      \"difference_mean_ci95\": [\n        44.783,\n        null,\n        null\n      ]\n    },\n    \"exhaustive-form-fixture minus rescamp-0.8-fixture\": {\n      \"n\": 18,\n      \"matched_on_mutual_success\": true,\n      \"difference_mean_ci95\": [\n        -5.268,\n        null,\n        null\n      ]\n    },\n    \"no-skill-fixture minus rescamp-0.8-fixture\": {\n      \"n\": 18,\n      \"matched_on_mutual_success\": true,\n      \"difference_mean_ci95\": [\n        -50.05,\n        null,\n        null\n      ]\n    }\n  },\n  \"run_id\": \"20260821T020621Z\",\n  \"scenario_count\": 18,\n  \"score_count\": 54,\n  \"failures\": []\n}\n"
+    },
+    "full_fixture_summary": {
+      "benchmark_version": "0.8.5",
+      "conditions": {
+        "exhaustive-form-fixture": {
+          "critical_defect_rate": 0.0,
+          "evidence_class": "synthetic-fixture",
+          "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+          "mean_burden_score": 80.667,
+          "mean_interview_turns": 2.889,
+          "median": 80.567,
+          "n": 18,
+          "score_mean_ci95": [
+            80.005,
+            null,
+            null
+          ]
+        },
+        "no-skill-fixture": {
+          "critical_defect_rate": 0.3889,
+          "evidence_class": "synthetic-fixture",
+          "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+          "mean_burden_score": 100.0,
+          "mean_interview_turns": 2.0,
+          "median": 33.516,
+          "n": 18,
+          "score_mean_ci95": [
+            35.222,
+            null,
+            null
+          ]
+        },
+        "rescamp-0.8-fixture": {
+          "critical_defect_rate": 0.0,
+          "evidence_class": "synthetic-fixture",
+          "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+          "mean_burden_score": 100.0,
+          "mean_interview_turns": 7.167,
+          "median": 85.58,
+          "n": 18,
+          "score_mean_ci95": [
+            85.272,
+            null,
+            null
+          ]
+        }
+      },
+      "evidence_class": "synthetic-fixture",
+      "evidence_note": "Synthetic fixture output. Team E ratings are hardcoded constants selected by condition id, so scores are predetermined by the fixture and are NOT model-performance estimates or measurements.",
+      "failures": [],
+      "pairwise_matched": {
+        "exhaustive-form-fixture minus no-skill-fixture": {
+          "difference_mean_ci95": [
+            44.783,
+            null,
+            null
+          ],
+          "matched_on_mutual_success": true,
+          "n": 18
+        },
+        "exhaustive-form-fixture minus rescamp-0.8-fixture": {
+          "difference_mean_ci95": [
+            -5.268,
+            null,
+            null
+          ],
+          "matched_on_mutual_success": true,
+          "n": 18
+        },
+        "no-skill-fixture minus rescamp-0.8-fixture": {
+          "difference_mean_ci95": [
+            -50.05,
+            null,
+            null
+          ],
+          "matched_on_mutual_success": true,
+          "n": 18
+        }
+      },
+      "run_id": "20260821T020621Z",
+      "scenario_count": 18,
+      "score_count": 54
+    },
+    "installed_tree_digests": {
+      "claude": "88dfe7db0df5dbe87c002e9ed80698f65bebd0e2fd4c1f37647269c0aa2f7997",
+      "codex": "88dfe7db0df5dbe87c002e9ed80698f65bebd0e2fd4c1f37647269c0aa2f7997",
+      "source": "88dfe7db0df5dbe87c002e9ed80698f65bebd0e2fd4c1f37647269c0aa2f7997"
+    },
+    "json": {
+      "errors": []
+    },
+    "process_fixture_summary": {
+      "benchmark_version": "0.8.5",
+      "conditions": {
+        "exhaustive-process-fixture": {
+          "critical_defect_rate": 0.0,
+          "evidence_class": "synthetic-fixture",
+          "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+          "mean_burden_score": 81.5,
+          "mean_interview_turns": 3.0,
+          "median": 80.61,
+          "n": 4,
+          "score_mean_ci95": [
+            80.463,
+            null,
+            null
+          ]
+        },
+        "no-skill-process-fixture": {
+          "critical_defect_rate": 0.5,
+          "evidence_class": "synthetic-fixture",
+          "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+          "mean_burden_score": 100.0,
+          "mean_interview_turns": 2.0,
+          "median": 33.416,
+          "n": 4,
+          "score_mean_ci95": [
+            35.901,
+            null,
+            null
+          ]
+        },
+        "rescamp-0.8-process-fixture": {
+          "critical_defect_rate": 0.0,
+          "evidence_class": "synthetic-fixture",
+          "interval_suppressed_because": "fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity",
+          "mean_burden_score": 100.0,
+          "mean_interview_turns": 7.25,
+          "median": 85.579,
+          "n": 4,
+          "score_mean_ci95": [
+            85.443,
+            null,
+            null
+          ]
+        }
+      },
+      "evidence_class": "synthetic-fixture",
+      "evidence_note": "Synthetic fixture output. Team E ratings are hardcoded constants selected by condition id, so scores are predetermined by the fixture and are NOT model-performance estimates or measurements.",
+      "failures": [],
+      "pairwise_matched": {
+        "exhaustive-process-fixture minus no-skill-process-fixture": {
+          "difference_mean_ci95": [
+            44.563,
+            null,
+            null
+          ],
+          "matched_on_mutual_success": true,
+          "n": 4
+        },
+        "exhaustive-process-fixture minus rescamp-0.8-process-fixture": {
+          "difference_mean_ci95": [
+            -4.98,
+            null,
+            null
+          ],
+          "matched_on_mutual_success": true,
+          "n": 4
+        },
+        "no-skill-process-fixture minus rescamp-0.8-process-fixture": {
+          "difference_mean_ci95": [
+            -49.542,
+            null,
+            null
+          ],
+          "matched_on_mutual_success": true,
+          "n": 4
+        }
+      },
+      "run_id": "20260821T020623Z",
+      "scenario_count": 4,
+      "score_count": 12
+    },
+    "process_isolated_static_reviewers": {
+      "architecture": {
+        "command": [
+          "/home/hao/software/miniconda3/bin/python3",
+          "scripts/static_reviewer.py",
+          "--role",
+          "architecture",
+          "--root",
+          "/home/hao/AI/githubrepo/ResearchPlan"
+        ],
+        "elapsed_seconds": 0.046,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "{\n  \"check_id\": \"architecture\",\n  \"method\": \"static-substring-and-structure-check\",\n  \"independence\": \"none\",\n  \"execution\": \"separate process (isolation only; not an independent assessment)\",\n  \"not_a_review\": \"Automated static assertions over repository files: substring presence, file existence, regex extraction, and counts. No reviewer, no model, and no independent assessment; these are regression guards, not evidence of quality.\",\n  \"status\": \"pass\",\n  \"assertions_run\": 1,\n  \"assertions_failed\": 0,\n  \"checks\": [\n    {\n      \"check\": \"campaign_architecture_sections\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"all 16 literal strings present\",\n      \"observed\": \"16/16 present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"skill_bytes\",\n      \"kind\": \"measurement\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"not gated\",\n      \"observed\": \"15750\",\n      \"result\": \"observed\"\n    },\n    {\n      \"check\": \"literal_occurrences[digest]\",\n      \"kind\": \"measurement\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"not gated\",\n      \"observed\": \"1\",\n      \"result\": \"observed\"\n    },\n    {\n      \"check\": \"literal_occurrences[automatically]\",\n      \"kind\": \"measurement\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"not gated\",\n      \"observed\": \"1\",\n      \"result\": \"observed\"\n    },\n    {\n      \"check\": \"literal_occurrences[delegation]\",\n      \"kind\": \"measurement\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"not gated\",\n      \"observed\": \"2\",\n      \"result\": \"observed\"\n    },\n    {\n      \"check\": \"literal_occurrences[closeout]\",\n      \"kind\": \"measurement\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"not gated\",\n      \"observed\": \"1\",\n      \"result\": \"observed\"\n    }\n  ],\n  \"findings\": []\n}\n"
+      },
+      "generalization": {
+        "command": [
+          "/home/hao/software/miniconda3/bin/python3",
+          "scripts/static_reviewer.py",
+          "--role",
+          "generalization",
+          "--root",
+          "/home/hao/AI/githubrepo/ResearchPlan"
+        ],
+        "elapsed_seconds": 0.06,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "{\n  \"check_id\": \"generalization\",\n  \"method\": \"static-substring-and-structure-check\",\n  \"independence\": \"none\",\n  \"execution\": \"separate process (isolation only; not an independent assessment)\",\n  \"not_a_review\": \"Automated static assertions over repository files: substring presence, file existence, regex extraction, and counts. No reviewer, no model, and no independent assessment; these are regression guards, not evidence of quality.\",\n  \"status\": \"pass\",\n  \"assertions_run\": 4,\n  \"assertions_failed\": 0,\n  \"checks\": [\n    {\n      \"check\": \"public_scenario_files\",\n      \"kind\": \"measurement\",\n      \"target\": \"benchmark/scenarios/public\",\n      \"expected\": \"not gated\",\n      \"observed\": \"18\",\n      \"result\": \"observed\"\n    },\n    {\n      \"check\": \"archetype_coverage\",\n      \"kind\": \"set-equality\",\n      \"target\": \"benchmark/scenarios/public\",\n      \"expected\": \"11 archetypes covered\",\n      \"observed\": \"11 covered; uncovered: []; unexpected: []\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"distinct_domain_count\",\n      \"kind\": \"count-threshold\",\n      \"target\": \"benchmark/scenarios/public\",\n      \"expected\": \">= 15 distinct domains\",\n      \"observed\": \"18 distinct domains\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"archetype_overlay_keys\",\n      \"kind\": \"set-equality\",\n      \"target\": \"benchmark/rubrics/archetype_overlays.json\",\n      \"expected\": \"overlay keys equal the 11 archetypes\",\n      \"observed\": \"11 keys; missing: []; extra: []\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"non_experimental_vocabulary_safeguard\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"all 1 literal strings present\",\n      \"observed\": \"1/1 present\",\n      \"result\": \"pass\"\n    }\n  ],\n  \"findings\": []\n}\n"
+      },
+      "packaging-integrity": {
+        "command": [
+          "/home/hao/software/miniconda3/bin/python3",
+          "scripts/static_reviewer.py",
+          "--role",
+          "packaging-integrity",
+          "--root",
+          "/home/hao/AI/githubrepo/ResearchPlan"
+        ],
+        "elapsed_seconds": 0.062,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "{\n  \"check_id\": \"packaging-integrity\",\n  \"method\": \"static-substring-and-structure-check\",\n  \"independence\": \"none\",\n  \"execution\": \"separate process (isolation only; not an independent assessment)\",\n  \"not_a_review\": \"Automated static assertions over repository files: substring presence, file existence, regex extraction, and counts. No reviewer, no model, and no independent assessment; these are regression guards, not evidence of quality.\",\n  \"status\": \"pass\",\n  \"assertions_run\": 4,\n  \"assertions_failed\": 0,\n  \"checks\": [\n    {\n      \"check\": \"canonical_skill_file\",\n      \"kind\": \"file-inventory\",\n      \"target\": \"repository tree\",\n      \"expected\": \"exactly ['rescamp/SKILL.md']\",\n      \"observed\": \"['rescamp/SKILL.md']\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"installer_verifies_host_trees\",\n      \"kind\": \"structural-check\",\n      \"target\": \"scripts/install.py\",\n      \"expected\": \"digest_tree callable and HOSTS covers ['claude-code', 'codex']\",\n      \"observed\": \"digest_tree=yes; HOSTS=['claude-code', 'codex']\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"host_paths_declared:claude-code\",\n      \"kind\": \"structural-check\",\n      \"target\": \"scripts/install.py\",\n      \"expected\": \"user_path and project_path declared\",\n      \"observed\": \"user=.claude/skills/rescamp; project=.claude/skills/rescamp\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"host_paths_declared:codex\",\n      \"kind\": \"structural-check\",\n      \"target\": \"scripts/install.py\",\n      \"expected\": \"user_path and project_path declared\",\n      \"observed\": \"user=.agents/skills/rescamp; project=.agents/skills/rescamp\",\n      \"result\": \"pass\"\n    }\n  ],\n  \"findings\": []\n}\n"
+      },
+      "quality-workflow": {
+        "command": [
+          "/home/hao/software/miniconda3/bin/python3",
+          "scripts/static_reviewer.py",
+          "--role",
+          "quality-workflow",
+          "--root",
+          "/home/hao/AI/githubrepo/ResearchPlan"
+        ],
+        "elapsed_seconds": 0.055,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "{\n  \"check_id\": \"quality-workflow\",\n  \"method\": \"static-substring-and-structure-check\",\n  \"independence\": \"none\",\n  \"execution\": \"separate process (isolation only; not an independent assessment)\",\n  \"not_a_review\": \"Automated static assertions over repository files: substring presence, file existence, regex extraction, and counts. No reviewer, no model, and no independent assessment; these are regression guards, not evidence of quality.\",\n  \"status\": \"pass\",\n  \"assertions_run\": 13,\n  \"assertions_failed\": 0,\n  \"checks\": [\n    {\n      \"check\": \"file_exists[rescamp/scripts/rescamp.py]\",\n      \"kind\": \"file-existence\",\n      \"target\": \"rescamp/scripts/rescamp.py\",\n      \"expected\": \"file exists\",\n      \"observed\": \"exists\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"file_exists[rescamp/scripts/workflow.py]\",\n      \"kind\": \"file-existence\",\n      \"target\": \"rescamp/scripts/workflow.py\",\n      \"expected\": \"file exists\",\n      \"observed\": \"exists\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"file_exists[rescamp/scripts/benchmark.py]\",\n      \"kind\": \"file-existence\",\n      \"target\": \"rescamp/scripts/benchmark.py\",\n      \"expected\": \"file exists\",\n      \"observed\": \"exists\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"file_exists[benchmark/prompts/team_u.md]\",\n      \"kind\": \"file-existence\",\n      \"target\": \"benchmark/prompts/team_u.md\",\n      \"expected\": \"file exists\",\n      \"observed\": \"exists\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"file_exists[benchmark/prompts/team_s.md]\",\n      \"kind\": \"file-existence\",\n      \"target\": \"benchmark/prompts/team_s.md\",\n      \"expected\": \"file exists\",\n      \"observed\": \"exists\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"file_exists[benchmark/prompts/team_e.md]\",\n      \"kind\": \"file-existence\",\n      \"target\": \"benchmark/prompts/team_e.md\",\n      \"expected\": \"file exists\",\n      \"observed\": \"exists\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"automatic_vs_manual_qa_wording\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"'automatically' (any case) and 'manual `benchmark`' both present\",\n      \"observed\": \"'automatically': present; 'manual `benchmark`': present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"workflow_subcommand[claim]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/scripts/workflow.py\",\n      \"expected\": \"add_parser(\\\"claim\\\") present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"workflow_subcommand[heartbeat]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/scripts/workflow.py\",\n      \"expected\": \"add_parser(\\\"heartbeat\\\") present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"workflow_subcommand[complete]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/scripts/workflow.py\",\n      \"expected\": \"add_parser(\\\"complete\\\") present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"workflow_subcommand[approve]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/scripts/workflow.py\",\n      \"expected\": \"add_parser(\\\"approve\\\") present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"workflow_subcommand[reconcile]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/scripts/workflow.py\",\n      \"expected\": \"add_parser(\\\"reconcile\\\") present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"workflow_subcommand[audit]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/scripts/workflow.py\",\n      \"expected\": \"add_parser(\\\"audit\\\") present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    }\n  ],\n  \"findings\": []\n}\n"
+      },
+      "usability": {
+        "command": [
+          "/home/hao/software/miniconda3/bin/python3",
+          "scripts/static_reviewer.py",
+          "--role",
+          "usability",
+          "--root",
+          "/home/hao/AI/githubrepo/ResearchPlan"
+        ],
+        "elapsed_seconds": 0.054,
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "{\n  \"check_id\": \"usability\",\n  \"method\": \"static-substring-and-structure-check\",\n  \"independence\": \"none\",\n  \"execution\": \"separate process (isolation only; not an independent assessment)\",\n  \"not_a_review\": \"Automated static assertions over repository files: substring presence, file existence, regex extraction, and counts. No reviewer, no model, and no independent assessment; these are regression guards, not evidence of quality.\",\n  \"status\": \"pass\",\n  \"assertions_run\": 7,\n  \"assertions_failed\": 0,\n  \"checks\": [\n    {\n      \"check\": \"context_budget\",\n      \"kind\": \"count-threshold\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"<= 500 lines and <= 5000 estimated tokens (words * 1.55)\",\n      \"observed\": \"190 lines, 2105 words, 3262 estimated tokens\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"usability_rule[Ask one question per turn]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"literal string present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"usability_rule[Soft stop]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"literal string present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"usability_rule[Hard stop]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"literal string present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"usability_rule[Question budgets are safeguards, not targets]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"literal string present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"usability_rule[Never ask again for information already supplied]\",\n      \"kind\": \"substring-presence\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"literal string present\",\n      \"observed\": \"present\",\n      \"result\": \"pass\"\n    },\n    {\n      \"check\": \"hard_interview_limit\",\n      \"kind\": \"regex-extraction\",\n      \"target\": \"rescamp/SKILL.md\",\n      \"expected\": \"every hard stop value in the profile table <= 18\",\n      \"observed\": \"extracted [8, 12, 18] value(s); maximum 18\",\n      \"result\": \"pass\"\n    }\n  ],\n  \"findings\": []\n}\n"
+      }
+    },
+    "process_isolated_three_team_smoke": {
+      "command": [
+        "/home/hao/software/miniconda3/bin/python3",
+        "rescamp/scripts/benchmark.py",
+        "run",
+        "--scenarios",
+        "/tmp/rescamp-release-jds1l8lq/scenarios",
+        "--config",
+        "benchmark/conditions/process-isolated-fixture.json",
+        "--output",
+        "/tmp/rescamp-release-jds1l8lq/process-fixture",
+        "--jobs",
+        "6",
+        "--timeout",
+        "30"
+      ],
+      "elapsed_seconds": 1.812,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\n  \"benchmark_version\": \"0.8.5\",\n  \"evidence_class\": \"synthetic-fixture\",\n  \"evidence_note\": \"Synthetic fixture output. Team E ratings are hardcoded constants selected by condition id, so scores are predetermined by the fixture and are NOT model-performance estimates or measurements.\",\n  \"conditions\": {\n    \"exhaustive-process-fixture\": {\n      \"n\": 4,\n      \"score_mean_ci95\": [\n        80.463,\n        null,\n        null\n      ],\n      \"interval_suppressed_because\": \"fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity\",\n      \"evidence_class\": \"synthetic-fixture\",\n      \"median\": 80.61,\n      \"critical_defect_rate\": 0.0,\n      \"mean_interview_turns\": 3.0,\n      \"mean_burden_score\": 81.5\n    },\n    \"no-skill-process-fixture\": {\n      \"n\": 4,\n      \"score_mean_ci95\": [\n        35.901,\n        null,\n        null\n      ],\n      \"interval_suppressed_because\": \"fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity\",\n      \"evidence_class\": \"synthetic-fixture\",\n      \"median\": 33.416,\n      \"critical_defect_rate\": 0.5,\n      \"mean_interview_turns\": 2.0,\n      \"mean_burden_score\": 100.0\n    },\n    \"rescamp-0.8-process-fixture\": {\n      \"n\": 4,\n      \"score_mean_ci95\": [\n        85.443,\n        null,\n        null\n      ],\n      \"interval_suppressed_because\": \"fixture ratings are hardcoded constants, so the spread is scenario heterogeneity and not uncertainty about a measured quantity\",\n      \"evidence_class\": \"synthetic-fixture\",\n      \"median\": 85.579,\n      \"critical_defect_rate\": 0.0,\n      \"mean_interview_turns\": 7.25,\n      \"mean_burden_score\": 100.0\n    }\n  },\n  \"pairwise_matched\": {\n    \"exhaustive-process-fixture minus no-skill-process-fixture\": {\n      \"n\": 4,\n      \"matched_on_mutual_success\": true,\n      \"difference_mean_ci95\": [\n        44.563,\n        null,\n        null\n      ]\n    },\n    \"exhaustive-process-fixture minus rescamp-0.8-process-fixture\": {\n      \"n\": 4,\n      \"matched_on_mutual_success\": true,\n      \"difference_mean_ci95\": [\n        -4.98,\n        null,\n        null\n      ]\n    },\n    \"no-skill-process-fixture minus rescamp-0.8-process-fixture\": {\n      \"n\": 4,\n      \"matched_on_mutual_success\": true,\n      \"difference_mean_ci95\": [\n        -49.542,\n        null,\n        null\n      ]\n    }\n  },\n  \"run_id\": \"20260821T020623Z\",\n  \"scenario_count\": 4,\n  \"score_count\": 12,\n  \"failures\": []\n}\n"
+    },
+    "python_compile": {
+      "errors": []
+    },
+    "scenario_validation": {
+      "command": [
+        "/home/hao/software/miniconda3/bin/python3",
+        "rescamp/scripts/benchmark.py",
+        "validate-scenarios",
+        "benchmark/scenarios/public"
+      ],
+      "elapsed_seconds": 0.077,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\n  \"valid\": true,\n  \"count\": 18,\n  \"domains\": [\n    \"art and media studies\",\n    \"civil engineering\",\n    \"communication and emergency management\",\n    \"computational biology\",\n    \"ecology\",\n    \"economics\",\n    \"education research\",\n    \"history\",\n    \"law and public policy\",\n    \"linguistic anthropology\",\n    \"literary studies\",\n    \"materials science\",\n    \"museum and curatorial studies\",\n    \"organizational sociology\",\n    \"political philosophy\",\n    \"public health\",\n    \"public policy\",\n    \"urban design\"\n  ],\n  \"archetypes\": [\n    \"computational\",\n    \"conceptual-normative\",\n    \"creative-practice\",\n    \"design-engineering\",\n    \"evidence-synthesis\",\n    \"experimental\",\n    \"humanities-interpretive\",\n    \"mixed-methods\",\n    \"observational\",\n    \"policy-program-evaluation\",\n    \"qualitative-field\"\n  ]\n}\n"
+    },
+    "skill_self_check": {
+      "command": [
+        "/home/hao/software/miniconda3/bin/python3",
+        "rescamp/scripts/validate_skill.py",
+        "rescamp"
+      ],
+      "elapsed_seconds": 0.088,
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "{\n  \"valid\": true,\n  \"skill_dir\": \"/home/hao/AI/githubrepo/ResearchPlan/rescamp\",\n  \"skill_md_lines\": 190,\n  \"skill_md_words\": 2105,\n  \"conservative_token_estimate\": 3262,\n  \"errors\": [],\n  \"warnings\": []\n}\n"
+    },
+    "unit_tests": {
+      "command": [
+        "/home/hao/software/miniconda3/bin/python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-v"
+      ],
+      "elapsed_seconds": 2.594,
+      "returncode": 0,
+      "stderr": "test_agent_fix_does_not_replace_user_authority (test_automatic_loop.AutomaticLoopTests) ... ok\ntest_independence_claim_requires_execution_evidence (test_automatic_loop.AutomaticLoopTests)\nA record cannot claim independence by writing a bare mode string. ... ok\ntest_quality_loop_creates_frozen_packets (test_automatic_loop.AutomaticLoopTests) ... ok\ntest_review_record_schema_logic (test_automatic_loop.AutomaticLoopTests) ... ok\ntest_stop_validates_and_freezes_but_runs_no_reviewer (test_automatic_loop.AutomaticLoopTests)\n`stop` prepares review inputs. It must not imply a review happened. ... ok\ntest_aggregate_does_not_duplicate_runs (test_benchmark.BenchmarkTests) ... ok\ntest_false_readiness_has_hard_cap (test_benchmark.BenchmarkTests) ... ok\ntest_fixture_matrix_runs (test_benchmark.BenchmarkTests) ... ok\ntest_forced_blocker_is_preserved_and_blocks_readiness (test_benchmark.BenchmarkTests) ... ok\ntest_public_scenarios_cover_every_archetype (test_benchmark.BenchmarkTests) ... ok\ntest_rescamp_fixture_is_conservative_without_false_readiness_cap (test_benchmark.BenchmarkTests) ... ok\ntest_team_s_never_receives_hidden_brief_in_fixture_path (test_benchmark.BenchmarkTests) ... ok\ntest_tools_manifest_uses_capability_matching (test_benchmark.BenchmarkTests) ... ok\ntest_complete_standard_campaign_validates (test_engine.EngineTests) ... ok\ntest_content_change_stales_review (test_engine.EngineTests) ... ok\ntest_render_and_audit_hashes (test_engine.EngineTests) ... ok\ntest_scoped_campaign_does_not_require_budget_list (test_engine.EngineTests) ... ok\ntest_stage_cycle_is_detected (test_engine.EngineTests) ... ok\ntest_tool_requires_canary (test_engine.EngineTests) ... ok\ntest_all_archetypes_validate_without_numeric_metrics (test_generalization.GeneralizationTests) ... ok\ntest_high_assurance_independent_review_passes (test_generalization.GeneralizationTests) ... ok\ntest_high_assurance_sequential_review_is_rejected (test_generalization.GeneralizationTests) ... ok\ntest_non_stem_adjudication_is_accepted (test_generalization.GeneralizationTests) ... ok\ntest_question_budget_is_enforced_not_merely_declared (test_generalization.GeneralizationTests)\nExceeding the hard limit must fail validation unless the user authorized it. ... ok\ntest_skill_budget_table_matches_the_engine (test_generalization.GeneralizationTests)\nThe table users read and the limit the engine enforces must not drift apart. ... ok\ntest_both_hosts_receive_identical_skill (test_installer.InstallerTests) ... ok\ntest_applies_several_sections_in_one_call (test_render_contract.ApplyCommandTests) ... ok\ntest_one_bad_field_writes_nothing (test_render_contract.ApplyCommandTests) ... ok\ntest_claims_matrix_includes_inquiries (test_render_contract.BundleContentTests) ... ok\ntest_kickoff_carries_first_gate_and_backlog (test_render_contract.BundleContentTests) ... ok\ntest_prompt_discloses_empty_sections_and_challenge_level (test_render_contract.BundleContentTests) ... ok\ntest_task_brief_instantiates_real_work_units (test_render_contract.BundleContentTests)\nA generic stub would strip a delegated worker of its real prohibitions. ... ok\ntest_add_accepts_an_array_and_still_checks_fields (test_render_contract.CliSafetyTests) ... ok\ntest_rubric_digest_is_stable_across_tool_versions (test_render_contract.CliSafetyTests) ... ok\ntest_set_rejects_a_typod_path_instead_of_creating_junk (test_render_contract.CliSafetyTests) ... ok\ntest_stale_review_error_names_the_mismatched_digest (test_render_contract.CliSafetyTests) ... ok\ntest_add_accepts_every_field_the_queue_consumes (test_render_contract.CompilerRuntimeContractTests) ... ok\ntest_queue_fields_are_actually_read_by_workflow (test_render_contract.CompilerRuntimeContractTests)\nGuard the other direction: if workflow.py renames a field, this fails. ... ok\ntest_unit_built_through_add_carries_dependencies_into_the_queue (test_render_contract.CompilerRuntimeContractTests) ... ok\ntest_finalize_does_not_invalidate_its_own_reviews (test_render_contract.DigestStabilityTests)\nfinalize -> audit --strict -> finalize must all succeed on unchanged content. ... ok\ntest_status_is_outside_the_content_digest (test_render_contract.DigestStabilityTests) ... ok\ntest_declared_absence_of_subagents_blocks_an_independence_claim (test_render_contract.HostProfileTests) ... ok\ntest_probe_reports_testable_facts_and_marks_the_rest_unknown (test_render_contract.HostProfileTests) ... ok\ntest_audit_detects_a_manifest_rewritten_to_match_a_tampered_artifact (test_render_contract.IntegrityClaimTests) ... ok\ntest_claims_reach_the_execution_prompt (test_render_contract.IntegrityClaimTests) ... ok\ntest_explicitly_accepted_critical_risk_does_not_block (test_render_contract.IntegrityClaimTests) ... ok\ntest_pass_verdict_cannot_launder_a_critical_finding (test_render_contract.IntegrityClaimTests) ... ok\ntest_add_rejects_unknown_fields (test_render_contract.ObjectVocabularyTests) ... ok\ntest_declared_required_fields_are_enforced_by_the_validator (test_render_contract.ObjectVocabularyTests)\nGuards against OBJECT_SPECS drifting away from validate_state. ... ok\ntest_objects_reference_documents_every_field (test_render_contract.ObjectVocabularyTests)\nreferences/objects.md is what the agent reads; it must not drift from the spec. ... ok\ntest_schema_command_documents_required_fields (test_render_contract.ObjectVocabularyTests) ... ok\ntest_specs_accept_every_field_used_by_a_valid_campaign (test_render_contract.ObjectVocabularyTests)\nA spec that rejects a legitimate field would make `add` unusable. ... ok\ntest_campaign_prompt_contains_no_python_reprs (test_render_contract.RenderContractTests) ... ok\ntest_campaign_prompt_contains_no_raw_json_blobs (test_render_contract.RenderContractTests) ... ok\ntest_incomplete_object_is_flagged_not_dumped (test_render_contract.RenderContractTests) ... ok\ntest_inquiry_fields_survive_rendering (test_render_contract.RenderContractTests)\nEvery field of a validated inquiry must reach the rendered prompt. ... ok\ntest_absent_findings_key_is_still_rejected (test_render_contract.ReviewIngestTests) ... ok\ntest_clean_review_with_no_findings_is_accepted (test_render_contract.ReviewIngestTests)\nA reviewer that found nothing must not have to invent a filler finding. ... ok\ntest_malformed_findings_are_rejected (test_render_contract.ReviewIngestTests) ... ok\ntest_every_campaign_section_is_reviewed_by_someone (test_render_contract.ReviewPacketScopeTests)\nScoping must not silently drop a section out of all review. ... ok\ntest_packets_are_role_scoped_and_distinct (test_render_contract.ReviewPacketScopeTests) ... ok\ntest_unknown_role_receives_the_whole_campaign (test_render_contract.ReviewPacketScopeTests) ... ok\ntest_explicit_branch_beats_keyword_routing (test_section_digests.BenchmarkHonestyTests)\n`rival-readings` and `objections` match no keyword and silently route to scope. ... ok\ntest_fixture_conditions_report_no_interval_at_all (test_section_digests.BenchmarkHonestyTests)\nFixture ratings are constants; the spread is scenario heterogeneity, not uncertainty. ... ok\ntest_interval_returns_once_the_sample_is_adequate (test_section_digests.BenchmarkHonestyTests) ... ok\ntest_no_interval_below_the_minimum_sample (test_section_digests.BenchmarkHonestyTests) ... ok\ntest_every_campaign_section_is_covered_at_every_profile (test_section_digests.CoverageInvariantTests) ... ok\ntest_reference_targets_are_inside_the_referring_roles_scope (test_section_digests.CoverageInvariantTests)\nA gate naming a method means a methods change must reach that reviewer. ... ok\ntest_every_event_records_the_section_digests (test_section_digests.EventLedgerTests)\nWithout these the log names the path that changed but not what it became, so a ... ok\ntest_a_forged_section_digest_is_rejected (test_section_digests.RecordIntegrityTests) ... ok\ntest_a_record_cannot_pad_its_responsibility (test_section_digests.RecordIntegrityTests) ... ok\ntest_a_record_cannot_shrink_its_own_responsibility (test_section_digests.RecordIntegrityTests)\nDropping a section would make the record immune to changes in it. ... ok\ntest_legacy_whole_campaign_records_still_work (test_section_digests.RecordIntegrityTests)\nRecords written before per-section binding keep the old all-or-nothing rule. ... ok\ntest_rubric_change_still_invalidates_everything (test_section_digests.RecordIntegrityTests) ... ok\ntest_status_names_only_the_roles_that_must_re_run (test_section_digests.ReviewStatusTests) ... ok\ntest_a_methods_repair_reaches_whoever_approved_the_dependent_gates (test_section_digests.StalenessScopeTests)\nGate criteria name methods and inquiries by id, so an inquiry change is not ... ok\ntest_a_referenced_section_still_invalidates (test_section_digests.StalenessScopeTests)\nMethods references inquiries, so an inquiry change reaches the methods reviewer. ... ok\ntest_all_reviews_valid_before_any_change (test_section_digests.StalenessScopeTests) ... ok\ntest_an_operations_only_repair_still_spares_methods (test_section_digests.StalenessScopeTests) ... ok\ntest_declared_references_actually_cross_role_scopes (test_section_digests.StalenessScopeTests)\nA closure that adds nothing is not a safeguard, it is decoration. ... ok\ntest_ethics_change_invalidates_a_reviewer_at_standard (test_section_digests.StalenessScopeTests)\nRegression: ethics_rights_safety was in no standard-profile scope. ... ok\ntest_interview_bookkeeping_invalidates_nothing (test_section_digests.StalenessScopeTests) ... ok\ntest_operations_repair_spares_the_methods_review (test_section_digests.StalenessScopeTests) ... ok\ntest_codex_metadata_does_not_change_skill (test_skill_structure.SkillStructureTests)\nHost policy lives outside SKILL.md, so both hosts read identical bytes. ... ok\ntest_every_referenced_file_exists (test_skill_structure.SkillStructureTests)\nSKILL.md points at references and scripts; a dangling pointer is a silent failure. ... ok\ntest_exactly_one_canonical_skill_md (test_skill_structure.SkillStructureTests) ... ok\ntest_host_registry_covers_every_installable_host (test_skill_structure.SkillStructureTests)\nAdding a host must mean editing hosts.md and install.py, never SKILL.md. ... ok\ntest_no_host_specific_skill_sources (test_skill_structure.SkillStructureTests) ... ok\ntest_skill_is_concise_and_standard (test_skill_structure.SkillStructureTests) ... ok\ntest_concurrent_claims_do_not_duplicate_one_unit (test_workflow.WorkflowTests) ... ok\ntest_expired_lease_returns_to_pending (test_workflow.WorkflowTests) ... ok\ntest_fail_closed_approval_dependency_and_artifact_audit (test_workflow.WorkflowTests) ... ok\ntest_init_refuses_a_campaign_that_was_never_finalized (test_workflow.WorkflowTests)\nThe one component that dispatches work must not skip the readiness check. ... ok\ntest_init_rejects_a_dependency_cycle (test_workflow.WorkflowTests)\nOtherwise the queue accepts it and then never claims anything: silent deadlock. ... ok\n\n----------------------------------------------------------------------\nRan 94 tests in 2.478s\n\nOK\n",
+      "stdout": ""
+    }
+  },
+  "elapsed_seconds": 5.15,
+  "errors": [],
+  "release": "rescamp-0.8.5",
+  "root": "/home/hao/AI/githubrepo/ResearchPlan",
+  "skill_tree_sha256": "88dfe7db0df5dbe87c002e9ed80698f65bebd0e2fd4c1f37647269c0aa2f7997",
+  "valid": true,
+  "warnings": []
+}

@@ -1,0 +1,138 @@
+{
+  "archetypes": [
+    "conceptual-normative"
+  ],
+  "critical_defects": [
+    {
+      "description": "Derives obligation directly from descriptive inequality",
+      "id": "is-ought",
+      "severity": "critical"
+    },
+    {
+      "description": "Uses only weak objections",
+      "id": "straw-objection",
+      "severity": "major"
+    }
+  ],
+  "domain": "political philosophy",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not suppress objections or assume the conclusion.",
+      "id": "advocacy-assumed",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Do not assume the user wants advocacy rather than balanced analysis.",
+    "facts": {
+      "audience": "mixed philosophy and policy",
+      "purpose": "map defensible arguments and objections for a scholarly workshop",
+      "scope": "municipal historical emissions and present vulnerability",
+      "traditions": "corrective justice, distributive justice, capabilities"
+    },
+    "knowledge_limits": [
+      "preferred final position",
+      "legal feasibility"
+    ]
+  },
+  "id": "climate-reparations-normative",
+  "initial_request": "Develop a rigorous case for climate reparations at the city level.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "comparative argument map, not predetermined advocacy",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "purpose-stance",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "municipal historical responsibility and current vulnerability",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "scope",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "corrective, distributive, and capabilities approaches",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "normative-principles",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "separate empirical responsibility/vulnerability claims from normative inference",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "descriptive-premises",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "collective responsibility, temporal distance, migration, feasibility, legitimacy",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "objections",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "explicit criteria for coherence, fairness, feasibility, and institutional fit",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "adjudication",
+      "importance": "material"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "premises, conclusions, objections, replies",
+      "id": "argument-map"
+    },
+    {
+      "description": "empirical premises separated from moral claims",
+      "id": "descriptive-normative-separation"
+    },
+    {
+      "description": "hard cases and scope conditions",
+      "id": "counterexamples"
+    },
+    {
+      "description": "compare multiple traditions",
+      "id": "plural-frameworks"
+    }
+  ],
+  "title": "Normative framework for local climate reparations"
+}

@@ -1,0 +1,27 @@
+{
+  "description": "Copy and edit. Commands read one JSON request from stdin and emit one JSON response on stdout.",
+  "conditions": [
+    {
+      "id": "rescamp-0.8-live",
+      "adapter": "external-command",
+      "command": "python3 benchmark/adapters/my_team_s_adapter.py --condition rescamp-0.8",
+      "user_adapter": "python3 benchmark/adapters/my_team_u_adapter.py",
+      "evaluator_adapter": "python3 benchmark/adapters/my_team_e_adapter.py",
+      "model_id": "record-exact-provider-model-id",
+      "host_version": "record-exact-host-version",
+      "skill_commit": "record-git-commit",
+      "capabilities": ["elicitation", "campaign-compilation"]
+    },
+    {
+      "id": "neutral-baseline-live",
+      "adapter": "external-command",
+      "command": "python3 benchmark/adapters/my_team_s_adapter.py --condition neutral",
+      "user_adapter": "python3 benchmark/adapters/my_team_u_adapter.py",
+      "evaluator_adapter": "python3 benchmark/adapters/my_team_e_adapter.py",
+      "model_id": "same-model-as-tested-condition",
+      "host_version": "same-host-version",
+      "skill_commit": "none",
+      "capabilities": ["elicitation", "campaign-compilation"]
+    }
+  ]
+}

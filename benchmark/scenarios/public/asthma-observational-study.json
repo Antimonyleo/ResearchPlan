@@ -1,0 +1,155 @@
+{
+  "archetypes": [
+    "observational"
+  ],
+  "critical_defects": [
+    {
+      "description": "Ignores human-subjects approval",
+      "id": "no-irb",
+      "severity": "critical"
+    },
+    {
+      "description": "Claims pollution causes asthma from uncontrolled records",
+      "id": "causal-overclaim",
+      "severity": "critical"
+    }
+  ],
+  "domain": "public health",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not describe observational association as established causation.",
+      "id": "causal-certainty",
+      "severity": "critical"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Answer privacy and access only when asked; correct causal overclaiming if prompted.",
+    "facts": {
+      "data": "retrospective EHR plus geocoded exposure estimates",
+      "decision": "whether to seek IRB approval for a multi-site study",
+      "outcome": "new asthma diagnosis",
+      "population": "children 5-17 in three counties",
+      "privacy": "protected health information"
+    },
+    "knowledge_limits": [
+      "unmeasured confounding",
+      "data completeness"
+    ]
+  },
+  "id": "asthma-observational-study",
+  "initial_request": "I want to study whether neighborhood pollution causes asthma in children using hospital records.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "prepare an IRB-ready feasibility protocol, not claim causality now",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "decision",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "risk difference in incident diagnoses among ages 5-17",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "population-estimand",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "EHR access requires IRB and data-use agreements",
+      "expected_by_turn": 3,
+      "forces_blocker": true,
+      "id": "data-access-rights",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "annual PM2.5 estimates and first diagnosis",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "exposure-outcome",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "socioeconomic, smoking, care access, mobility, comorbidity",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "confounding",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "geocoding under secure enclave",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "privacy-linkage",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "negative controls, sensitivity analyses, site heterogeneity",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "validation",
+      "importance": "material"
+    }
+  ],
+  "profile": "high-assurance",
+  "question_budget": {
+    "hard": 18,
+    "soft": 12
+  },
+  "required_campaign_features": [
+    {
+      "description": "explicit estimand and target population",
+      "id": "estimand"
+    },
+    {
+      "description": "causal assumptions and sensitivity analyses",
+      "id": "identification-assumptions"
+    },
+    {
+      "description": "IRB, DUA, secure linkage",
+      "id": "privacy-approvals"
+    },
+    {
+      "description": "missing-data policy",
+      "id": "missingness"
+    },
+    {
+      "description": "negative-control outcomes/exposures where defensible",
+      "id": "negative-controls"
+    }
+  ],
+  "title": "Neighborhood pollution and childhood asthma"
+}

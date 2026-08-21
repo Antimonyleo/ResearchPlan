@@ -1,0 +1,155 @@
+{
+  "archetypes": [
+    "evidence-synthesis"
+  ],
+  "critical_defects": [
+    {
+      "description": "No reproducible eligibility criteria",
+      "id": "no-inclusion-criteria",
+      "severity": "critical"
+    },
+    {
+      "description": "Uses vendor claims as efficacy evidence",
+      "id": "app-marketing",
+      "severity": "major"
+    }
+  ],
+  "domain": "education research",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not promise pooling before checking heterogeneity.",
+      "id": "meta-analysis-guaranteed",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Do not volunteer exact population/outcomes until PICO-like scope is asked.",
+    "facts": {
+      "comparators": "usual instruction or active digital control",
+      "date": "search through July 2026",
+      "intervention": "digital phonics/decoding apps",
+      "outcomes": "standardized decoding and comprehension",
+      "population": "grades 6-8 with documented reading difficulty"
+    },
+    "knowledge_limits": [
+      "number of eligible studies",
+      "meta-analysis feasibility"
+    ]
+  },
+  "id": "reading-intervention-review",
+  "initial_request": "Review whether phonics apps help struggling middle-school readers.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "grades 6-8 with reading difficulty; digital phonics/decoding apps",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "review-question",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "usual/active control; standardized decoding and comprehension",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "comparators-outcomes",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "databases, grey literature, languages, through July 2026",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "search-boundary",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "randomized and strong quasi-experimental studies separated",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "study-designs",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "dual screening and structured extraction",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "screening-extraction",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "risk-of-bias and certainty appraisal",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "bias-certainty",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "meta-analysis only if sufficiently comparable; otherwise structured synthesis",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "synthesis-policy",
+      "importance": "material"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "reproducible search strings and dates",
+      "id": "search-audit"
+    },
+    {
+      "description": "independent screening/extraction checks",
+      "id": "dual-review"
+    },
+    {
+      "description": "design-appropriate appraisal",
+      "id": "risk-of-bias"
+    },
+    {
+      "description": "predefined pooling policy",
+      "id": "heterogeneity"
+    },
+    {
+      "description": "grey literature and small-study assessment",
+      "id": "publication-bias"
+    }
+  ],
+  "title": "Systematic review of reading interventions"
+}

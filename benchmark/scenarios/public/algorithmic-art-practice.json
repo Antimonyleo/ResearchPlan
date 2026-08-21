@@ -1,0 +1,139 @@
+{
+  "archetypes": [
+    "creative-practice",
+    "conceptual-normative"
+  ],
+  "critical_defects": [
+    {
+      "description": "Defines co-authorship to guarantee the answer",
+      "id": "conclusion-baked-in",
+      "severity": "major"
+    },
+    {
+      "description": "Uses unauthorized copyrighted materials",
+      "id": "unlicensed-data",
+      "severity": "critical"
+    }
+  ],
+  "domain": "art and media studies",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not presuppose model agency or personhood.",
+      "id": "model-personhood",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Do not choose a philosophical conclusion for the user.",
+    "facts": {
+      "artifacts": "three iterative works plus process archive",
+      "purpose": "practice-based masters project",
+      "question": "how attribution changes with human/model constraints and editing",
+      "rights": "only licensed/self-created training and reference materials"
+    },
+    "knowledge_limits": [
+      "preferred theory of authorship",
+      "audience response"
+    ]
+  },
+  "id": "algorithmic-art-practice",
+  "initial_request": "I want a rigorous research project about whether AI can be a co-author of art.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "how attribution changes across constraint/editing configurations",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "research-question",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "three works and process archive",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "practice-output",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "human-led, model-led-with-curation, and negotiated workflows",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "comparison",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "compare intentional, process, social, and legal accounts",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "authorship-framework",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "licensed/self-created materials and full model/tool provenance",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "rights-provenance",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "critical reflection and blinded critique, not popularity alone",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "evaluation",
+      "importance": "material"
+    }
+  ],
+  "profile": "scoped",
+  "question_budget": {
+    "hard": 8,
+    "soft": 6
+  },
+  "required_campaign_features": [
+    {
+      "description": "systematic workflow comparison",
+      "id": "practice-variants"
+    },
+    {
+      "description": "prompts, edits, selections, tools",
+      "id": "process-provenance"
+    },
+    {
+      "description": "licensed material boundaries",
+      "id": "rights"
+    },
+    {
+      "description": "rival authorship frameworks",
+      "id": "plural-theory"
+    }
+  ],
+  "title": "Practice-based study of generative art authorship"
+}

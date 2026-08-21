@@ -1,0 +1,138 @@
+{
+  "archetypes": [
+    "humanities-interpretive"
+  ],
+  "critical_defects": [
+    {
+      "description": "Invents the poet or translator intention",
+      "id": "invented-intent",
+      "severity": "major"
+    },
+    {
+      "description": "Plans extensive copyrighted quotation",
+      "id": "copyright-overquote",
+      "severity": "critical"
+    }
+  ],
+  "domain": "literary studies",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not assume one translation is best across all purposes.",
+      "id": "single-objective-best",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Push back gently on a single universal best translation if the system asks about adjudication.",
+    "facts": {
+      "corpus": "six poems and four English translations",
+      "languages": "source language plus English",
+      "purpose": "an article on how ambiguity is preserved or normalized",
+      "rights": "quotation limits apply"
+    },
+    "knowledge_limits": [
+      "authorial intention",
+      "full translator archives"
+    ]
+  },
+  "id": "poetry-translation-study",
+  "initial_request": "Compare translations of a poet and tell me which is best.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "analyze strategies, not crown a universal winner",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "purpose",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "six poems and four translations",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "corpus",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "ambiguity, rhythm, image, register, and historical context",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "criteria",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "specific source editions and publication dates",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "edition-provenance",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "limited quotation and citation compliance",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "rights",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "multiple defensible interpretations",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "rival-readings",
+      "importance": "material"
+    }
+  ],
+  "profile": "scoped",
+  "question_budget": {
+    "hard": 8,
+    "soft": 6
+  },
+  "required_campaign_features": [
+    {
+      "description": "transparent plural criteria",
+      "id": "adjudication-rubric"
+    },
+    {
+      "description": "passage-level analysis",
+      "id": "close-reading"
+    },
+    {
+      "description": "edition and translator context",
+      "id": "edition-control"
+    },
+    {
+      "description": "credible alternative interpretation",
+      "id": "counter-reading"
+    }
+  ],
+  "title": "Translation and ambiguity in modern poetry"
+}

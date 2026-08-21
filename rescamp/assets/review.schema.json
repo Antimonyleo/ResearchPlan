@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/rescamp/review.schema.json",
+  "title": "ResCamp review record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest", "summary", "findings"],
+  "properties": {
+    "role": {"type": "string", "minLength": 1},
+    "reviewer_id": {"type": "string", "minLength": 1},
+    "mode": {"enum": ["independent-subagent", "separate-session", "external-human", "sequential-pass"]},
+    "verdict": {"enum": ["pass", "revise", "block"]},
+    "content_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "rubric_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "summary": {"type": "string", "minLength": 1},
+    "evidence_inspected": {"type": "array", "items": {"type": "string"}},
+    "reviewed_sections": {
+      "description": "Copy verbatim from the review packet. Maps each campaign section this role is responsible for to its digest at review time, so a later repair elsewhere in the campaign does not invalidate this review. Omit only for legacy records, which fall back to whole-campaign content_digest matching.",
+      "type": "object",
+      "additionalProperties": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+    },
+    "execution_evidence": {
+      "description": "Required when mode is independent-subagent, separate-session, or external-human. Self-attested: it records who ran the review and when so the claim is auditable. Nothing in this skill can observe another process and prove independence.",
+      "type": "object",
+      "required": ["executor_id", "started_at", "completed_at"],
+      "properties": {
+        "executor_id": {"type": "string", "minLength": 1, "description": "Distinct process, session, or person identifier; must differ per reviewer at high-assurance."},
+        "started_at": {"type": "string", "minLength": 1},
+        "completed_at": {"type": "string", "minLength": 1},
+        "host": {"type": "string"}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "action", "description"],
+        "properties": {
+          "severity": {"enum": ["info", "minor", "major", "critical"]},
+          "action": {"enum": ["agent-fix", "user-answer", "external-approval", "accepted-risk"]},
+          "description": {"type": "string", "minLength": 1},
+          "affected_ids": {"type": "array", "items": {"type": "string"}},
+          "recommended_remedy": {"type": "string"}
+        }
+      }
+    }
+  }
+}

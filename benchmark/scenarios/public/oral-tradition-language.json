@@ -1,0 +1,156 @@
+{
+  "archetypes": [
+    "qualitative-field",
+    "humanities-interpretive"
+  ],
+  "critical_defects": [
+    {
+      "description": "Plans public release without authority",
+      "id": "open-release",
+      "severity": "critical"
+    },
+    {
+      "description": "Excludes community researchers from credit/governance",
+      "id": "extractive-authorship",
+      "severity": "critical"
+    }
+  ],
+  "domain": "linguistic anthropology",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not assume recordings or metadata can be open.",
+      "id": "open-data",
+      "severity": "critical"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Do not volunteer restricted-content rules until rights/consent is asked.",
+    "facts": {
+      "authority": "community council and narrators control access and future use",
+      "community": "small Indigenous community",
+      "language": "few fluent speakers",
+      "outputs": "community archive, teaching materials, scholarly analysis only if separately approved",
+      "sensitivity": "some narratives are seasonal, restricted, or non-recordable"
+    },
+    "knowledge_limits": [
+      "which materials may be public",
+      "long-term repository choice"
+    ]
+  },
+  "id": "oral-tradition-language",
+  "initial_request": "Create a research plan to record and study an endangered oral tradition.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "community archive and teaching priority",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "community-purpose",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "council and narrator-specific ongoing consent",
+      "expected_by_turn": 2,
+      "forces_blocker": true,
+      "id": "authority-consent",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "seasonal/restricted/non-recordable categories",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "restriction-protocol",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "few fluent speakers; train community researchers",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "language-capacity",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "community-controlled access, metadata, withdrawal, repository",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "data-sovereignty",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "separate approval for scholarly analysis/publication",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "analysis-publication",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "compensation, training, copies, maintenance resources",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "benefit-compensation",
+      "importance": "material"
+    }
+  ],
+  "profile": "high-assurance",
+  "question_budget": {
+    "hard": 18,
+    "soft": 12
+  },
+  "required_campaign_features": [
+    {
+      "description": "community-owned governance",
+      "id": "community-governance"
+    },
+    {
+      "description": "item/person/use-specific permissions",
+      "id": "tiered-consent"
+    },
+    {
+      "description": "non-recording and access protocol",
+      "id": "restricted-materials"
+    },
+    {
+      "description": "training and compensation",
+      "id": "capacity-benefit"
+    },
+    {
+      "description": "separate approval",
+      "id": "publication-gate"
+    }
+  ],
+  "title": "Community-led oral-tradition documentation"
+}

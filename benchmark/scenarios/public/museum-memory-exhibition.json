@@ -1,0 +1,157 @@
+{
+  "archetypes": [
+    "creative-practice",
+    "humanities-interpretive",
+    "qualitative-field"
+  ],
+  "critical_defects": [
+    {
+      "description": "Collects stories without meaningful community control",
+      "id": "extractive-collection",
+      "severity": "critical"
+    },
+    {
+      "description": "Uses visitor popularity as sole research validation",
+      "id": "popularity-equals-validity",
+      "severity": "major"
+    }
+  ],
+  "domain": "museum and curatorial studies",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not transfer narrative or reproduction control to museum by default.",
+      "id": "museum-owns-story",
+      "severity": "critical"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Emphasize community authority only when participation/rights is asked.",
+    "facts": {
+      "audience": "community and general museum visitors",
+      "community": "diaspora community with contested internal histories",
+      "materials": "oral histories, family objects, photographs",
+      "outputs": "exhibition plus reflective research essay",
+      "rights": "ownership and withdrawal must remain with contributors"
+    },
+    "knowledge_limits": [
+      "which narratives will conflict",
+      "loan conservation constraints"
+    ]
+  },
+  "id": "museum-memory-exhibition",
+  "initial_request": "Help us research and build an exhibition about community memory.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "how curatorial form mediates plural and contested memory",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "research-contribution",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "contributors retain consent, attribution, withdrawal, and culturally specific restrictions",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "community-authority",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "oral histories, family objects, photographs with provenance",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "corpus-materials",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "represent contested accounts without forced reconciliation",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "conflict-policy",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "versioned curatorial decisions and reflective notebook",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "practice-record",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "community critique plus visitor interpretation, not popularity alone",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "audience-evaluation",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "loan, reproduction, and conservation approval",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "conservation-rights",
+      "importance": "critical"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "ongoing consent and withdrawal",
+      "id": "consent-withdrawal"
+    },
+    {
+      "description": "object and story provenance",
+      "id": "provenance"
+    },
+    {
+      "description": "conflict-aware interpretation",
+      "id": "plural-narratives"
+    },
+    {
+      "description": "curatorial decision ledger",
+      "id": "practice-log"
+    },
+    {
+      "description": "loan/reproduction approvals",
+      "id": "rights-gates"
+    }
+  ],
+  "title": "Practice-based research for a memory exhibition"
+}

@@ -1,0 +1,156 @@
+{
+  "archetypes": [
+    "observational",
+    "policy-program-evaluation"
+  ],
+  "critical_defects": [
+    {
+      "description": "Uses only before/after city trend",
+      "id": "post-only",
+      "severity": "critical"
+    },
+    {
+      "description": "Reports employment only",
+      "id": "single-outcome",
+      "severity": "major"
+    }
+  ],
+  "domain": "economics",
+  "forbidden_assumptions": [
+    {
+      "description": "Do not reduce multidimensional effects to helped versus hurt.",
+      "id": "binary-effect",
+      "severity": "major"
+    }
+  ],
+  "hidden_brief": {
+    "answer_policy": "Correct the forced binary framing if asked about outcomes.",
+    "facts": {
+      "concern": "anticipation and concurrent policies",
+      "data": "quarterly employment/wages/business openings plus neighboring cities",
+      "decision": "inform 2027 adjustment",
+      "outcomes": "earnings, employment, hours, prices, closures, distribution",
+      "policy": "city increase implemented in 2024"
+    },
+    "knowledge_limits": [
+      "perfect comparison city",
+      "informal work effects"
+    ]
+  },
+  "id": "minimum-wage-analysis",
+  "initial_request": "Research whether our city minimum wage increased or hurt employment.",
+  "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "inform 2027 adjustment, not prove a binary success/failure",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "decision",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "earnings, jobs, hours, prices, closures, distribution",
+      "expected_by_turn": 2,
+      "forces_blocker": false,
+      "id": "outcomes",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "synthetic/difference-in-differences with multiple comparison checks",
+      "expected_by_turn": 3,
+      "forces_blocker": false,
+      "id": "counterfactual",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "anticipation, pandemic recovery, sector shocks, concurrent policies",
+      "expected_by_turn": 4,
+      "forces_blocker": false,
+      "id": "timing-confounders",
+      "importance": "critical"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "quarterly administrative and survey sources with revisions",
+      "expected_by_turn": 5,
+      "forces_blocker": false,
+      "id": "data-quality",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "sector, firm size, demographic and neighborhood effects",
+      "expected_by_turn": 6,
+      "forces_blocker": false,
+      "id": "heterogeneity",
+      "importance": "material"
+    },
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "safe reversible default with rationale",
+        "explicit blocker"
+      ],
+      "answer_key": "pretrends, placebo dates/places, alternative specifications",
+      "expected_by_turn": 7,
+      "forces_blocker": false,
+      "id": "robustness",
+      "importance": "material"
+    }
+  ],
+  "profile": "standard",
+  "question_budget": {
+    "hard": 12,
+    "soft": 8
+  },
+  "required_campaign_features": [
+    {
+      "description": "outcome-specific estimands",
+      "id": "estimands"
+    },
+    {
+      "description": "comparison strategy and assumptions",
+      "id": "counterfactual-design"
+    },
+    {
+      "description": "diagnostics and falsification",
+      "id": "pretrend-placebo"
+    },
+    {
+      "description": "heterogeneous and distributional effects",
+      "id": "distribution"
+    },
+    {
+      "description": "decision integration",
+      "id": "policy-threshold"
+    }
+  ],
+  "title": "Local minimum-wage policy analysis"
+}

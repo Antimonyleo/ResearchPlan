@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+
+# Build and release outputs
+dist/
+.dist/
+
+# Benchmark and campaign working directories
+benchmark/runs/
+research-campaigns/
+
+# Host session metadata
+.claude/
