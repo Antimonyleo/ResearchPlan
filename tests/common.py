@@ -105,7 +105,8 @@ def complete_state(archetype: str = "evidence-synthesis", profile: str = "standa
     camp["work_units"] = []
     camp["ethics_rights_safety"] = {
         "constraints": ["Respect applicable rights, privacy, consent, and disciplinary ethics"],
-        "external_actions": [], "human_approval_points": ["Approval before publication or external action where applicable"],
+        "external_actions": [],
+        "human_approval_points": [{"id": "publication-signoff", "description": "Approval before publication or external action where applicable"}],
     }
     camp["reporting"] = {
         "claim_rules": ["Separate observation, inference, assumption, and recommendation"],

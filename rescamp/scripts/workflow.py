@@ -17,7 +17,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.8.5"
+VERSION = "0.8.6"
 FINAL = {"succeeded", "failed", "blocked"}
 
 

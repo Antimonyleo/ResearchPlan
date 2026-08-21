@@ -4,7 +4,7 @@ ResCamp is an explicitly invoked research-campaign compiler for Claude Code, Cod
 
 It is a generalization of one specific result. In August 2026 Anthropic published [*Autonomous de novo protein binder design with Claude*](https://www-cdn.anthropic.com/30bf50e22a01388bb29bf077ee3f244531594b7a.pdf), in which Claude ran 24–48 hour autonomous design campaigns against 16 protein targets from a single ~16,000-word protocol prompt; 354 of 1,320 resulting designs bound in the wet lab. The paper's own measurement of that prompt is the idea ResCamp is built on: **about a third of it was domain science, and the remaining two thirds were orchestration, verification, and operations.** ResCamp takes that second two thirds — the part that is not about proteins — and compiles it for any research field. That measurement is of word-count shares, and the paper ran no prompt ablation, so treat the two-thirds figure as a composition finding from one campaign in one field rather than a demonstrated causal contribution. See [Design principles](#design-principles) and [Sources](#sources).
 
-**Version:** 0.8.5  
+**Version:** 0.8.6  
 **Runtime:** Python 3.9+ (standard library only) for durable state, validation, rendering, and benchmarks. The instructions remain usable without Python, at the cost of every guarantee the engine provides.
 
 ## Design principles

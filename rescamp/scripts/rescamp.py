@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-VERSION = "0.8.5"
+VERSION = "0.8.6"
 SCHEMA_VERSION = "3.0"
 SKILL_DIR = Path(__file__).resolve().parent.parent
 STATE_REL = Path("state/campaign.json")
@@ -63,6 +63,10 @@ REVIEW_MODES = {"independent-subagent", "separate-session", "external-human", "s
 INDEPENDENCE_CLAIMING_MODES = {"independent-subagent", "separate-session", "external-human"}
 FINDING_ACTIONS = {"agent-fix", "user-answer", "external-approval", "accepted-risk"}
 SEVERITIES = {"info", "minor", "major", "critical"}
+# Stopping reasons that describe an unfinished campaign. A draft the user asked for, or a
+# campaign waiting on an external dependency, must not reach EXECUTION-READY just because
+# every other check happens to pass.
+NON_EXECUTABLE_STOP_REASONS = {"user-requested-draft", "blocked-by-external-dependency"}
 STOP_REASONS = {
     "material-completeness", "low-next-question-value", "user-budget-reached",
     "blocked-by-external-dependency", "user-requested-draft",
@@ -238,6 +242,9 @@ SECTION_SPECS: dict[str, dict[str, Any]] = {
     "campaign.ethics_rights_safety": {
         "required": ("constraints",),
         "optional": ("external_actions", "human_approval_points"),
+        "note": ("Each entry in external_actions must be an object with an `approval_id` naming the "
+                 "specific approval that authorizes it; approvals live in resources_dispatch.approvals "
+                 "or human_approval_points and need an `id`. Generic approval prose does not gate an action."),
     },
     "campaign.reporting": {
         "required": ("negative_result_policy", "deviation_policy"),
@@ -827,6 +834,13 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         issue("error", "interview.no_stop_reason", "Interview stopping reason is missing", "interview.stopping_reason")
     elif interview.get("stopping_reason") not in STOP_REASONS:
         issue("error", "interview.bad_stop_reason", "Interview stopping reason is invalid", "interview.stopping_reason")
+    elif interview.get("stopping_reason") in NON_EXECUTABLE_STOP_REASONS:
+        # The user asked for a draft, or the campaign is waiting on something outside it.
+        # Passing the other checks does not overrule that.
+        issue("error", "interview.not_executable",
+              f"The interview stopped as {interview['stopping_reason']!r}, which is not an execution-ready "
+              "outcome. Resolve the dependency or resume the interview and stop for a completeness reason.",
+              "interview.stopping_reason")
     if len(turns) > interview.get("soft_limit", PROFILES[profile]["soft"]):
         warning_text = "Interview exceeded soft limit; ensure extension value was explained"
         issue("warning", "interview.soft_limit", warning_text, "interview.turns")
@@ -970,6 +984,33 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     approvals = ethics.get("human_approval_points", []) + resources.get("approvals", [])
     if external_actions and not approvals:
         issue("error", "approval.missing", "External actions exist without human approval points", "campaign.ethics_rights_safety")
+    # Prose in human_approval_points satisfied the check above regardless of what it said,
+    # and nothing tied an approval to the action or work unit it was supposed to gate.
+    approval_ids = {str(item.get("id")) for item in approvals if isinstance(item, dict) and item.get("id")}
+    for index, action in enumerate(external_actions):
+        if not isinstance(action, dict):
+            issue("error", "external_action.malformed",
+                  f"external_actions[{index}] must be an object naming the action and its approval; "
+                  "see `rescamp.py schema campaign.ethics_rights_safety`",
+                  f"campaign.ethics_rights_safety.external_actions.{index}")
+            continue
+        gate = action.get("approval_id")
+        if not _nonempty(gate):
+            issue("error", "external_action.ungated",
+                  f"External action {action.get('id', index)!r} names no approval_id. An external action "
+                  "must point at the specific approval that authorizes it, not at generic approval prose.",
+                  f"campaign.ethics_rights_safety.external_actions.{index}")
+        elif approval_ids and gate not in approval_ids:
+            issue("error", "external_action.bad_approval_ref",
+                  f"External action {action.get('id', index)!r} references unknown approval {gate!r}",
+                  f"campaign.ethics_rights_safety.external_actions.{index}")
+
+    # 3. Rendered outputs must still match the state they were rendered from.
+    rendered = state.get("outputs", {}).get("last_rendered_digest")
+    if rendered and rendered != content_digest(state):
+        issue("error", "outputs.stale",
+              "The rendered bundle was produced from an older campaign version; re-render before "
+              "relying on it or auditing it.", "outputs.last_rendered_digest")
 
     claim_ids, claim_dups = _ids(camp.get("claims", []))
     if claim_dups:

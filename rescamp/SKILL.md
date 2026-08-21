@@ -4,7 +4,7 @@ description: Explicitly invoked research-campaign compiler. Turns a vague inquir
 license: MIT
 compatibility: Requires a coding agent with filesystem access; Python 3.9+ enables durable state, validation, review packets, rendering, and benchmarks.
 metadata:
-  version: "0.8.5"
+  version: "0.8.6"
   invocation: "explicit"
 ---
 

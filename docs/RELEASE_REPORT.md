@@ -1,10 +1,10 @@
-# ResCamp 0.8.5 release and QA report
+# ResCamp 0.8.6 release and QA report
 
 ## Release decision
 
 **Deterministic release status:** PASS
 
-ResCamp 0.8.5 uses one canonical `rescamp/SKILL.md` and one portable supporting tree. Claude Code and Codex installation differs only by destination and invocation syntax. The installer verified byte-identical source, Claude, and Codex tree digests.
+ResCamp 0.8.6 uses one canonical `rescamp/SKILL.md` and one portable supporting tree. Claude Code and Codex installation differs only by destination and invocation syntax. The installer verified byte-identical source, Claude, and Codex tree digests.
 
 ## Scope of this evidence
 
@@ -12,10 +12,10 @@ The checks establish packaging, state-machine, validator, benchmark-harness, wor
 
 ## Results
 
-- Unit/generalization/workflow tests: **94 passed**.
+- Unit/generalization/workflow tests: **100 passed**.
 - Public benchmark scenarios: **18** across **18 domains** and **11 research archetypes**.
 - Canonical `SKILL.md`: **190 lines**, **2105 words**, conservative estimate **3262 tokens**.
-- Canonical skill tree SHA-256: `88dfe7db0df5dbe87c002e9ed80698f65bebd0e2fd4c1f37647269c0aa2f7997`.
+- Canonical skill tree SHA-256: `333a770806bbcb4364417088a46c13d9553af61dad05ee5b480d86294b8931cd`.
 - Static structural checks (substring, existence, and count assertions; not reviews and not independent): `architecture`=pass, `generalization`=pass, `packaging-integrity`=pass, `quality-workflow`=pass, `usability`=pass.
 - Release errors: **0**; warnings: **0**.
 

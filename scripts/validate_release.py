@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.8.5"
+VERSION = "0.8.6"
 
 
 def run(command: list[str], cwd: Path, timeout: int = 180, env: dict[str, str] | None = None) -> dict[str, Any]:

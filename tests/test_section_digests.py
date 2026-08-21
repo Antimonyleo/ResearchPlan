@@ -254,5 +254,75 @@ class BenchmarkHonestyTests(unittest.TestCase):
         )
 
 
+
+class FailClosedTests(unittest.TestCase):
+    """Holes an independent review found after 0.8.5 was first pushed."""
+
+    def _reviewed(self, **overrides):
+        state = complete_state()
+        for path, value in overrides.items():
+            node = state
+            parts = path.split(".")
+            for key in parts[:-1]:
+                node = node[key]
+            node[parts[-1]] = value
+        return bind_reviews(state)
+
+    def test_a_draft_the_user_asked_for_cannot_become_execution_ready(self):
+        for reason in ("user-requested-draft", "blocked-by-external-dependency"):
+            with self.subTest(reason=reason):
+                state = self._reviewed(**{"interview.stopping_reason": reason})
+                result = engine.validate_state(state, include_reviews=True)
+                self.assertFalse(result["execution_ready"],
+                                 f"{reason} must not be overruled by the other checks passing")
+                self.assertTrue(any(i["code"] == "interview.not_executable" for i in result["errors"]))
+
+    def test_a_completeness_stop_still_finalizes(self):
+        state = self._reviewed(**{"interview.stopping_reason": "material-completeness"})
+        self.assertTrue(engine.validate_state(state, include_reviews=True)["execution_ready"])
+
+    def test_an_external_action_must_name_the_approval_that_gates_it(self):
+        state = self._reviewed()
+        state["campaign"]["ethics_rights_safety"]["external_actions"] = [
+            {"id": "publish", "description": "Publish findings to a public site"}]
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertFalse(result["execution_ready"], "generic approval prose must not gate a real action")
+        self.assertTrue(any(i["code"] == "external_action.ungated" for i in result["errors"]))
+
+    def test_an_external_action_referencing_a_real_approval_passes(self):
+        state = complete_state()
+        state["campaign"]["resources_dispatch"]["approvals"] = [
+            {"id": "comms-signoff", "description": "Communications lead authorizes publication"}]
+        state["campaign"]["ethics_rights_safety"]["external_actions"] = [
+            {"id": "publish", "description": "Publish findings", "approval_id": "comms-signoff"}]
+        state = bind_reviews(state)
+        self.assertTrue(engine.validate_state(state, include_reviews=True)["execution_ready"])
+
+    def test_a_stale_rendered_bundle_is_reported(self):
+        state = self._reviewed()
+        state["outputs"] = {"last_rendered_digest": "sha256:" + "0" * 64, "status": "EXECUTION-READY", "manifest": {}}
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertFalse(result["execution_ready"])
+        self.assertTrue(any(i["code"] == "outputs.stale" for i in result["errors"]))
+
+
+class BenchmarkBoundaryTests(unittest.TestCase):
+    def setUp(self):
+        import importlib.util
+        from common import ROOT
+        spec = importlib.util.spec_from_file_location("bench", ROOT / "rescamp/scripts/benchmark.py")
+        self.bench = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.bench)
+
+    def test_evaluator_only_annotations_never_reach_the_system_under_test(self):
+        """Team U's answered_dimension_ids in the shared history made elicitation recall circular."""
+        history = [{"role": "user", "message": "scope: eight districts",
+                    "answered_dimension_ids": ["scope"], "blocker_ids": ["consent"]}]
+        seen = self.bench.public_history(history)[0]
+        for field in self.bench.EVALUATOR_ONLY_EVENT_FIELDS:
+            self.assertNotIn(field, seen)
+        self.assertEqual(seen["message"], "scope: eight districts")
+
+
 if __name__ == "__main__":
     unittest.main()

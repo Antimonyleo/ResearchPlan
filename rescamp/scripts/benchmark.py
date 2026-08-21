@@ -15,6 +15,7 @@ import json
 import math
 import os
 import random
+import re
 import shlex
 import statistics
 import subprocess
@@ -25,7 +26,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.8.5"
+VERSION = "0.8.6"
 SKILL_DIR = Path(__file__).resolve().parent.parent
 RUBRIC_PATH = SKILL_DIR / "assets" / "universal_rubric.json"
 IMPORTANCE_WEIGHT = {"low": 1.0, "material": 2.0, "critical": 4.0}
@@ -235,12 +236,24 @@ def branch_questions(profile: str, archetypes: list[str]) -> list[tuple[str, str
 
 
 def fixture_team_s(condition: str, visible_scenario: dict[str, Any], history: list[dict[str, Any]], state: dict[str, Any]) -> dict[str, Any]:
+    # Read the visible conversation only. This used to consume Team U's private
+    # `answered_dimension_ids` and `blocker_ids` straight out of the shared history, which
+    # made elicitation recall and blocker preservation circular: the fixture scored well
+    # because it read the answer key, not because it interviewed well.
+    #
+    # Remaining known leak, documented rather than hidden: `fixture_team_u` still prefixes
+    # each answer with the dimension id in prose, contrary to benchmark/prompts/team_u.md.
+    # Parsing that is a fair reading of visible text, but it means the built-in fixtures do
+    # not model a clean information boundary. A live Team U must not name dimension ids.
     answered: list[str] = []
     blockers: list[str] = []
     for event in history:
-        if event.get("role") == "user":
-            answered.extend(event.get("answered_dimension_ids", []))
-            blockers.extend(event.get("blocker_ids", []))
+        if event.get("role") != "user":
+            continue
+        message = event.get("message", "")
+        answered.extend(re.findall(r"([A-Za-z0-9][A-Za-z0-9_-]*):", message))
+        for sentence in message.split(BLOCKER_PHRASE)[1:]:
+            blockers.extend(re.findall(r"treat ([A-Za-z0-9][A-Za-z0-9_-]*) as unresolved", sentence))
     state["answered_ids"] = sorted(set(answered))
     state["blocker_ids"] = sorted(set(blockers))
     questions = branch_questions(visible_scenario["profile"], visible_scenario["archetypes"])
@@ -306,6 +319,11 @@ def fixture_team_u(scenario: dict[str, Any], question: dict[str, Any], history: 
     answer_parts = [f"{dim['id']}: {json.dumps(dim.get('answer_key'), ensure_ascii=False)}" for dim in matched]
     if not answer_parts:
         answer_parts = ["I do not have a stronger private constraint; use a reversible default and mark consequential uncertainty."]
+    # A real user says a blocker out loud rather than handing over a structured flag.
+    # Team S has to hear it in the text, which is what makes the blocker metric meaningful.
+    for dim in matched:
+        if dim.get("forces_blocker"):
+            answer_parts.append(f"{BLOCKER_PHRASE} I cannot authorize this myself, so treat {dim['id']} as unresolved.")
     return {
         "message": " ".join(answer_parts),
         "answered_dimension_ids": [dim["id"] for dim in matched],
@@ -394,6 +412,22 @@ def fixture_team_e(scenario: dict[str, Any], transcript: list[dict[str, Any]], f
 TEAM_S_VISIBLE_CONDITION_KEYS = frozenset({"id", "model_id", "host_version", "skill_commit", "capabilities", "adapter"})
 
 
+# Fields on a transcript event that exist for the hidden user and the evaluator only.
+# They were appended to the shared history and sent straight back to the system under
+# test, which let Team S read which dimensions Team U considered answered — making
+# elicitation recall and blocker preservation partly circular.
+EVALUATOR_ONLY_EVENT_FIELDS = ("answered_dimension_ids", "blocker_ids")
+
+# What the hidden user says aloud when something is genuinely outside their authority.
+BLOCKER_PHRASE = "I do not have that authority."
+
+
+def public_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The transcript as the system under test may see it."""
+    return [{k: v for k, v in event.items() if k not in EVALUATOR_ONLY_EVENT_FIELDS}
+            for event in history]
+
+
 def team_s_condition_view(condition: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in condition.items() if k in TEAM_S_VISIBLE_CONDITION_KEYS}
 
@@ -410,12 +444,12 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
 
     for _ in range(max_turns + 1):
         if condition.get("adapter") == "fixture":
-            response = fixture_team_s(condition_id, public_scenario(scenario), history, system_state)
+            response = fixture_team_s(condition_id, public_scenario(scenario), public_history(history), system_state)
             system_state = response.get("state", system_state)
         else:
             payload = {
                 "protocol": "rescamp-team-s-v1", "public_scenario": public_scenario(scenario),
-                "history": history, "condition": team_s_condition_view(condition),
+                "history": public_history(history), "condition": team_s_condition_view(condition),
                 "run_dir": str(run_dir),
             }
             response = call_adapter(condition["command"], payload, timeout)

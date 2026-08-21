@@ -1,5 +1,5 @@
 {
-  "benchmark_version": "0.8.5",
+  "benchmark_version": "0.8.6",
   "conditions": {
     "exhaustive-process-fixture": {
       "critical_defect_rate": 0.0,
@@ -76,7 +76,7 @@
       "n": 4
     }
   },
-  "run_id": "20260821T020623Z",
+  "run_id": "20260821T051219Z",
   "scenario_count": 4,
   "score_count": 12
 }

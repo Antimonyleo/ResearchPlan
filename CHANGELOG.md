@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.6
+
+An independent Codex review of the published 0.8.5 tree. Its verdict — "not yet a complete tool… a working happy path, not reliably fail-closed" — was fair. Four of its findings reproduced; one did not.
+
+### Fail-open paths closed
+
+- **A draft the user asked for could become execution-ready.** The stopping reasons `user-requested-draft` and `blocked-by-external-dependency` say the campaign is unfinished, and passing every other check overruled them. Both now block finalization. This was the worst of the four: it silently overrode an explicit user instruction.
+- **External actions were gated by prose.** Any text in `human_approval_points` satisfied the check, and no approval was tied to the action it authorized — so "publish externally", gated by "someone should probably look at it", reached execution-ready. Each external action must now name an `approval_id` that resolves to a declared approval.
+- **`audit --strict` certified stale bundles.** It verified files against the manifest but never checked that the rendered digest still matched current campaign content, so a bundle rendered before an edit passed. Now an `outputs.stale` error. (Codex's own repro tripped a different guard; the gap is real and appears when the edit touches state that does not stale reviews.)
+- **The benchmark leaked the answer key to the system under test.** Team U's private `answered_dimension_ids` and `blocker_ids` were appended to the shared history and sent back to Team S, making elicitation recall and blocker preservation circular. History is now projected before it reaches Team S. Removing the leak *broke the blocker-preservation test*, which is the finding: the fixture had been scoring on the oracle rather than the interview. Team U now states a blocker in prose, as a real user would, and Team S has to hear it.
+
+### Known leak now documented rather than hidden
+
+`fixture_team_u` still prefixes each answer with the dimension id, contrary to `benchmark/prompts/team_u.md`. Parsing visible text is fair, but it means the built-in fixtures do not model a clean information boundary. Stated in the source at the point where it matters. A live Team U must not name dimension ids.
+
+### Not reproduced
+
+Codex reported that the repository describes tested ChatGPT support. It does not — no file mentions ChatGPT. `install.py` registers `claude-code` and `codex` only, and the README says "Claude Code, Codex, and other Agent Skills hosts".
+
+### Still open, and agreed
+
+Its completion threshold is the right one and mostly unmet: no live-model run on either host, no end-to-end interview→review→repair→finalize integration test, queue provenance still trusting a string rather than revalidating, pilots still documentation-only, and evaluator blinding still defeated by condition-bearing run directories and artifact paths. These are named in the README's Known tensions.
+
+100 tests, up from 94.
+
 ## 0.8.5
 
 Findings from three independent reviewers — function, efficiency, and scientific precision — run against 0.8.4 immediately before first publication. The function reviewer's verdict was "do not publish as-is", and it was right.

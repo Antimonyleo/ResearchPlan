@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and build deterministic ResCamp 0.8.5 release archives."""
+"""Validate and build deterministic ResCamp 0.8.6 release archives."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 from typing import Iterable
 
-VERSION = "0.8.5"
+VERSION = "0.8.6"
 TOP = f"rescamp-v{VERSION}"
 FIXED_ZIP_TIME = (2026, 8, 20, 0, 0, 0)
 
