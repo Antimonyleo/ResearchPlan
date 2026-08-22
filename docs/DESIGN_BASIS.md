@@ -28,7 +28,7 @@ Recent long-horizon work converges on a narrow operational pattern: keep the gov
 
 ResCamp translates that pattern into active plan digests, stage checkpoints, fresh review at major decision boundaries, and controlled amendments. This goes beyond the binder paper: its protocol was iterated in test campaigns and then frozen, but the paper does not describe material plan amendments inside a reported campaign. For research involving people, the amendment model also follows [SPIRIT 2025](https://doi.org/10.1038/s41591-025-03668-w): keep dated protocol versions, an amendment trail, and explicit approval or communication for important changes.
 
-These sources do not establish a universal checkpoint frequency. ResCamp's default of one review per major decision-bearing stage, capped at eight without a specific reason, is a cost-control design judgment.
+These sources do not establish a universal checkpoint frequency, nor a review size. ResCamp's default — one review per major decision-bearing execution stage, each presenting at most three material findings — is a cost-control design judgment, not a finding. The cap is bounded disclosure rather than bounded inspection: a reviewer holding more than three material findings must say how many it found, because a silently truncated review is indistinguishable from a clean one.
 
 ## 4. Scientific-agent benchmarks
 

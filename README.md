@@ -217,8 +217,10 @@ the expected artifacts. It tests transport, not research quality.
 ## What this does not prove
 
 ResCamp catches structural omissions, inconsistent references, stale reviews, unsupported
-readiness claims, and modified artifacts. Independent agent review can surface unclear
-instructions and weak research logic — as it did in the example above.
+readiness claims, and modified artifacts. Agent review can surface unclear instructions and
+weak research logic — as it did in the example above, where it was `sequential-pass`, the
+weakest rung on the independence ladder. A separate or blinded reviewer is stronger; neither
+is external validation.
 
 It cannot tell you whether the proposed science is true. It cannot authenticate a real-world
 approval, guarantee that a later agent obeys the prompt, or substitute for data, replication,

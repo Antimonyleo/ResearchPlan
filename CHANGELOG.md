@@ -10,6 +10,13 @@
 - Amendment guidance no longer instructs an execution agent to "use ResCamp `revise`". The rendered prompt is handed to agents and teams that may not have the skill, and `revise` is a mode rather than a CLI subcommand.
 - Fixed multi-criterion gates in `KICKOFF.md` rendering every criterion after the first as a sub-point of the first.
 
+Review pass over code, files, and writing:
+
+- `scripts/validate_release.py` skipped every JSON Schema check silently when `jsonschema` was absent, and still reported `valid: true` with zero warnings. Missing schema validation is now a warning that names what did not run.
+- `rescamp/assets/campaign.schema.json` was only checked for well-formedness, so the published contract for `campaign.json` was free to drift from the engine. Release validation now validates committed example state against it, and a unit test validates freshly built state for all three profiles.
+- The README credited the worked example to "independent agent review". Its reviews are `sequential-pass`, the weakest rung on the ladder, which the example's own report already said.
+- `benchmark/scenarios/templates/scenario.template.json` was referenced by nothing; `benchmark/README.md` now points to it as the starting point for a new case.
+
 ## 0.10.0
 
 ResCamp is narrower and easier to install.

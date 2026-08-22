@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -115,6 +116,24 @@ class EngineTests(unittest.TestCase):
         }
         result = engine.validate_state(state, include_reviews=False)
         self.assertTrue(any(item["code"] == "pilot.incomplete" for item in result["errors"]))
+
+    def test_engine_state_conforms_to_the_published_campaign_schema(self):
+        """`campaign.schema.json` is the contract for the published `campaign.json`.
+
+        It is shipped for integrators, so it has to track the engine rather than sit
+        beside it. Release validation checks the committed example; this checks every
+        profile's freshly built state, which is faster feedback on the same drift.
+        """
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is not installed")
+        schema = json.loads((engine.SKILL_DIR / "assets/campaign.schema.json").read_text(encoding="utf-8"))
+        validator = jsonschema.Draft202012Validator(schema)
+        for profile in ("scoped", "standard", "high-assurance"):
+            with self.subTest(profile=profile):
+                problems = [item.message for item in validator.iter_errors(complete_state(profile=profile))]
+                self.assertEqual(problems, [])
 
     def test_legacy_schema_cannot_silently_release(self):
         state = add_passing_reviews(complete_state())

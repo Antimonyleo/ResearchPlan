@@ -45,8 +45,10 @@ def compile_python(root: Path) -> list[str]:
     return errors
 
 
-def validate_json(root: Path) -> list[str]:
-    errors = []
+def validate_json(root: Path) -> tuple[list[str], list[str]]:
+    """Returns (errors, warnings). Warnings cover checks that could not run at all."""
+    errors: list[str] = []
+    warnings: list[str] = []
     for path in sorted(root.rglob("*.json")):
         if "benchmark/runs" in path.as_posix():
             continue
@@ -56,6 +58,13 @@ def validate_json(root: Path) -> list[str]:
             errors.append(f"{path.relative_to(root)}: {exc}")
     try:
         import jsonschema  # type: ignore
+    except ImportError:
+        # Skipping silently reported `valid: true, warnings: 0` on a machine without
+        # jsonschema, with every scenario and campaign left unchecked. Say so instead.
+        warnings.append("jsonschema is not installed; scenario and campaign schema "
+                        "validation did not run (pip install jsonschema)")
+        return errors, warnings
+    try:
         for name in ("campaign.schema.json", "review.schema.json", "scenario.schema.json"):
             schema = json.loads((root / "rescamp/assets" / name).read_text(encoding="utf-8"))
             jsonschema.Draft202012Validator.check_schema(schema)
@@ -65,11 +74,22 @@ def validate_json(root: Path) -> list[str]:
             data = json.loads(path.read_text(encoding="utf-8"))
             for problem in validator.iter_errors(data):
                 errors.append(f"{path.relative_to(root)} schema: {problem.message}")
-    except ImportError:
-        pass
+        # `campaign.schema.json` ships as the contract for the published `campaign.json`.
+        # Checking only that it is well-formed left it free to drift from the engine, so
+        # validate it against real committed state.
+        campaign_schema = json.loads((root / "rescamp/assets/campaign.schema.json").read_text(encoding="utf-8"))
+        campaign_validator = jsonschema.Draft202012Validator(campaign_schema)
+        states = sorted((root / "docs/examples").glob("*/state/campaign.json"))
+        if not states:
+            warnings.append("no committed example campaign state; campaign.schema.json "
+                            "was checked for well-formedness only")
+        for path in states:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            for problem in campaign_validator.iter_errors(data):
+                errors.append(f"{path.relative_to(root)} schema: {problem.message}")
     except Exception as exc:
         errors.append(f"JSON Schema validation: {exc}")
-    return errors
+    return errors, warnings
 
 
 def main() -> int:
@@ -91,8 +111,10 @@ def main() -> int:
 
     checks["python_compile"] = {"errors": compile_python(root)}
     errors.extend(checks["python_compile"]["errors"])
-    checks["json"] = {"errors": validate_json(root)}
-    errors.extend(checks["json"]["errors"])
+    json_errors, json_warnings = validate_json(root)
+    checks["json"] = {"errors": json_errors, "warnings": json_warnings}
+    errors.extend(json_errors)
+    warnings.extend(json_warnings)
 
     skill_check = run([sys.executable, "rescamp/scripts/validate_skill.py", "rescamp"], root)
     checks["skill_self_check"] = skill_check
