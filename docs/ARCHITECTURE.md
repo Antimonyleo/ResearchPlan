@@ -1,30 +1,33 @@
 # Architecture
 
-ResCamp 0.9 separates four concerns.
+ResCamp 0.10 has three parts.
 
-## 1. Campaign compiler
+## Campaign compiler
 
-The skill conducts a minimum-sufficient interview and compiles a canonical campaign contract. The recurring `SKILL.md` is deliberately concise; focused references are loaded only when a branch needs them.
+The skill conducts a minimum-sufficient interview and writes one canonical campaign contract.
+Unresolved decisions remain explicit fog or blockers; the compiler does not invent values to
+make the plan look complete.
 
-## 2. Automatic current-campaign quality loop
+## Current-campaign quality loop
 
-Interview completion triggers deterministic validation and proportional review preparation. Findings are classified by who can resolve them:
+The Python engine validates structure and references, freezes content digests, prepares
+role-specific review packets, ingests independent findings, and renders either an
+execution-ready bundle or a clearly blocked draft. Reviews are invalidated only when content
+inside their scope changes. Required pilots and accepted major or critical risks are separately
+authorized and bound to the current digest.
 
-- `agent-fix`;
-- `user-answer`;
-- `external-approval`;
-- `accepted-risk`.
+The engine hashes rendered artifacts and verifies them with `audit`. These checks detect stale
+or changed outputs; they are not a security boundary against someone who can rewrite the whole
+workspace.
 
-The agent applies its fixes first and asks only the highest-value remaining user question. Every material change creates a new digest and invalidates affected reviews. Required pilots and accepted major or critical risks carry separate authority evidence bound to that digest.
+## Manual comparative benchmark
 
-## 3. Optional workflow execution
+The Team U/S/E harness compares versions, baselines, or external tools under matched conditions.
+Public fixtures test the harness only. Real comparative claims require fresh sessions, private
+holdouts, controlled conditions, and independent evaluation.
 
-Long-running work is not implemented by prompt persistence. The campaign must name a real continuation trigger and define bounded work units, durable state, events, checkpoints, liveness, recovery, idempotency, budgets, permissions, and stop rules. The queue revalidates finalized state and mechanically enforces structured approvals, dependencies, concurrency, deadlines, retry limits, leases, event integrity, and artifact hashes. Prose resource ceilings and real-world authority remain attestations. The bundled engine does not call arbitrary external systems.
+## Boundary
 
-## 4. Manual comparative benchmark
-
-A separate harness compares versions, baselines, and external tools under matched conditions. Public and evaluator transcripts are separate; artifacts are staged under opaque labels and hashed before and after evaluation. This avoids spending benchmark resources after every ordinary interview and prevents the campaign agent from seeing hidden evaluator data.
-
-## Canonical-source invariant
-
-There is one `rescamp/` directory and one `SKILL.md`. The installer copies or symlinks that exact directory into Claude Code and Codex discovery paths. Host-specific invocation policy lives in host settings or optional standard metadata, not divergent skill instructions.
+ResCamp compiles plans and prompts. It can describe work units, gates, approvals, checkpoints,
+and recovery, but it does not schedule workers, spend resources, grant authority, or validate
+the resulting scientific conclusion.

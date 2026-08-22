@@ -202,11 +202,7 @@ One work unit. Heading is `id` plus `objective`.
 | `resource_ceiling` | **yes** | Resource ceiling. |
 | `retry_policy` | **yes** | Retry and failure classes. |
 | `escalation` | **yes** | Escalation and handoff. |
-| `dependency_ids` | no | Depends on work units (queue). |
-| `external_action_ids` | no | Declared external actions; their approvals must appear in `approval_ids`. |
-| `approval_ids` | no | Required approvals before dispatch (queue). |
-| `retry_limit` | no | Maximum retry attempts (queue). |
-| `deadline_at` | no | Absolute ISO-8601 deadline with timezone. |
+| `dependency_ids` | no | Depends on work units. |
 | `objective` | **yes** | Objective. |
 
 ## `campaign.claims`

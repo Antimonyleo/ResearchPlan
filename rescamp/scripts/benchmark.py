@@ -21,17 +21,16 @@ import shlex
 import shutil
 import statistics
 import subprocess
-import sys
 import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 SKILL_DIR = Path(__file__).resolve().parent.parent
 RUBRIC_PATH = SKILL_DIR / "assets" / "universal_rubric.json"
-OVERLAY_PATH = SKILL_DIR.parent / "benchmark" / "rubrics" / "archetype_overlays.json"
+OVERLAY_PATH = SKILL_DIR / "assets" / "archetype_overlays.json"
 IMPORTANCE_WEIGHT = {"low": 1.0, "material": 2.0, "critical": 4.0}
 SEVERITY_PENALTY = {"minor": 4.0, "major": 14.0, "critical": 40.0}
 RATING_IDS = [item["id"] for item in json.loads(RUBRIC_PATH.read_text(encoding="utf-8"))["dimensions"]]
@@ -617,12 +616,6 @@ EVALUATOR_ONLY_EVENT_FIELDS = ("answered_dimension_ids", "blocker_ids", "dimensi
 
 # What the hidden user says aloud when something is genuinely outside their authority.
 BLOCKER_PHRASE = "I do not have that authority."
-
-
-def public_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The transcript as the system under test may see it."""
-    return [{k: v for k, v in event.items() if k not in EVALUATOR_ONLY_EVENT_FIELDS}
-            for event in history]
 
 
 def team_s_condition_view(condition: dict[str, Any]) -> dict[str, Any]:

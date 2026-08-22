@@ -41,6 +41,8 @@ def main() -> int:
                 errors.append("frontmatter name must be rescamp")
             if not meta.get("description"):
                 errors.append("frontmatter description is missing")
+            if meta.get("disable-model-invocation") != "true":
+                errors.append("Claude Code explicit-only policy is missing")
         except ValueError as exc:
             errors.append(str(exc))
         lines = text.count("\n") + 1

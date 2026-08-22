@@ -9,14 +9,14 @@ These instructions apply to the entire repository.
 - ResCamp supports Python 3.9+ and uses the standard library for its runtime.
 - Keep `rescamp/` as the one canonical skill tree. Do not add host-specific copies or instruction forks.
 - Put detailed guidance in focused, one-level references. Keep deterministic behavior in dependency-free scripts when practical.
-- Preserve fail-closed validation, review-digest binding, and byte-identical Claude Code and Codex installations.
+- Preserve fail-closed validation, review-digest binding, and one byte-identical skill tree for Claude Code and Codex.
 
 ## Working principles
 
 - Think before editing. State material assumptions and clarify genuine ambiguity.
 - Choose the smallest change that fully solves the request. Do not add speculative features, abstractions, or configuration.
 - Make surgical edits. Match the surrounding style and leave unrelated code, comments, and formatting alone.
-- Remove only unused code created by your own change. Mention unrelated problems instead of fixing them silently.
+- Remove dead or redundant code when the task calls for simplification; do not refactor unrelated working code speculatively.
 - Define a concrete success check before implementation, then run it.
 - Keep writing plain and concise. Prefer specific claims over promotional language, and do not repeat caveats unnecessarily.
 
@@ -24,7 +24,7 @@ These instructions apply to the entire repository.
 
 - Add or update tests for behavior changes. Also add at least one relevant scenario that demonstrates the intended gain without excessive interview burden.
 - Treat public scenarios as calibration cases, not sufficient evidence for performance claims.
-- Treat `qa/*.json` as release evidence snapshots. Synthetic fixture scores and static checks do not establish live-model quality or reviewer independence.
+- Synthetic fixture scores do not establish live-model quality or reviewer independence.
 - Do not edit `.git/` or ignored `.claude/` session metadata as part of repository work.
 - Never commit credentials, private benchmark keys, restricted data, or human-subject information.
 

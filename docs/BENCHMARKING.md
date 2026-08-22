@@ -6,7 +6,7 @@ Does the tested condition produce a more faithful, proportionate, scientifically
 
 ## Minimum live matrix
 
-- ResCamp 0.9;
+- the current ResCamp version;
 - the immediately previous ResCamp version;
 - the same model with a neutral no-skill instruction;
 - optional external systems, only on matched claimed capabilities.
@@ -35,7 +35,3 @@ Planning quality does not establish research success. Evaluate execution with ta
 ## Statistical plan
 
 Use paired scenario differences, repeated runs, bootstrap confidence intervals (flat percentile bootstrap over pooled runs; not clustered by scenario, and suppressed entirely for fixture conditions), domain/profile strata, critical-defect rates, and model-by-condition interactions. Report burden and cost separately. A leaderboard average must not hide a critical safety or validity defect.
-
-## Comparable systems
-
-`benchmark/comparable_tools.json` lists representative research agents, synthesis systems, scientific-execution benchmarks, and skill evaluators. It is a discovery manifest, not an endorsement. Refresh commits and licenses before evaluation. Systems with different purposes are not forced into one overall ranking.

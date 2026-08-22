@@ -1,48 +1,37 @@
 # ResCamp
 
-ResCamp is an explicitly invoked skill for Claude Code, Codex, and compatible Agent Skills hosts. It turns a vague research goal into a structured, reviewed research plan and an execution prompt through a short strategic interview. It plans first and never silently starts the research.
+ResCamp is an explicitly invoked skill for Claude Code and Codex. It turns a vague research idea into a structured, reviewed plan and an agent-ready execution prompt. It plans first and never silently starts the research.
 
-Version 0.9.0 requires only Python 3.9+ and the standard library for durable state, validation, review packets, rendering, and benchmarks.
+Version 0.10.0 requires Python 3.9+ and only the standard library at runtime.
 
-## Why it exists
-
-ResCamp generalizes the campaign structure described in Anthropic's 2026 protein-binder study. That campaign used a single protocol prompt for 24–48 hour autonomous runs across 16 targets; 354 of 1,320 designs later bound in laboratory tests. About one third of the prompt was domain science and two thirds covered orchestration, verification, and operations.
-
-ResCamp translates that operational structure, not the protein science or the laboratory validation. The paper did not ablate the prompt, so the two-thirds split is a description of one successful campaign, not proof that the structure caused its results. See [the paper mapping](docs/PAPER_ANTHROPIC_BINDER.md) and [design basis](docs/DESIGN_BASIS.md).
-
-## Workflow
+## How it works
 
 ```text
 vague goal
-  → corrigible campaign sketch
+  → corrigible sketch
   → short, one-question-at-a-time interview
   → structured campaign contract
-  → deterministic checks and independent review packets
+  → deterministic checks and independent agent review
   → targeted repair
-  → execution-ready bundle or an honest blocked draft
+  → execution-ready bundle or honest blocked draft
 ```
 
-ResCamp asks only questions that can change the scope, evidence, method, ethics, authority, resources, acceptance criteria, or outputs. Typical budgets are 3–5 questions for `scoped`, 4–8 for `standard`, and 6–12 for `high-assurance` work.
+Questions are limited to decisions that can change scope, evidence, method, ethics, authority, resources, acceptance criteria, or outputs. Typical budgets are 3–5 questions for `scoped`, 4–8 for `standard`, and 6–12 for `high-assurance` work.
 
-Unclear decisions remain **fog**: mark them unresolved or partial and record the dependency or blocker. Do not invent placeholder content to make validation pass. Drafts may remain incomplete; execution-ready campaigns may not.
+Unclear decisions remain **fog**: ResCamp records them as unresolved, partial, or blocked instead of inventing precision to satisfy the validator. Drafts may remain incomplete; execution-ready plans may not. This practice is adapted from Matt Pocock's [Wayfinder skill](https://github.com/mattpocock/skills/blob/main/skills/engineering/wayfinder/SKILL.md).
 
-When the interview stops, the engine freezes the current content, checks its structure and references, and prepares proportional review packets. Separate agents judge the research substance. After repair, `finalize` either produces an execution-ready bundle or a draft labeled `NOT EXECUTION-READY` with exact blockers.
+After the interview, ResCamp freezes the plan, checks its structure and references, and prepares proportional review packets for separate agents. `finalize` then produces either an execution-ready bundle or a draft labeled `NOT EXECUTION-READY` with exact blockers.
 
 ## Install
 
-Clone or unzip the repository, then install the same canonical `rescamp/` tree for both hosts:
+The standard Skills CLI installs the same tree for both hosts:
 
 ```bash
-python3 scripts/install.py --host all --scope user
+npx skills add Antimonyleo/ResearchPlan --skill rescamp -g \
+  -a claude-code -a codex -y
 ```
 
-For a project-local installation:
-
-```bash
-python3 scripts/install.py --host all --scope project --project /path/to/project
-```
-
-The installer configures explicit-only invocation for each host. Host paths, syntax, and policy are documented in [hosts.md](rescamp/references/hosts.md).
+Omit `-g` for project scope. Add `--copy` if symlinks are undesirable. The installer needs Node.js 18+; the installed skill does not. Claude Code and Codex explicit-only policies ship inside the same tree. See [host details](rescamp/references/hosts.md).
 
 ## Use
 
@@ -58,45 +47,33 @@ Codex:
 $rescamp I want to determine whether ...
 ```
 
-Common modes:
+Useful modes:
 
-- `start <goal>` — create a sketch and begin the interview.
-- `resume` or `status` — continue from durable state or inspect progress.
-- `draft` — render the current plan without claiming readiness.
-- `finalize` — run the quality loop and render the final or blocked bundle.
-- `review` or `test` — rerun validation and proportional reviews.
-- `revise <change>` — update the campaign and invalidate affected reviews.
+- `start <goal>` — sketch and interview;
+- `resume` or `status` — continue or inspect progress;
+- `draft` — render without claiming readiness;
+- `finalize` — review, repair, and render;
+- `review` or `test` — rerun quality checks;
+- `revise <change>` — update and invalidate affected reviews;
 - `audit` — verify state, references, outputs, and hashes.
 
-The agent normally drives `rescamp/scripts/rescamp.py`. Run its `--help` command for the low-level interface.
+The agent normally drives `rescamp/scripts/rescamp.py`; its `--help` output documents the low-level interface.
 
-## Output
+## Output and boundaries
 
-The main artifact is `CAMPAIGN_PROMPT.md`, the complete execution brief. A finalized bundle also includes:
+The main artifact is `CAMPAIGN_PROMPT.md`. The bundle also contains a kickoff, roadmap, machine-readable contract, worker brief, review report, blocker list, claims/evidence matrix, runbook, and artifact manifest.
 
-- `KICKOFF.md` — the first authorized action;
-- `ROADMAP.md` — a concise human plan;
-- `campaign.json` — the machine-readable contract;
-- `TASK_BRIEF_TEMPLATE.md` — bounded worker instructions;
-- `REVIEW_REPORT.md` and `BLOCKERS.md` — review evidence and unresolved work;
-- `CLAIMS_EVIDENCE_MATRIX.json` — claims, support, counterevidence, and verification;
-- `RUNBOOK.md` and `MANIFEST.sha256` — continuation guidance and artifact hashes.
+The engine checks required structure, cross-references, stage cycles, exact approval bindings for external actions, review freshness, campaign digests, output hashes, and readiness gates. It refuses to finalize around known blockers or unresolved major findings.
 
-## What the engine enforces
+It cannot judge whether the research is scientifically good, authenticate a claimed real-world approval, enforce conduct after handoff, or validate a resulting conclusion. Agent review tests coherence and likely executability; it does not replace data, replication, domain experts, ethics review, or external adjudication. ResCamp describes work units and recovery when useful, but it is not a scheduler.
 
-The dependency-free Python engine checks required structure, reference integrity, acyclic stages, approval bindings, review freshness, campaign and artifact digests, and readiness gates. It refuses to finalize around known blockers or unresolved major findings.
+See [architecture](docs/ARCHITECTURE.md) and [generalization limits](docs/GENERALIZATION.md).
 
-It cannot judge whether the research is scientifically good, verify that a claimed real-world approval is authentic, enforce conduct after the prompt is handed off, or validate the resulting scientific conclusion. Independent agent review checks coherence and likely executability; it is not a substitute for data, replication, domain experts, ethics review, or external adjudication.
+## Optional evaluation
 
-See [architecture](docs/ARCHITECTURE.md), [generalization limits](docs/GENERALIZATION.md), and the [release report](docs/RELEASE_REPORT.md) for the full boundary.
+`rescamp/scripts/benchmark.py` runs deliberate Team U/S/E comparisons across versions, baselines, or external systems. `scripts/host_acceptance.py` checks live Claude Code or Codex invocation and expected artifact presence. Neither runs automatically after an ordinary interview.
 
-## Optional tools
-
-These are separate from the normal idea-to-plan path:
-
-- `rescamp/scripts/workflow.py` provides a SQLite work-unit queue for explicitly authorized long-running execution. It enforces declared approvals, dependencies, concurrency, deadlines, retries, leases, event integrity, and artifact hashes; it does not run models or grant authority.
-- `rescamp/scripts/benchmark.py` runs manual Team U/S/E comparisons across versions, baselines, or external systems. Public fixture scores test the harness and are not model-performance evidence. See [benchmarking](docs/BENCHMARKING.md).
-- `scripts/host_acceptance.py` records opt-in live-host invocation receipts. Those receipts establish transport and expected artifact presence, not plan quality.
+Public benchmark fixtures test the harness only. ResCamp has not been shown superior to a plain prompt on a private matched holdout and has no downstream research-outcome validation. See [benchmarking](docs/BENCHMARKING.md).
 
 ## Validate
 
@@ -106,17 +83,12 @@ make skill-check
 make validate-full
 ```
 
-The full validator compiles scripts, validates schemas and public scenarios, runs unit and end-to-end tests, executes deterministic Team U/S/E smoke tests, checks byte-identical dual-host installation, and records repository provenance.
+## Design sources
 
-## Evidence boundary
-
-Release evidence is deterministic and primarily self-generated. Public benchmark fixtures are synthetic. ResCamp has not been shown superior to a plain prompt on a private matched holdout, and it has no downstream research-outcome validation. Independent agent review can expose prompt defects and test interpretability; it does not establish scientific validity.
-
-## Sources
-
-- Claude Science and Amir Shanehsazzadeh, [*Autonomous de novo protein binder design with Claude*](https://www-cdn.anthropic.com/30bf50e22a01388bb29bf077ee3f244531594b7a.pdf), Anthropic, 18 August 2026. Released [prompts, corpus, and binding data](https://huggingface.co/datasets/Anthropic/claude-protein-binder-design).
-- Travis Smith, [*The Little Scientist: LLM Agent-Driven Discovery via the Scientific Method*](https://arxiv.org/abs/2608.16951), 16 August 2026. ResCamp uses its inquiry-and-evidence loop; that loop is not from the binder paper.
+- Claude Science and Amir Shanehsazzadeh, [*Autonomous de novo protein binder design with Claude*](https://www-cdn.anthropic.com/30bf50e22a01388bb29bf077ee3f244531594b7a.pdf), Anthropic, 18 August 2026. ResCamp translates its campaign structure, not its protein science or laboratory validation. See the [paper mapping](docs/PAPER_ANTHROPIC_BINDER.md) and [design basis](docs/DESIGN_BASIS.md).
+- Travis Smith, [*The Little Scientist: LLM Agent-Driven Discovery via the Scientific Method*](https://arxiv.org/abs/2608.16951), 16 August 2026. ResCamp uses its inquiry-and-evidence loop.
+- Matt Pocock, [*Wayfinder*](https://github.com/mattpocock/skills/blob/main/skills/engineering/wayfinder/SKILL.md). ResCamp borrows its treatment of premature decisions as fog.
 
 ## License
 
-MIT. Third-party systems used for comparison retain their own licenses.
+MIT.

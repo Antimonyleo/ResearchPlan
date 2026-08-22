@@ -1,82 +1,41 @@
-# Host registry and capability contract
+# Hosts and installation
 
-One canonical `rescamp/` directory and one `SKILL.md` serve every host. `SKILL.md` names no
-host. Everything host-specific lives here and in per-host metadata files inside the same
-bundle. **Adding a host means adding a row and a metadata file — never a line in `SKILL.md`.**
-
-This works because each host ignores the others' metadata: Claude Code ignores
-`agents/openai.yaml`, Codex ignores `skillOverrides`. Shipping the union is why the installed
-trees can stay byte-identical.
-
-## Registry
-
-| Host | User scope | Project scope | Explicit invocation | Explicit-only mechanism |
-|---|---|---|---|---|
-| `claude-code` | `~/.claude/skills/rescamp` | `.claude/skills/rescamp` | `/rescamp <goal>` | `skillOverrides.rescamp: user-invocable-only` in `settings.json` (user) or `settings.local.json` (project) |
-| `codex` | `~/.agents/skills/rescamp` | `.agents/skills/rescamp` | `$rescamp <goal>` | `policy.allow_implicit_invocation: false` in `agents/openai.yaml` |
-
-The Claude Code override requires version 2.1.129 or newer.
-
-Codex also reads an organization scope at `/etc/codex/skills/`; the installer does not write there.
-
-The source repository's `scripts/host_acceptance.py` can exercise an explicit mode through
-either installed CLI and record the host version, installed skill-tree digest, response
-hashes, elapsed time, and expected artifacts. It is an opt-in live check, not part of the
-installed skill and not evidence of comparative model quality. Non-help modes require at
-least one `--expect`; the resulting receipt proves transport, a non-error response, and
-artifact presence, not that an existing artifact changed or that its research content is sound.
-Claude Code's non-interactive SDK path dispatches skills through the model-facing command
-surface, so this adapter supplies a session-only `skillOverrides.rescamp: on` setting while
-sending the explicit `/rescamp` prompt. It does not alter the installed interactive policy.
-
-To add a host, append a row, ship its metadata file in the bundle if it needs one, and add an
-entry to the `HOSTS` registry in the repository's `scripts/install.py` (that installer lives in
-the source repository, not inside this installed skill directory). If a new host requires an
-instruction change in `SKILL.md`, that is a signal the instruction is host-coupled and belongs
-here instead.
-
-## Capability declarations
-
-Capabilities are **declared, not guessed**:
+One canonical `rescamp/` tree serves Claude Code and Codex. Install it with the standard
+Skills CLI:
 
 ```bash
-scripts/rescamp.py host-probe --host-id codex --campaign <campaign> \
-  --declare subagent=false --declare network=true
+npx skills add Antimonyleo/ResearchPlan --skill rescamp -g \
+  -a claude-code -a codex -y
 ```
 
-This probes what is directly testable and records the rest as you declare it, storing the result
-in campaign state as `host_profile`. Anything you do not declare stays `unknown` and is treated
-as absent. Gating currently consults one field: if `host_profile.subagent` is `false`, a review
-record claiming `independent-subagent` is rejected. The other declarations are recorded for
-audit and for your own honesty; they are not yet enforced.
+Omit `-g` for project scope. Add `--copy` when symlinks are undesirable. The installer
+requires Node.js 18+; the installed skill requires only Python 3.9+.
 
-| Capability | How it is established | Absent → |
-|---|---|---|
-| `filesystem`, `python`, `skill_dir`, `progressive_references` | probed directly by `host-probe` | no durable state: the model must improvise, and the campaign records that it did |
-| `subagent` | **declared** — the host adapter or the operator asserts it | independence rungs 2–3 unavailable; high-assurance is blocked |
-| `structured_question_control` | declared | prose question format (`SKILL.md`) |
-| `background_execution` | declared | `runtime.enabled` stays false; produce a runbook, never claim continuous execution |
-| `network` | declared | ask the user instead of researching, and say so rather than inflating the budget silently |
+| Host | User scope | Project scope | Invoke | Explicit-only policy |
+|---|---|---|---|---|
+| Claude Code | `~/.claude/skills/rescamp` | `.claude/skills/rescamp` | `/rescamp <goal>` | `disable-model-invocation: true` in `SKILL.md` |
+| Codex | `~/.agents/skills/rescamp` | `.agents/skills/rescamp` | `$rescamp <goal>` | `policy.allow_implicit_invocation: false` in `agents/openai.yaml` |
 
-A capability left `unknown` is treated as absent. Never upgrade a declaration to make a gate pass.
+Claude Code's frontmatter field is host-specific. This bundle targets Claude Code and Codex;
+it is not packaged for claude.ai skill uploads, whose frontmatter rules are narrower.
 
-## Independence is self-attested
+## Live acceptance
 
-`mode` on a review record is a claim by whoever wrote the record. The engine checks that the
-value is legal, that reviewer identities are distinct, and that `execution_evidence` is present
-for any mode claiming independence — but nothing inside this skill can observe another process
-and prove a separate reviewer really ran. Treat the recorded rung as an attestation with an
-audit trail, not as proof, and say so when reporting. `references/architecture.md` section 15
-defines the ladder.
+The repository's `scripts/host_acceptance.py` can exercise an explicit mode through either
+installed CLI. Non-help modes require at least one expected artifact:
 
-Where a host has a shell, the strongest portable mechanism is a **reviewer adapter**: a command
-that reads a review packet on stdin and returns a `review.schema.json` object on stdout, run as
-a genuinely separate process. That gives a real rung-2 reviewer on any host and makes
-`execution_evidence` corroborated rather than merely asserted. The same stdin/stdout contract
-the benchmark uses (`benchmark/adapters/external_command_protocol.md`) applies.
+```bash
+python3 scripts/host_acceptance.py --host codex --project /path/to/project \
+  --mode start --goal "Does intervention X change outcome Y?" \
+  --expect research-campaigns/example/state/campaign.json
+```
+
+The receipt records the host version, skill-tree digest, response hashes, elapsed time, and
+artifact presence. It proves only that invocation completed and expected files exist. It does
+not judge the research plan or prove reviewer independence.
 
 ## Degrade honestly
 
-When a capability is absent, say so in the rendered bundle. Produce review packets instead of
-claiming reviews happened; produce a runbook instead of claiming a scheduler; record an unmet
-condition instead of quietly lowering the bar.
+If the host cannot create a separate reviewer context, produce the review packet and report
+that the independence requirement is unmet. If it cannot persist files or run Python, explain
+that deterministic state, validation, and audit are unavailable rather than pretending they ran.

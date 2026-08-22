@@ -1,4 +1,3 @@
-import hashlib
 import re
 import unittest
 from pathlib import Path
@@ -17,20 +16,19 @@ class SkillStructureTests(unittest.TestCase):
         self.assertFalse((ROOT / ".claude/skills").exists())
         self.assertFalse((ROOT / ".agents/skills").exists())
 
-    def test_skill_is_concise_and_standard(self):
+    def test_skill_is_concise_and_explicit_only(self):
         text = (ROOT / "rescamp/SKILL.md").read_text(encoding="utf-8")
         self.assertLess(len(text.splitlines()), 500)
         self.assertLess(len(re.findall(r"\S+", text)), 5000)
         self.assertIn("name: rescamp", text)
         self.assertIn("description:", text)
-        self.assertNotIn("disable-model-invocation", text)
+        self.assertIn("disable-model-invocation: true", text)
         self.assertIn("Automatic quality loop", text)
         self.assertIn("manual `benchmark`", text)
         self.assertIn("Treat unresolved shape as **fog**", text)
         self.assertIn("Never create placeholder campaign objects", text)
 
-    def test_codex_metadata_does_not_change_skill(self):
-        """Host policy lives outside SKILL.md, so both hosts read identical bytes."""
+    def test_host_policy_is_carried_in_one_bundle(self):
         self.assertTrue((ROOT / "rescamp/agents/openai.yaml").exists())
         self.assertIn("allow_implicit_invocation: false", (ROOT / "rescamp/agents/openai.yaml").read_text())
         skill = (ROOT / "rescamp/SKILL.md").read_text(encoding="utf-8")
@@ -50,16 +48,10 @@ class SkillStructureTests(unittest.TestCase):
             "host invocation syntax leaked into the canonical skill",
         )
 
-    def test_host_registry_covers_every_installable_host(self):
-        """Adding a host must mean editing hosts.md and install.py, never SKILL.md."""
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("installer", ROOT / "scripts/install.py")
-        installer = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(installer)
-        registry = (ROOT / "rescamp/references/hosts.md").read_text(encoding="utf-8")
-        for host_id in installer.HOSTS:
-            self.assertIn(f"`{host_id}`", registry, f"host {host_id!r} is installable but undocumented in hosts.md")
+    def test_standard_install_command_targets_both_hosts(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("npx skills add Antimonyleo/ResearchPlan --skill rescamp", readme)
+        self.assertIn("-a claude-code -a codex", readme)
 
     def test_every_referenced_file_exists(self):
         """SKILL.md points at references and scripts; a dangling pointer is a silent failure."""

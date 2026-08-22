@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: test skill-check benchmark-smoke validate validate-full build clean
+.PHONY: test skill-check benchmark-smoke validate validate-full clean
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
@@ -19,9 +19,6 @@ validate:
 
 validate-full:
 	$(PYTHON) scripts/validate_release.py --root .
-
-build:
-	$(PYTHON) scripts/build_release.py --root . --output-dir dist
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

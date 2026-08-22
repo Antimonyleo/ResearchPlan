@@ -1,17 +1,17 @@
 {
   "description": "Copy and edit. Commands read one JSON request from stdin and emit one JSON response on stdout.",
   "matched_controls": {
-    "same_model": true,
-    "same_tools_permissions_corpus": true,
-    "same_context_time_token_retry_budget": true,
-    "fresh_sessions": true,
-    "blinded_evaluation": true
+    "same_model": false,
+    "same_tools_permissions_corpus": false,
+    "same_context_time_token_retry_budget": false,
+    "fresh_sessions": false,
+    "blinded_evaluation": false
   },
   "conditions": [
     {
-      "id": "rescamp-0.9-live",
+      "id": "rescamp-0.10-live",
       "adapter": "external-command",
-      "command": "python3 benchmark/adapters/my_team_s_adapter.py --condition rescamp-0.9",
+      "command": "python3 benchmark/adapters/my_team_s_adapter.py --condition rescamp-0.10",
       "user_adapter": "python3 benchmark/adapters/my_team_u_adapter.py",
       "evaluator_adapter": "python3 benchmark/adapters/my_team_e_adapter.py",
       "model_id": "PIN_SAME_EXACT_PROVIDER_MODEL_ID",

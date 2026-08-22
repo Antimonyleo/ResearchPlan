@@ -4,10 +4,9 @@ The benchmark separates hidden-user Team U, tested-system Team S, and blinded-ev
 
 - `scenarios/public/`: 18 calibration/regression cases across 18 domains and 11 research archetypes.
 - `prompts/`: live Team U/S/E role contracts.
-- `rubrics/`: universal rubric and archetype overlays.
+- `../rescamp/assets/`: the universal rubric and archetype overlays used by the harness.
 - `conditions/`: deterministic fixtures plus live/cross-version templates.
 - `adapters/`: stateless JSON command protocol and process-isolated fixtures.
-- `comparable_tools.json`: capability-matched discovery manifest, not an endorsement or installed dependency list.
 
 Validate and run the deterministic harness:
 
@@ -24,7 +23,7 @@ Generate a live matrix:
 
 ```bash
 python3 scripts/create_benchmark_matrix.py \
-  --condition 'rescamp-0.9=python3 my_team_s.py --skill /path/to/v0.9/rescamp' \
+  --condition 'rescamp-0.10=python3 my_team_s.py --skill /path/to/v0.10/rescamp' \
   --condition 'rescamp-previous=python3 my_team_s.py --skill /path/to/previous/rescamp' \
   --condition 'neutral=python3 my_team_s.py --condition neutral' \
   --user-adapter 'python3 my_team_u.py' \

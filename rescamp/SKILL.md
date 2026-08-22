@@ -3,8 +3,9 @@ name: rescamp
 description: Explicitly invoked research-campaign compiler. Turns a vague inquiry in any discipline into a proportionate, reviewed, auditable research plan and agent-execution prompt through a strategic interview.
 license: MIT
 compatibility: Requires a coding agent with filesystem access; Python 3.9+ enables durable state, validation, review packets, rendering, and benchmarks.
+disable-model-invocation: true
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
   invocation: "explicit"
 ---
 
@@ -23,7 +24,6 @@ Treat plain invocation text as `start <goal>`.
 - `finalize [campaign]` — run the automatic quality loop, ask any remaining material questions, and render the final campaign bundle.
 - `review [campaign]` or `test [campaign]` — manually rerun validation and proportional review on the current campaign.
 - `benchmark <config>` — manually run a comparative benchmark; never run a full cross-system benchmark merely because an interview ended.
-- `workflow [campaign]` — after finalization and explicit execution authority, initialize or operate the optional durable work-unit queue; never infer permission for external actions.
 - `revise [campaign] <change>` — update the campaign, invalidate affected reviews, and rerun quality checks.
 - `audit [campaign]` — verify state, references, artifacts, and hashes.
 - `help` — show concise usage.
@@ -41,7 +41,6 @@ Modes are what the user types; they are not all subcommands. The crosswalk:
 | `review`, `test` | `quality-loop` |
 | `revise` | `set`/`add` the change, then `quality-loop` — there is no `revise` subcommand |
 | `audit` | `audit --strict` |
-| `workflow` | `scripts/workflow.py` |
 | `benchmark` | `scripts/benchmark.py` |
 | `help` | `--help` on any subcommand |
 
@@ -141,12 +140,11 @@ This automatic loop evaluates the current campaign. The manual `benchmark` mode 
 When Python and filesystem access exist, use `scripts/rescamp.py` for state, validation, review packets, rendering, and audit. The working sequence is:
 
 ```text
-init --goal … --profile … --archetypes … [--id <slug>]   # slug the id yourself; the auto-slug is long
-host-probe --host-id <host> --campaign <c> --declare subagent=<true|false>
+init --goal … --profile … --archetypes … [--id <slug>]
 turn / dimension                                          # one per interview exchange
 apply <c> --json @campaign.json                           # many sections at once, fields checked
 add <c> <list-path> --json @section.json                  # one list section, fields checked
-set <c> <dict-path> @section.json                         # whole subtree; does NOT check fields
+set <c> <dict-path> @section.json                         # replace an existing subtree
 stop <c> --reason <stopping-reason>                       # validates, freezes, writes review packets
   → execute each packet in working/review_packets/ as a separate read-only reviewer
 ingest-review <c> <record.json>                           # once per required role
@@ -156,9 +154,9 @@ audit <c> --strict                                        # re-verify hashes and
 
 **Write payloads to a file and pass `@file.json`.** `apply`, `add --json`, and `set` all accept `@file.json`. Inline JSON breaks on apostrophes, which research prose is full of, and one shell-quoting failure per payload pushes you back into adding objects one at a time.
 
-**Prefer `apply` once the interview has resolved several sections.** It takes an object mapping dotted paths to values, writes them in one call, and applies the same field checking `add` does — if any object has an unknown field, nothing is written and the error names the path and the valid fields. A whole campaign is ~27 calls with `apply`, ~45 with one `add` per section, and ~133 adding objects one at a time. Never reach for `set <c> campaign @whole.json` to save calls: it is one call and checks nothing.
+**Prefer `apply` once the interview has resolved several sections.** It takes an object mapping dotted paths to values, writes them in one call, and applies the same field checking `add` does — if any object has an unknown field, nothing is written and the error names the path and the valid fields. `set` rejects unknown paths and malformed section containers, but replacing the whole `campaign` bypasses object-field checks; do not use it as a bulk shortcut.
 
-`schema <path>` prints the exact field vocabulary for any section, list or dict; `references/objects.md` has the same tables for list sections. Prefer `add` over `set` for list sections — `set` skips field checking, so a misspelled field is stored, never validated, and then **rendered into the execution prompt as authoritative content** beside the real field it was meant to be. `set <list-path>.<index>.<field>` edits one field of an existing object. Reviews are bound per section, so a repair invalidates only the reviewers responsible for the sections it touched — after re-freezing, `roles_requiring_review` names exactly who must run again, and re-running anyone else is wasted work. Use `scripts/workflow.py` only when sustained execution is explicitly in scope, and `scripts/benchmark.py` only for manual comparative evaluation. Default workspace: `research-campaigns/<slug>/`.
+`schema <path>` prints the exact field vocabulary; `references/objects.md` has the same tables for list sections. Prefer `add` or `apply` for object lists and use `set <list-path>.<index>.<field>` for a field of an existing object. Reviews are bound per section, so after a repair rerun only the roles named by `roles_requiring_review`. Use `scripts/benchmark.py` only for a deliberate comparative evaluation. Default workspace: `research-campaigns/<slug>/`.
 
 Load only the reference needed for the current branch:
 
@@ -167,9 +165,8 @@ Load only the reference needed for the current branch:
 - `references/archetypes.md` — discipline-neutral and archetype-specific mappings;
 - `references/objects.md` — exact field vocabulary for every campaign object;
 - `references/quality-loop.md` — automatic validation/review/revision;
-- `references/workflow.md` — optional continuous runner and worker contracts;
 - `references/benchmark.md` — manual cross-version/tool evaluation;
-- `references/hosts.md` — identical-skill installation and host capabilities.
+- `references/hosts.md` — installation, invocation, and live acceptance.
 
 Do not load every reference or schema into context. Prefer deterministic scripts for hashes, schemas, graph checks, state transitions, and scoring; use agents for interpretation, research design, synthesis, and challenge.
 

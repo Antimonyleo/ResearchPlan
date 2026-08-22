@@ -1,4 +1,3 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,7 +36,6 @@ class EngineTests(unittest.TestCase):
                 (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
             state = add_passing_reviews(complete_state())
             engine.write_json(campaign_dir / engine.STATE_REL, state)
-            engine.append_event(campaign_dir, "test", {})
             rendered = engine.render_outputs(campaign_dir, state)
             self.assertEqual(rendered["status"], "EXECUTION-READY")
             manifest = (campaign_dir / "outputs/MANIFEST.sha256").read_text()
@@ -50,13 +48,9 @@ class EngineTests(unittest.TestCase):
         result = engine.validate_state(state, include_reviews=False)
         self.assertTrue(result["valid"], result["errors"])
 
-    def test_enabled_runtime_requires_a_machine_readable_concurrency_ceiling(self):
+    def test_enabled_runtime_requires_operational_details(self):
         state = complete_state()
-        state["campaign"]["runtime"].update({
-            "enabled": True, "continuation_trigger": "queue", "state_store": "state/campaign.json",
-            "event_log": "state/events.jsonl", "checkpoint_policy": "after each unit",
-            "liveness": "leases", "recovery": "retry once", "idempotency": "artifact hashes",
-        })
+        state["campaign"]["runtime"]["enabled"] = True
         state["campaign"]["work_units"] = [{
             "id": "u1", "objective": "Analyze one batch", "authoritative_inputs": ["batch@sha256"],
             "permitted_actions": ["read"], "prohibited_actions": ["no external writes"],
@@ -64,7 +58,7 @@ class EngineTests(unittest.TestCase):
             "resource_ceiling": "one agent-hour", "retry_policy": "no retry", "escalation": "lead",
         }]
         result = engine.validate_state(state, include_reviews=False)
-        self.assertTrue(any(item["code"] == "resources.max_concurrency" for item in result["errors"]))
+        self.assertTrue(any(item["code"] == "runtime.incomplete" for item in result["errors"]))
 
     def test_execution_ready_methods_and_stages_require_operational_fields(self):
         state = complete_state()
@@ -128,13 +122,6 @@ class EngineTests(unittest.TestCase):
         result = engine.validate_state(state, include_reviews=True)
         self.assertFalse(result["execution_ready"])
         self.assertTrue(any(item["code"] == "schema.unsupported" for item in result["errors"]))
-
-    def test_work_unit_deadline_must_be_an_iso_timestamp(self):
-        state = complete_state()
-        state["campaign"]["work_units"] = [{"id": "u1", "deadline_at": "tomorrow afternoon"}]
-        result = engine.validate_state(state, include_reviews=False)
-        self.assertTrue(any(item["code"] == "work_unit.bad_deadline" for item in result["errors"]))
-
 
 if __name__ == "__main__":
     unittest.main()

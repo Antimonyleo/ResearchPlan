@@ -16,7 +16,7 @@ Each adapter is a stateless command. The harness writes one JSON object to stdin
     "initial_request": "..."
   },
   "history": [{"role": "user", "message": "..."}],
-  "condition": {"id": "rescamp-0.9-live"},
+  "condition": {"id": "rescamp-0.10-live"},
   "run_dir": "/absolute/path"
 }
 ```

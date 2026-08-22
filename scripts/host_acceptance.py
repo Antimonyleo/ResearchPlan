@@ -16,9 +16,6 @@ HOST_PREFIX = {"claude-code": "/rescamp", "codex": "$rescamp"}
 HOST_EXECUTABLE = {"claude-code": "claude", "codex": "codex"}
 HOST_SKILL = {"claude-code": ".claude/skills/rescamp/SKILL.md",
               "codex": ".agents/skills/rescamp/SKILL.md"}
-CLAUDE_HEADLESS_SETTINGS = json.dumps(
-    {"skillOverrides": {"rescamp": "on"}}, separators=(",", ":")
-)
 
 
 def digest_tree(root: Path) -> str:
@@ -52,7 +49,7 @@ def command_for(host: str, executable: str, project: Path, response_path: Path) 
         return [executable, "exec", "--ephemeral", "--approve-for-me",
                 "-C", str(project), "-o", str(response_path), "-"]
     return [executable, "-p", "--permission-mode", "auto", "--output-format", "json",
-            "--no-session-persistence", "--settings", CLAUDE_HEADLESS_SETTINGS]
+            "--no-session-persistence"]
 
 
 def response_ok(host: str, response: str) -> bool:

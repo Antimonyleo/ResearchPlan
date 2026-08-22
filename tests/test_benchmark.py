@@ -4,6 +4,7 @@ import contextlib
 import copy
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,17 @@ SPEC.loader.exec_module(bench)
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_benchmark_runs_from_the_installed_skill_tree(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installed = Path(temp) / "rescamp"
+            shutil.copytree(ROOT / "rescamp", installed)
+            result = subprocess.run(
+                [sys.executable, str(installed / "scripts/benchmark.py"), "--version"],
+                cwd=temp, text=True, capture_output=True, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), bench.VERSION)
+
     def test_public_scenarios_cover_every_archetype(self):
         scenarios = bench.load_scenarios(ROOT / "benchmark/scenarios/public")
         covered = {a for scenario in scenarios for a in scenario["archetypes"]}
@@ -231,12 +243,6 @@ class BenchmarkTests(unittest.TestCase):
             self.assertFalse(any("answered_dimension_ids" in event for event in public_transcript))
             evaluator_transcript = json.loads((run_dir / "evaluator_transcript.json").read_text())
             self.assertTrue(any("answered_dimension_ids" in event for event in evaluator_transcript))
-
-    def test_tools_manifest_uses_capability_matching(self):
-        manifest = json.loads((ROOT / "benchmark/comparable_tools.json").read_text())
-        self.assertGreaterEqual(len(manifest["systems"]), 10)
-        for system in manifest["systems"]:
-            self.assertTrue(system["capabilities"])
 
     def test_config_validation_rejects_malformed_nested_values(self):
         cases = [

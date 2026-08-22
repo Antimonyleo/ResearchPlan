@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0
+
+ResCamp is narrower and easier to install.
+
+- Kept the product path: strategic interview, structured campaign contract, digest-bound independent reviews, targeted repair, final plan/prompt rendering, and optional manual benchmarking.
+- Added explicit fog handling, adapted from Matt Pocock's Wayfinder skill: unresolved material decisions remain visible instead of being replaced with invented precision.
+- Replaced the custom Python installer with the standard Skills CLI. The canonical skill now carries Claude Code's `disable-model-invocation` setting beside Codex's existing explicit-only policy.
+- Removed the SQLite scheduler, queue-only work-unit fields, local campaign event chain, host probe, static reviewer, release builder, generated QA snapshots, comparable-tool registry, redundant live-evaluation page, and unused renderer templates. Consolidated duplicate benchmark rubrics inside the installable skill tree.
+- Retained the safety checks that protect plan integrity: fail-closed completeness, exact approval references for external actions, review freshness and independence evidence, pilot/risk gates for high-assurance work, and output-manifest audit.
+- Live benchmark templates now default matched-control declarations to false. Public fixture scores remain harness tests, not evidence of plan quality.
+
 ## 0.9.0
 
 This release closes the fail-open and evidence-boundary defects found by the independent review, then tests the joined system rather than only its components.

@@ -338,76 +338,12 @@ class CliSafetyTests(unittest.TestCase):
             engine.VERSION = original
 
 
-class CompilerRuntimeContractTests(unittest.TestCase):
-    """The compiler and the work queue must share one work-unit vocabulary.
-
-    Previously OBJECT_SPECS declared `depends_on`/`retry_policy` while workflow.py read
-    `dependency_ids`/`approval_ids`/`retry_limit`, so `add` rejected the exact fields the
-    queue enforces: every unit came out with no dependencies and no approval gates, and the
-    fail-closed dispatcher was fail-open. The existing queue tests missed it because they
-    hand-write unit dicts instead of going through `add`.
-    """
-
-    QUEUE_CONSUMED_FIELDS = ("dependency_ids", "approval_ids", "retry_limit")
-
-    def test_add_accepts_every_field_the_queue_consumes(self):
-        spec = engine.OBJECT_SPECS["campaign.work_units"]
-        allowed = engine.allowed_keys(spec)
-        for field in self.QUEUE_CONSUMED_FIELDS:
-            self.assertIn(field, allowed,
-                          f"workflow.py reads work_unit.{field} but `add` would reject it")
-
-    def test_queue_fields_are_actually_read_by_workflow(self):
-        """Guard the other direction: if workflow.py renames a field, this fails."""
-        source = (ROOT / "rescamp/scripts/workflow.py").read_text(encoding="utf-8")
-        for field in self.QUEUE_CONSUMED_FIELDS:
-            self.assertIn(field, source,
-                          f"work_unit.{field} is in OBJECT_SPECS but workflow.py no longer reads it")
-
-    def test_unit_built_through_add_carries_dependencies_into_the_queue(self):
-        with tempfile.TemporaryDirectory() as temp:
-            subprocess.run(
-                [sys.executable, str(ENGINE), "init", "--goal", "A bounded question",
-                 "--profile", "standard", "--archetypes", "evidence-synthesis", "--root", temp],
-                check=True, capture_output=True, text=True,
-            )
-            campaign = next(Path(temp).iterdir())
-            units = [
-                {"id": "u1", "objective": "first", "outputs": ["a.json"]},
-                {"id": "u2", "objective": "second", "outputs": ["b.json"],
-                 "dependency_ids": ["u1"], "approval_ids": ["human-signoff"], "retry_limit": 2},
-            ]
-            result = subprocess.run(
-                [sys.executable, str(ENGINE), "add", str(campaign), "campaign.work_units",
-                 "--json", json.dumps(units)],
-                capture_output=True, text=True,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            stored = json.loads((campaign / engine.STATE_REL).read_text())["campaign"]["work_units"]
-            self.assertEqual(stored[1]["dependency_ids"], ["u1"])
-            self.assertEqual(stored[1]["approval_ids"], ["human-signoff"])
-            self.assertEqual(stored[1]["retry_limit"], 2)
-
-
-class HostProfileTests(unittest.TestCase):
-    def test_probe_reports_testable_facts_and_marks_the_rest_unknown(self):
-        profile = engine.probe_host("some-harness")
-        self.assertTrue(profile["filesystem"])
-        self.assertTrue(profile["progressive_references"])
-        self.assertEqual(profile["subagent"], "unknown")
-
-    def test_declared_absence_of_subagents_blocks_an_independence_claim(self):
-        baseline = add_passing_reviews(complete_state("observational", "high-assurance"))
-        self.assertTrue(engine.validate_state(baseline, include_reviews=True)["valid"])
-
-        # Set the profile before freezing the reviews: host_profile is substantive state,
-        # so adding it afterwards would stale them and mask the capability check.
-        state = complete_state("observational", "high-assurance")
-        state["host_profile"] = engine.probe_host("no-subagent-harness", {"subagent": False})
-        state = add_passing_reviews(state)
-        result = engine.validate_state(state, include_reviews=True)
-        self.assertTrue(any(item["code"] == "review.capability_conflict" for item in result["errors"]),
-                        "a host with no subagents must not pass off an independent-subagent review")
+class WorkUnitContractTests(unittest.TestCase):
+    def test_work_units_keep_plan_dependencies_but_reject_removed_queue_fields(self):
+        allowed = engine.allowed_keys(engine.OBJECT_SPECS["campaign.work_units"])
+        self.assertIn("dependency_ids", allowed)
+        for field in ("approval_ids", "external_action_ids", "retry_limit", "deadline_at"):
+            self.assertNotIn(field, allowed)
 
 class IntegrityClaimTests(unittest.TestCase):
     """The three claims a function review found outrunning the code."""

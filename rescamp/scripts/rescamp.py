@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ResCamp 0.9 durable campaign state, validation, review, and rendering.
+"""ResCamp 0.10 durable campaign state, validation, review, and rendering.
 
 The language model conducts research design and synthesis. This dependency-free utility
 keeps canonical state, enforces proportional gates, prepares immutable review packets,
@@ -14,17 +14,15 @@ import json
 import os
 import re
 import shutil
-import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 SCHEMA_VERSION = "3.1"
 SKILL_DIR = Path(__file__).resolve().parent.parent
 STATE_REL = Path("state/campaign.json")
-EVENTS_REL = Path("state/events.jsonl")
 VALIDATION_REL = Path("working/validation.json")
 REVIEW_DIR_REL = Path("working/review_packets")
 OUTPUT_DIR_REL = Path("outputs")
@@ -169,20 +167,13 @@ OBJECT_SPECS: dict[str, dict[str, Any]] = {
         "label": "work unit", "title": "objective",
         "required": ("objective", "authoritative_inputs", "permitted_actions", "prohibited_actions",
                      "outputs", "acceptance_test", "resource_ceiling", "retry_policy", "escalation"),
-        # Field names marked (queue) are consumed by scripts/workflow.py. They must match
-        # exactly: a campaign built through `add` has to be able to express the dependency
-        # graph and approval gates the queue enforces, or the dispatcher is fail-open.
         "fields": (
             ("authoritative_inputs", "Authoritative inputs and hashes"),
             ("permitted_actions", "Permitted actions"), ("prohibited_actions", "Prohibited actions"),
             ("method_constraints", "Method and tool constraints"), ("outputs", "Exact outputs"),
             ("acceptance_test", "Verification and acceptance"), ("resource_ceiling", "Resource ceiling"),
             ("retry_policy", "Retry and failure classes"), ("escalation", "Escalation and handoff"),
-            ("dependency_ids", "Depends on work units (queue)"),
-            ("external_action_ids", "External actions performed by this work unit"),
-            ("approval_ids", "Required approvals before dispatch (queue)"),
-            ("retry_limit", "Maximum retry attempts (queue)"),
-            ("deadline_at", "Absolute ISO-8601 deadline enforced by the queue"),
+            ("dependency_ids", "Depends on work units"),
         ),
     },
     "campaign.claims": {
@@ -234,8 +225,7 @@ SECTION_SPECS: dict[str, dict[str, Any]] = {
     },
     "campaign.resources_dispatch": {
         "required": ("dispatch_rules", "budgets"),
-        "optional": ("access_constraints", "concurrency", "max_concurrency", "approvals"),
-        "note": "max_concurrency is required as a positive integer when runtime.enabled is true.",
+        "optional": ("access_constraints", "concurrency", "approvals"),
     },
     "campaign.runtime": {
         "required": ("continuation_trigger", "state_store", "event_log", "checkpoint_policy",
@@ -322,84 +312,6 @@ def write_json(path: Path, value: Any) -> None:
     atomic_write(path, json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-EVENT_GENESIS_HASH = "sha256:" + ("0" * 64)
-
-
-def inspect_event_chain(path: Path) -> tuple[dict[str, Any], list[str]]:
-    """Return the append anchor and any structural/hash-chain defects.
-
-    Records written before the chain fields existed remain readable as a legacy
-    prefix. Their exact JSON values are folded into the first anchored hash, so once
-    canonical state records that anchor, later deletion, editing, or reordering is
-    detectable without rewriting the append-only log.
-    """
-    head = EVENT_GENESIS_HASH
-    count = 0
-    errors: list[str] = []
-    saw_chained = False
-    if not path.exists():
-        return {"count": count, "head": head}, errors
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            errors.append(f"event log contains a blank record at line {line_number}")
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            errors.append(f"event log contains invalid JSON at line {line_number}")
-            continue
-        if not isinstance(record, dict):
-            errors.append(f"event log record {line_number} is not an object")
-            continue
-        count += 1
-        chain_fields = {"sequence", "previous_hash", "event_hash"}
-        present = chain_fields.intersection(record)
-        if not present:
-            if saw_chained:
-                errors.append(f"event log hash chain has a legacy record after chained records at line {line_number}")
-            head = sha256_json({
-                "legacy_record": record,
-                "sequence": count,
-                "previous_hash": head,
-            })
-            continue
-        saw_chained = True
-        if present != chain_fields:
-            errors.append(f"event log hash chain fields are incomplete at line {line_number}")
-            continue
-        if record.get("sequence") != count:
-            errors.append(f"event log hash chain sequence mismatch at line {line_number}")
-        if record.get("previous_hash") != head:
-            errors.append(f"event log hash chain predecessor mismatch at line {line_number}")
-        body = {key: value for key, value in record.items() if key != "event_hash"}
-        expected = sha256_json(body)
-        if record.get("event_hash") != expected:
-            errors.append(f"event log hash chain digest mismatch at line {line_number}")
-        head = expected
-    return {"count": count, "head": head}, errors
-
-
-def append_event(campaign_dir: Path, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-    path = campaign_dir / EVENTS_REL
-    path.parent.mkdir(parents=True, exist_ok=True)
-    anchor, errors = inspect_event_chain(path)
-    if errors:
-        raise SystemExit("Refusing to append to an invalid event log:\n- " + "\n- ".join(errors))
-    record = {
-        "sequence": anchor["count"] + 1,
-        "previous_hash": anchor["head"],
-        "at": now_iso(),
-        "type": event_type,
-        "payload": payload,
-    }
-    record["event_hash"] = sha256_json(record)
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        handle.write(canonical_json(record) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    return {"count": record["sequence"], "head": record["event_hash"]}
-
-
 def resolve_campaign(path: str | Path) -> Path:
     candidate = Path(path).expanduser().resolve()
     if (candidate / STATE_REL).exists():
@@ -409,29 +321,8 @@ def resolve_campaign(path: str | Path) -> Path:
     raise SystemExit(f"Campaign not found: {candidate}")
 
 
-def verify_state_history(campaign_dir: Path, state: dict[str, Any]) -> None:
-    """Refuse a sanctioned mutation when state no longer matches its prior event."""
-    event_path = campaign_dir / EVENTS_REL
-    if not event_path.exists() or not event_path.read_text(encoding="utf-8").strip():
-        return
-    anchor, errors = inspect_event_chain(event_path)
-    if errors:
-        raise SystemExit("Campaign event history is corrupt:\n- " + "\n- ".join(errors))
-    expected = last_event_state_digest(event_path)
-    if expected is None:
-        raise SystemExit("Campaign event history does not bind canonical state; migrate or reinitialize")
-    if state.get("event_chain") != anchor or expected != event_state_digest(state):
-        raise SystemExit(
-            "Canonical campaign state does not match its event history; run audit and repair "
-            "the unlogged change before continuing"
-        )
-
-
-def load_state(campaign_dir: Path, verify_event: bool = False) -> dict[str, Any]:
-    state = read_json(campaign_dir / STATE_REL)
-    if verify_event:
-        verify_state_history(campaign_dir, state)
-    return state
+def load_state(campaign_dir: Path) -> dict[str, Any]:
+    return read_json(campaign_dir / STATE_REL)
 
 
 def substantive_state(state: dict[str, Any], deep: bool = True) -> dict[str, Any]:
@@ -441,7 +332,7 @@ def substantive_state(state: dict[str, Any], deep: bool = True) -> dict[str, Any
     would make a successful render mutate the digest its own reviews were bound to.
     """
     value = copy.deepcopy(state) if deep else dict(state)
-    for key in ("updated_at", "reviews", "outputs", "last_validation", "status", "event_chain"):
+    for key in ("updated_at", "reviews", "outputs", "last_validation", "status"):
         value.pop(key, None)
     assurance = value.get("assurance")
     if isinstance(assurance, dict):
@@ -453,33 +344,6 @@ def substantive_state(state: dict[str, Any], deep: bool = True) -> dict[str, Any
 
 def content_digest(state: dict[str, Any]) -> str:
     return sha256_json(substantive_state(state))
-
-
-def event_state_digest(state: dict[str, Any]) -> str:
-    """Bind the append-only log to the full persisted state it produced."""
-    value = copy.deepcopy(state)
-    value.pop("event_chain", None)
-    # Validation output is a reproducible cache written by `validate`, not campaign
-    # authority. Everything else, including reviews and the output manifest, is bound.
-    value.pop("last_validation", None)
-    return sha256_json(value)
-
-
-def last_event_state_digest(path: Path) -> str | None:
-    """Read the state anchor from the final event; chain validity is checked separately."""
-    if not path.exists():
-        return None
-    for line in reversed(path.read_text(encoding="utf-8").splitlines()):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            return None
-        payload = record.get("payload", {}) if isinstance(record, dict) else {}
-        value = payload.get("state_digest") if isinstance(payload, dict) else None
-        return value if isinstance(value, str) else None
-    return None
 
 
 def rubric_payload(profile: str) -> dict[str, Any]:
@@ -512,15 +376,8 @@ def finding_digest(role: str, finding: dict[str, Any]) -> str:
     return sha256_json({"role": role, "finding": finding})
 
 
-def save_state(campaign_dir: Path, state: dict[str, Any], event_type: str, payload: dict[str, Any] | None = None) -> None:
+def save_state(campaign_dir: Path, state: dict[str, Any]) -> None:
     state["updated_at"] = now_iso()
-    # Record the section digests with every event. Without them the log says which path
-    # changed but not what it changed to, so a section emptied before any review left no
-    # recoverable trace and a deletion was indistinguishable from an edit.
-    event = dict(payload or {})
-    event["section_digests"] = section_digests(state)
-    event["state_digest"] = event_state_digest(state)
-    state["event_chain"] = append_event(campaign_dir, event_type, event)
     write_json(campaign_dir / STATE_REL, state)
 
 
@@ -573,7 +430,7 @@ def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: s
             },
             "stages": [],
             "gates": [],
-            "resources_dispatch": {"budgets": [], "access_constraints": [], "concurrency": "", "max_concurrency": None, "dispatch_rules": [], "approvals": []},
+            "resources_dispatch": {"budgets": [], "access_constraints": [], "concurrency": "", "dispatch_rules": [], "approvals": []},
             "roles": [],
             "runtime": {"enabled": False, "continuation_trigger": "", "state_store": "", "event_log": "", "checkpoint_policy": "", "liveness": "", "recovery": "", "idempotency": ""},
             "work_units": [],
@@ -606,7 +463,7 @@ def get_by_path(data: Any, dotted: str) -> Any:
 # Engine-owned state. Writing these directly would bypass the checks that make them mean
 # anything: `reviews` has ingest-review, `status` is derived from validation, `outputs` and
 # `last_validation` are rendered records.
-PROTECTED_PATHS = ("reviews", "status", "outputs", "last_validation", "event_chain")
+PROTECTED_PATHS = ("reviews", "status", "outputs", "last_validation")
 
 
 def guard_protected_path(dotted: str) -> None:
@@ -690,24 +547,14 @@ def cmd_init(args: argparse.Namespace) -> None:
     for rel in ("state", "working", "working/review_packets", "outputs", "artifacts"):
         (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
     state = default_state(args.goal, args.profile, archetypes, campaign_id)
-    initial_payload = {
-        "goal": args.goal,
-        "profile": args.profile,
-        "archetypes": archetypes,
-        "section_digests": section_digests(state),
-        "state_digest": event_state_digest(state),
-    }
-    state["event_chain"] = append_event(
-        campaign_dir, "campaign.initialized", initial_payload,
-    )
-    write_json(campaign_dir / STATE_REL, state)
+    save_state(campaign_dir, state)
     print(campaign_dir)
 
 
 def cmd_set(args: argparse.Namespace) -> None:
     guard_protected_path(args.path)
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     value = parse_json_arg(args.value)
     section = SECTION_SPECS.get(args.path)
     object_spec = spec_for(args.path)
@@ -737,20 +584,20 @@ def cmd_set(args: argparse.Namespace) -> None:
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
     # repairing agent is working from.
-    save_state(campaign_dir, state, "campaign.field_set", {"path": args.path})
+    save_state(campaign_dir, state)
     print(f"set {args.path}")
 
 
 def cmd_add(args: argparse.Namespace) -> None:
     guard_protected_path(args.path)
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     collection = get_by_path(state, args.path)
     if not isinstance(collection, list):
         raise SystemExit(f"Target path is not a list: {args.path}")
     parsed = parse_json_arg(args.json)
     # Accept an array so a campaign can be populated in a handful of calls instead of
-    # one subprocess per object, without losing the field checking that `set` skips.
+    # one subprocess per object, while checking every object's field vocabulary.
     values = parsed if isinstance(parsed, list) else [parsed]
     if not values or not all(isinstance(item, dict) for item in values):
         raise SystemExit("--json must decode to an object or a non-empty array of objects")
@@ -776,7 +623,7 @@ def cmd_add(args: argparse.Namespace) -> None:
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
     # repairing agent is working from.
-    save_state(campaign_dir, state, "campaign.object_added", {"path": args.path, "ids": added})
+    save_state(campaign_dir, state)
     print("\n".join(added))
 
 
@@ -789,7 +636,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
     the execution prompt as authoritative content.
     """
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     payload = parse_json_arg(args.json)
     if not isinstance(payload, dict):
         raise SystemExit("--json must decode to an object mapping dotted paths to values")
@@ -831,13 +678,13 @@ def cmd_apply(args: argparse.Namespace) -> None:
         set_by_path(state, path, value, create_missing=args.allow_unknown)
         written.append(path)
     state["content_version"] += 1
-    save_state(campaign_dir, state, "campaign.applied", {"paths": sorted(written)})
+    save_state(campaign_dir, state)
     print("\n".join(sorted(written)))
 
 
 def cmd_dimension(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     dims = state["intent_dimensions"]
     found = next((item for item in dims if item.get("id") == args.id), None)
     payload = {
@@ -856,13 +703,13 @@ def cmd_dimension(args: argparse.Namespace) -> None:
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
     # repairing agent is working from.
-    save_state(campaign_dir, state, "interview.dimension_updated", {"id": args.id, "status": args.status})
+    save_state(campaign_dir, state)
     print(args.id)
 
 
 def cmd_turn(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     turns = state["interview"]["turns"]
     number = len(turns) + 1
     if number > state["interview"]["hard_limit"] and not state["interview"].get("extension_authorized"):
@@ -880,7 +727,7 @@ def cmd_turn(args: argparse.Namespace) -> None:
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
     # repairing agent is working from.
-    save_state(campaign_dir, state, "interview.turn_recorded", {"number": number, "branch": args.branch})
+    save_state(campaign_dir, state)
     print(number)
 
 
@@ -888,7 +735,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
     if args.reason not in STOP_REASONS:
         raise SystemExit("Invalid stopping reason")
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     state["interview"]["stopping_reason"] = args.reason
     state["interview"]["stopping_note"] = args.note
     state["status"] = "candidate"
@@ -897,7 +744,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
     # repairing agent is working from.
-    save_state(campaign_dir, state, "interview.stopped", {"reason": args.reason})
+    save_state(campaign_dir, state)
     if args.no_auto_quality:
         print(json.dumps({"stopping_reason": args.reason, "completed_by_this_command": [],
                           "not_run_by_this_command": ["deterministic_validation", "content_freeze",
@@ -1101,27 +948,11 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         container[key] = valid
         return valid
 
-    def check_string_list(container: dict[str, Any], key: str, path: str) -> None:
-        """Report a malformed list while preserving it for its domain-specific check."""
-        if key not in container:
-            return
-        items = container[key]
-        if not isinstance(items, list):
-            issue("error", "structure.type", f"{path} must be a list", path)
-            return
-        for index, item in enumerate(items):
-            if not isinstance(item, str):
-                item_path = f"{path}.{index}"
-                issue("error", "structure.type", f"{item_path} must be a string", item_path)
-
     interview = require_object(state, "interview", "interview")
     assurance = require_object(state, "assurance", "assurance")
     camp = require_object(state, "campaign", "campaign")
     reviews = require_object(state, "reviews", "reviews")
     require_object(state, "outputs", "outputs")
-    if "host_profile" in state:
-        require_object(state, "host_profile", "host_profile")
-
     for key in ("title", "campaign_id", "profile"):
         if key not in state or not isinstance(state.get(key), str):
             issue("error", "structure.type", f"{key} must be a string", key)
@@ -1198,8 +1029,6 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             require_string(gate, "stage_id", f"campaign.gates.{index}.stage_id")
     for index, unit in enumerate(camp["work_units"]):
         require_string_list(unit, "dependency_ids", f"campaign.work_units.{index}.dependency_ids")
-        for key in ("external_action_ids", "approval_ids"):
-            check_string_list(unit, key, f"campaign.work_units.{index}.{key}")
     for index, claim in enumerate(camp["claims"]):
         if "inquiry_id" in claim:
             require_string(claim, "inquiry_id", f"campaign.claims.{index}.inquiry_id")
@@ -1454,22 +1283,12 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     work_unit_ids, work_unit_dups = _ids(camp.get("work_units", []))
     if work_unit_dups:
         issue("error", "work_unit.duplicate", f"Duplicate work-unit IDs: {', '.join(work_unit_dups)}", "campaign.work_units")
-    for index, unit in enumerate(camp.get("work_units", [])):
-        if unit.get("deadline_at") is not None and not _is_iso_timestamp(unit.get("deadline_at")):
-            issue("error", "work_unit.bad_deadline",
-                  f"Work unit {unit.get('id', index)} deadline_at must be an ISO-8601 timestamp with timezone",
-                  f"campaign.work_units.{index}.deadline_at")
     if runtime.get("enabled"):
-        maximum = resources.get("max_concurrency")
-        if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
-            issue("error", "resources.max_concurrency",
-                  "Enabled runtime requires resources_dispatch.max_concurrency as a positive integer",
-                  "campaign.resources_dispatch.max_concurrency")
         for field in ("continuation_trigger", "state_store", "event_log", "checkpoint_policy", "liveness", "recovery", "idempotency"):
             if not _required_text(runtime.get(field)):
                 issue("error", "runtime.incomplete", f"Runtime field {field} is missing", f"campaign.runtime.{field}")
         if not work_unit_ids:
-            issue("error", "work_unit.none", "Enabled continuous workflow needs bounded work units", "campaign.work_units")
+            issue("error", "work_unit.none", "Enabled continuous execution needs bounded work units", "campaign.work_units")
         for index, unit in enumerate(camp.get("work_units", [])):
             unit_checks = {
                 "objective": _required_text, "authoritative_inputs": _required_list,
@@ -1481,16 +1300,13 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             for field, check in unit_checks.items():
                 if not check(unit.get(field)):
                     issue("error", "work_unit.incomplete", f"Work unit {unit.get('id', index)} missing {field}", f"campaign.work_units.{index}")
-    elif camp.get("work_units"):
-        issue("warning", "runtime.disabled_with_units", "Work units exist while runtime is disabled", "campaign.runtime")
-
     ethics = camp.get("ethics_rights_safety", {})
     external_actions = ethics.get("external_actions", [])
     approval_sources = (
         ("campaign.resources_dispatch.approvals", resources.get("approvals", [])),
         ("campaign.ethics_rights_safety.human_approval_points", ethics.get("human_approval_points", [])),
     )
-    require_dispatchable_approvals = runtime.get("enabled") is True or bool(external_actions)
+    require_dispatchable_approvals = bool(external_actions)
     approval_ids: set[str] = set()
     approval_count = 0
     for approval_path, records in approval_sources:
@@ -1504,7 +1320,7 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                     or not record["id"].strip() or record["id"] != record["id"].strip():
                 if require_dispatchable_approvals:
                     issue("error", "approval.malformed",
-                          "Runtime approvals must be structured objects with non-empty string IDs",
+                          "Approvals must be structured objects with non-empty string IDs",
                           f"{approval_path}.{approval_index}")
                 continue
             approval_id = record["id"]
@@ -1542,54 +1358,6 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             issue("error", "external_action.bad_approval_ref",
                   f"External action {action.get('id', index)!r} references unknown approval {gate!r}",
                   f"campaign.ethics_rights_safety.external_actions.{index}")
-
-    for index, unit in enumerate(camp.get("work_units", [])):
-        path = f"campaign.work_units.{index}"
-        declared_actions = unit.get("external_action_ids", [])
-        supplied_approvals = unit.get("approval_ids", [])
-        actions_valid = isinstance(declared_actions, list) and all(
-            isinstance(item, str) and bool(item.strip()) and item == item.strip()
-            for item in declared_actions
-        )
-        approvals_valid = isinstance(supplied_approvals, list) and all(
-            isinstance(item, str) and bool(item.strip()) and item == item.strip()
-            for item in supplied_approvals
-        )
-        if not actions_valid:
-            issue("error", "work_unit.bad_external_actions",
-                  f"Work unit {unit.get('id', index)} external_action_ids must be a list of non-empty string IDs", path)
-        if not approvals_valid:
-            issue("error", "work_unit.bad_approvals",
-                  f"Work unit {unit.get('id', index)} approval_ids must be a list of non-empty string IDs", path)
-        if not actions_valid or not approvals_valid:
-            continue
-        if len(declared_actions) != len(set(declared_actions)):
-            issue("error", "work_unit.duplicate_external_actions",
-                  f"Work unit {unit.get('id', index)} has duplicate external_action_ids", path)
-        if len(supplied_approvals) != len(set(supplied_approvals)):
-            issue("error", "work_unit.duplicate_approvals",
-                  f"Work unit {unit.get('id', index)} has duplicate approval_ids", path)
-        unknown_actions = sorted(set(declared_actions) - set(external_action_by_id))
-        if unknown_actions:
-            issue("error", "work_unit.bad_external_action_ref",
-                  f"Work unit {unit.get('id', index)} references unknown external actions: "
-                  + ", ".join(unknown_actions), path)
-        unknown_approvals = sorted(set(supplied_approvals) - approval_ids)
-        if unknown_approvals:
-            issue("error", "work_unit.bad_approval_ref",
-                  f"Work unit {unit.get('id', index)} references unknown approvals: "
-                  + ", ".join(unknown_approvals), path)
-        derived_approvals = {
-            external_action_by_id[action_id].get("approval_id", "").strip()
-            for action_id in declared_actions if action_id in external_action_by_id
-            and isinstance(external_action_by_id[action_id].get("approval_id"), str)
-            and external_action_by_id[action_id].get("approval_id", "").strip()
-        }
-        missing_approvals = sorted(derived_approvals - set(supplied_approvals))
-        if missing_approvals:
-            issue("error", "work_unit.approval_mismatch",
-                  f"Work unit {unit.get('id', index)} must carry approvals derived from its external actions: "
-                  + ", ".join(missing_approvals), path)
 
     # 3. Rendered outputs must still match the state they were rendered from.
     rendered = state.get("outputs", {}).get("last_rendered_digest")
@@ -1714,16 +1482,6 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                           "reviews.records")
         review_summary["attested_modes"] = {role: item.get("mode") for role, item in sorted(role_map.items())}
         review_summary["independence_is_self_attested"] = True
-        # A host that has declared it cannot spawn a separate reviewer must not have
-        # records claiming one. `unknown` and absent are not treated as a denial.
-        if state.get("host_profile", {}).get("subagent") is False:
-            claimed = [role for role, item in role_map.items() if item.get("mode") == "independent-subagent"]
-            if claimed:
-                review_summary["independence_ok"] = False
-                issue("error", "review.capability_conflict",
-                      "Host profile declares no subagent capability, but these reviews claim independent-subagent: "
-                      + ", ".join(sorted(claimed)),
-                      "reviews.records")
         if PROFILES[profile]["independent_required"]:
             bad_modes = [role for role in required if role in role_map and role_map[role].get("mode") not in INDEPENDENCE_CLAIMING_MODES]
             identities = [role_map[role].get("reviewer_id") for role in required if role in role_map]
@@ -1920,7 +1678,7 @@ def invalidation_sections(role: str, campaign: dict[str, Any],
 # review. The rest is engine bookkeeping that no reviewer is shown or asked to judge.
 UNBOUND_TOP_LEVEL = frozenset({
     "campaign", "interview", "content_version", "updated_at",
-    "title", "campaign_id", "created_at", "schema_version", "rescamp_version", "host_profile",
+    "title", "campaign_id", "created_at", "schema_version", "rescamp_version",
 })
 
 
@@ -2034,13 +1792,13 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
         path = packet_dir / f"{role}.json"
         write_json(path, packet)
         paths.append(path)
-    save_state(campaign_dir, state, "review.frozen", {"content_digest": digest, "rubric_digest": r_digest, "roles": PROFILES[state["profile"]]["review_roles"]})
+    save_state(campaign_dir, state)
     return digest, r_digest, paths
 
 
 def cmd_quality_loop(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     pre = validate_state(state, include_reviews=False)
     write_json(campaign_dir / VALIDATION_REL, pre)
     digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
@@ -2118,7 +1876,7 @@ def review_record_errors(record: dict[str, Any]) -> list[str]:
 
 def cmd_ingest_review(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     record = read_json(Path(args.file))
     errors = review_record_errors(record)
     if errors:
@@ -2155,7 +1913,7 @@ def cmd_ingest_review(args: argparse.Namespace) -> None:
     record["ingested_at"] = now_iso()
     records.append(record)
     state["reviews"]["records"] = records
-    save_state(campaign_dir, state, "review.ingested", {"role": record["role"], "verdict": record["verdict"], "mode": record["mode"]})
+    save_state(campaign_dir, state)
     print(record["role"])
 
 
@@ -2311,7 +2069,7 @@ def render_campaign_prompt(state: dict[str, Any], status: str) -> str:
     parts.append(_section("7. Frozen evaluation or adjudication instrument", f"**Frozen before production (asserted, not verified):** {evaluation.get('frozen_before_production_asserted')}\n\n**Criteria**\n{_md_list(evaluation.get('criteria'))}\n\n**Comparators, controls, cases, or adjudication rules**\n{_md_list(evaluation.get('comparators_or_adjudication'))}\n\n**Missing-evidence policy:** {evaluation.get('missing_evidence_policy','')}\n\n**Exploration versus confirmation:** {evaluation.get('exploration_confirmation_policy','')}\n\n**Stop, pivot, and no-go rules**\n{_md_list(evaluation.get('stop_pivot_no_go_rules'))}"))
     parts.append(_section("8. Staged funnel and promotion gates", f"**Stages**\n\n{_render_objects(camp.get('stages'), 'campaign.stages')}\n\n**Gates**\n\n{_render_objects(camp.get('gates'), 'campaign.gates')}"))
     resources = camp["resources_dispatch"]
-    parts.append(_section("9. Resources and fail-closed dispatch", f"**Budgets**\n{_md_list(resources.get('budgets'))}\n\n**Access constraints**\n{_md_list(resources.get('access_constraints'))}\n\n**Concurrency:** {resources.get('concurrency','')}\n\n**Machine concurrency ceiling:** {resources.get('max_concurrency') if resources.get('max_concurrency') is not None else 'not enabled'}\n\n**Dispatch rules**\n{_md_list(resources.get('dispatch_rules'))}\n\n**Approvals**\n{_md_list(resources.get('approvals'))}"))
+    parts.append(_section("9. Resources and fail-closed dispatch", f"**Budgets**\n{_md_list(resources.get('budgets'))}\n\n**Access constraints**\n{_md_list(resources.get('access_constraints'))}\n\n**Concurrency:** {resources.get('concurrency','')}\n\n**Dispatch rules**\n{_md_list(resources.get('dispatch_rules'))}\n\n**Approvals**\n{_md_list(resources.get('approvals'))}"))
     parts.append(_section("10. Delegation", f"**Roles**\n\n{_render_objects(camp.get('roles'), 'campaign.roles')}\n\n**Bounded work units**\n\nDelegates return artifacts and concise findings, not unbounded narrative. A local brief may narrow scope but may not weaken the constitution.\n\n{_render_objects(camp.get('work_units'), 'campaign.work_units')}"))
     runtime = camp["runtime"]
     parts.append(_section("11. Durable operations and recovery", f"**Continuous runtime enabled:** {runtime.get('enabled')}\n\n**Continuation trigger:** {runtime.get('continuation_trigger','')}\n\n**State store:** {runtime.get('state_store','')}\n\n**Event log:** {runtime.get('event_log','')}\n\n**Checkpoint policy:** {runtime.get('checkpoint_policy','')}\n\n**Liveness:** {runtime.get('liveness','')}\n\n**Recovery:** {runtime.get('recovery','')}\n\n**Idempotency:** {runtime.get('idempotency','')}\n\nA conversational session is not a scheduler."))
@@ -2552,10 +2310,6 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
         "status": status,
         "manifest_path": "MANIFEST.sha256",
     }
-    # This anchor covers the canonical campaign event log, which is not copied into
-    # outputs/. Keeping a one-event-old anchor in this standalone snapshot would imply
-    # it could audit a log it does not contain.
-    snapshot.pop("event_chain", None)
     files: dict[str, str] = {
         "CAMPAIGN_PROMPT.md": render_campaign_prompt(state, status),
         "KICKOFF.md": render_kickoff(state, status),
@@ -2583,7 +2337,7 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
     atomic_write(out_dir / "MANIFEST.sha256", "\n".join(manifest_lines) + "\n")
     manifest["MANIFEST.sha256"] = sha256_bytes(("\n".join(manifest_lines) + "\n").encode("utf-8"))
     state["outputs"] = {"last_rendered_digest": content_digest(state), "status": status, "manifest": manifest}
-    save_state(campaign_dir, state, "outputs.rendered", {"status": status, "files": sorted(files)})
+    save_state(campaign_dir, state)
     return {"rendered": True, "status": status, "output_dir": str(out_dir),
             "manifest": manifest, "validation": validation}
 
@@ -2595,7 +2349,6 @@ def cmd_render(args: argparse.Namespace) -> None:
     if render_blocking_errors(validation):
         result = render_refusal(validation)
     else:
-        verify_state_history(campaign_dir, state)
         result = render_outputs(campaign_dir, state,
                                 force_draft=(args.draft or args.command == "draft"))
     print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -2611,7 +2364,6 @@ def cmd_finalize(args: argparse.Namespace) -> None:
         write_json(campaign_dir / VALIDATION_REL, pre)
         print(json.dumps(render_refusal(pre), indent=2, ensure_ascii=False))
         raise SystemExit(2)
-    verify_state_history(campaign_dir, state)
     rendered = state.get("outputs", {}).get("last_rendered_digest")
     if rendered and rendered != content_digest(state):
         # Finalize is about to replace the bundle. Do not turn that replaceable cache
@@ -2673,22 +2425,8 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 def cmd_audit(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    # Audit must inspect rather than reject corrupted state at the load boundary.
-    state = load_state(campaign_dir, verify_event=False)
+    state = load_state(campaign_dir)
     errors: list[str] = []
-    event_path = campaign_dir / EVENTS_REL
-    if not event_path.exists() or not event_path.read_text(encoding="utf-8").strip():
-        errors.append("missing or empty event log")
-    else:
-        event_anchor, event_errors = inspect_event_chain(event_path)
-        errors.extend(event_errors)
-        if state.get("event_chain") != event_anchor:
-            errors.append("event log anchor does not match canonical state")
-        logged_state = last_event_state_digest(event_path)
-        if logged_state is None:
-            errors.append("final event does not bind the canonical state")
-        elif logged_state != event_state_digest(state):
-            errors.append("canonical state does not match the final event")
     out_dir = campaign_dir / OUTPUT_DIR_REL
     manifest_path = out_dir / "MANIFEST.sha256"
     verified: dict[str, bool] = {}
@@ -2754,49 +2492,6 @@ def cmd_audit(args: argparse.Namespace) -> None:
         raise SystemExit(5 if args.strict else 1)
 
 
-DECLARED_CAPABILITIES = ("subagent", "structured_question_control", "background_execution", "network")
-
-
-def _python_version() -> str:
-    import platform  # local: importing it at module scope cost ~6ms on every CLI call
-    return platform.python_version()
-
-
-def probe_host(host_id: str, declared: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Record what is directly testable; everything else must be declared, not guessed."""
-    reference_dir = SKILL_DIR / "references"
-    profile: dict[str, Any] = {
-        "host_id": host_id,
-        "probed_at": now_iso(),
-        "python": _python_version(),
-        "skill_dir": str(SKILL_DIR),
-        "filesystem": os.access(SKILL_DIR, os.R_OK),
-        "progressive_references": reference_dir.is_dir() and any(reference_dir.glob("*.md")),
-    }
-    for name in DECLARED_CAPABILITIES:
-        # "unknown" is treated as absent everywhere it is consulted.
-        profile[name] = (declared or {}).get(name, "unknown")
-    return profile
-
-
-def cmd_host_probe(args: argparse.Namespace) -> None:
-    declared: dict[str, Any] = {}
-    for item in args.declare or []:
-        if "=" not in item:
-            raise SystemExit(f"--declare expects name=value, got {item!r}")
-        name, _, raw = item.partition("=")
-        if name not in DECLARED_CAPABILITIES:
-            raise SystemExit(f"Unknown capability {name!r}; declarable: {', '.join(DECLARED_CAPABILITIES)}")
-        declared[name] = {"true": True, "false": False}.get(raw.strip().lower(), raw.strip())
-    profile = probe_host(args.host_id, declared)
-    if args.campaign:
-        campaign_dir = resolve_campaign(args.campaign)
-        state = load_state(campaign_dir, verify_event=True)
-        state["host_profile"] = profile
-        save_state(campaign_dir, state, "host.probed", {"host_id": args.host_id})
-    print(json.dumps(profile, indent=2, ensure_ascii=False))
-
-
 def cmd_schema(args: argparse.Namespace) -> None:
     if args.path == "list":
         print("# list sections (write with `add`)")
@@ -2849,7 +2544,7 @@ def cmd_guide(args: argparse.Namespace) -> None:
 
 def cmd_profile(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
-    state = load_state(campaign_dir, verify_event=True)
+    state = load_state(campaign_dir)
     if args.profile not in PROFILES:
         raise SystemExit("Invalid profile")
     state["profile"] = args.profile
@@ -2857,7 +2552,7 @@ def cmd_profile(args: argparse.Namespace) -> None:
     state["interview"]["hard_limit"] = PROFILES[args.profile]["hard"]
     state["content_version"] += 1
     state["reviews"] = {"frozen_content_digest": "", "rubric_digest": "", "records": []}
-    save_state(campaign_dir, state, "campaign.profile_changed", {"profile": args.profile})
+    save_state(campaign_dir, state)
     print(args.profile)
 
 
@@ -2896,13 +2591,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", required=True, help="JSON object mapping dotted paths to values, or @file.json")
     p.add_argument("--allow-unknown", action="store_true", help="accept fields and paths outside the specs")
     p.set_defaults(func=cmd_apply)
-
-    p = sub.add_parser("host-probe", help="record probeable host facts and declared capabilities")
-    p.add_argument("--host-id", required=True)
-    p.add_argument("--campaign", help="also store the result as host_profile in campaign state")
-    p.add_argument("--declare", action="append",
-                   help=f"name=value for a capability that cannot be probed ({', '.join(DECLARED_CAPABILITIES)}); repeatable")
-    p.set_defaults(func=cmd_host_probe)
 
     p = sub.add_parser("schema", help="print the field vocabulary for campaign objects")
     p.add_argument("path", nargs="?", default="list", help="collection path, or 'list'")

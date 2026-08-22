@@ -44,9 +44,7 @@ class HostAcceptanceTests(unittest.TestCase):
                         self.assertNotIn("--sandbox", receipt["command"])
                         self.assertIn("--approve-for-me", receipt["command"])
                     else:
-                        index = receipt["command"].index("--settings")
-                        settings = json.loads(receipt["command"][index + 1])
-                        self.assertEqual(settings["skillOverrides"]["rescamp"], "on")
+                        self.assertNotIn("--settings", receipt["command"])
 
     def test_claude_error_envelope_is_not_a_passing_response(self):
         self.assertFalse(host_acceptance.response_ok(
@@ -65,7 +63,7 @@ class HostAcceptanceTests(unittest.TestCase):
         ))
         self.assertFalse(host_acceptance.response_ok("codex", "Error: skill not found"))
 
-    def test_workflow_modes_require_an_expected_artifact(self):
+    def test_non_help_modes_require_an_expected_artifact(self):
         with tempfile.TemporaryDirectory() as temp_str:
             result = self.run_acceptance(
                 "--host", "codex", "--project", temp_str, "--mode", "test",

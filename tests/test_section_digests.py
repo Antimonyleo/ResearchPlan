@@ -191,34 +191,6 @@ class ReviewStatusTests(unittest.TestCase):
         self.assertEqual(needed, ["operations-reproducibility"])
 
 
-class EventLedgerTests(unittest.TestCase):
-    def test_every_event_records_the_section_digests(self):
-        """Without these the log names the path that changed but not what it became, so a
-        section emptied before any review left no recoverable trace."""
-        import json
-        import tempfile
-        from pathlib import Path
-
-        with tempfile.TemporaryDirectory() as temp:
-            campaign_dir = Path(temp) / "campaign"
-            for rel in ("state", "working", "outputs", "artifacts"):
-                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
-            state = complete_state()
-            engine.write_json(campaign_dir / engine.STATE_REL, state)
-            before = engine.section_digests(state)
-
-            engine.save_state(campaign_dir, state, "test.baseline", {})
-            state["campaign"]["inquiries"] = []
-            engine.save_state(campaign_dir, state, "test.dropped", {"path": "campaign.inquiries"})
-
-            events = [json.loads(line) for line in
-                      (campaign_dir / engine.EVENTS_REL).read_text().splitlines() if line.strip()]
-            self.assertTrue(all("section_digests" in e["payload"] for e in events))
-            self.assertEqual(events[0]["payload"]["section_digests"]["inquiries"], before["inquiries"])
-            self.assertNotEqual(events[1]["payload"]["section_digests"]["inquiries"], before["inquiries"],
-                                "the deletion must be visible as a digest change in the log")
-
-
 class BenchmarkHonestyTests(unittest.TestCase):
     """Statistical claims must not imply precision the design does not support."""
 
@@ -314,30 +286,6 @@ class FailClosedTests(unittest.TestCase):
         self.assertTrue(any(i["code"] == "external_action.bad_approval_ref" for i in result["errors"]),
                         "prose approvals and invented references must fail closed")
 
-    def test_a_work_unit_must_carry_the_approval_derived_from_its_external_action(self):
-        state = complete_state()
-        state["campaign"]["resources_dispatch"]["approvals"] = [
-            {"id": "comms-signoff", "description": "Communications lead authorizes publication"}]
-        state["campaign"]["ethics_rights_safety"]["external_actions"] = [
-            {"id": "publish", "description": "Publish findings", "approval_id": "comms-signoff"}]
-        state["campaign"]["runtime"]["enabled"] = True
-        state["campaign"]["runtime"].update({
-            "continuation_trigger": "queue", "state_store": "state/campaign.json",
-            "event_log": "state/events.jsonl", "checkpoint_policy": "after each unit",
-            "liveness": "leases", "recovery": "retry once", "idempotency": "artifact hashes",
-        })
-        state["campaign"]["work_units"] = [{
-            "id": "publish-unit", "objective": "Publish the approved report",
-            "authoritative_inputs": ["report@sha256"], "permitted_actions": ["publish externally"],
-            "prohibited_actions": ["no changes"], "outputs": ["publication receipt"],
-            "acceptance_test": "receipt exists", "resource_ceiling": "zero dollars",
-            "retry_policy": "no retry", "retry_limit": 0, "escalation": "campaign lead",
-            "external_action_ids": ["publish"], "approval_ids": [],
-        }]
-        result = engine.validate_state(state, include_reviews=False)
-        self.assertTrue(any(i["code"] == "work_unit.approval_mismatch" for i in result["errors"]),
-                        "dispatch approval IDs must be derived from the external actions a unit performs")
-
     def test_a_stale_rendered_bundle_is_reported(self):
         state = self._reviewed()
         state["outputs"] = {"last_rendered_digest": "sha256:" + "0" * 64, "status": "EXECUTION-READY", "manifest": {}}
@@ -356,7 +304,7 @@ class FailClosedTests(unittest.TestCase):
             state = engine.load_state(campaign_dir)
             state["interview"]["stopping_note"] += " clarified"
             state["content_version"] += 1
-            engine.save_state(campaign_dir, state, "interview.note_updated")
+            engine.save_state(campaign_dir, state)
 
             with contextlib.redirect_stdout(io.StringIO()):
                 engine.cmd_finalize(argparse.Namespace(campaign=str(campaign_dir)))
@@ -364,24 +312,6 @@ class FailClosedTests(unittest.TestCase):
             final = engine.load_state(campaign_dir)
             self.assertEqual(final["status"], "execution-ready")
             self.assertEqual(final["outputs"]["last_rendered_digest"], engine.content_digest(final))
-
-
-class BenchmarkBoundaryTests(unittest.TestCase):
-    def setUp(self):
-        import importlib.util
-        from common import ROOT
-        spec = importlib.util.spec_from_file_location("bench", ROOT / "rescamp/scripts/benchmark.py")
-        self.bench = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.bench)
-
-    def test_evaluator_only_annotations_never_reach_the_system_under_test(self):
-        """Team U's answered_dimension_ids in the shared history made elicitation recall circular."""
-        history = [{"role": "user", "message": "scope: eight districts",
-                    "answered_dimension_ids": ["scope"], "blocker_ids": ["consent"]}]
-        seen = self.bench.public_history(history)[0]
-        for field in self.bench.EVALUATOR_ONLY_EVENT_FIELDS:
-            self.assertNotIn(field, seen)
-        self.assertEqual(seen["message"], "scope: eight districts")
 
 
 if __name__ == "__main__":
