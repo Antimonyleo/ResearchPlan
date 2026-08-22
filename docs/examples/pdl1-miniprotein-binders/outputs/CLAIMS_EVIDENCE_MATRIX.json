@@ -1,0 +1,83 @@
+{
+  "campaign_id": "pdl1-miniprotein-binders",
+  "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+  "rows": [
+    {
+      "counterevidence_or_objections": [
+        "Apparent separation driven by a confound rather than by binding: positive controls sharing a fold, a length range, or an amino-acid composition with each other and not with the negatives.",
+        "The rival explanation is that the stack is detecting 'looks like a designed protein', not 'binds this epitope'.",
+        "Training-set contamination: published binders are frequently deposited structures, and deposited structures are frequently in a structure-prediction model's training data. Their interface confidence would then be partly memorization, inflating separation in a way that does not transfer to novel designs — which is exactly the transfer the go decision assumes."
+      ],
+      "id": "INQ-separation",
+      "kind": "inquiry",
+      "reporting_rule": "Report the full distribution comparison and its overlap. Failure to separate is reported as a terminal result, never as a calibration step.",
+      "statement": "Under the frozen filter stack, do published PD-L1 binders separate from scrambled and unrelated-fold decoys well enough for the ranking to carry decision weight?",
+      "status": "open",
+      "support": [
+        "Score distributions for the frozen positive and negative control sets, computed through the identical pipeline, with the overlap between distributions reported and the per-filter contribution broken out."
+      ],
+      "verification": "Separation is judged against the composition-matched negative subset by AUROC, not against scrambles and not by threshold pass rate. It is computed on all positives and again on the post-cutoff subset, and both are reported. Judged once, on the frozen thresholds, before any campaign design is scored."
+    },
+    {
+      "counterevidence_or_objections": [
+        "A passing set that is one design and its near-copies.",
+        "Cluster count, not raw pass count, is the decision-relevant quantity; a rival reading of a large pass count is that the pipeline converged on a single solution and the redundancy is an artefact of sampling."
+      ],
+      "id": "INQ-yield",
+      "kind": "inquiry",
+      "reporting_rule": "Report cluster count, cluster occupancy, and the raw count separately. Never report the raw count alone.",
+      "statement": "Does the design pipeline produce enough distinct designs clearing the frozen thresholds to make a synthesis order worth placing?",
+      "status": "open",
+      "support": [
+        "Count of campaign designs clearing every frozen threshold, after clustering to remove near-duplicates, with the diversity of the passing set reported as structural and sequence distance."
+      ],
+      "verification": "Counted after single-linkage clustering at 60 percent global sequence identity and 2.0 Angstrom interface backbone RMSD, declared before generation, with the 50 and 70 percent alternatives reported alongside. Raw pass counts are recorded but are not the criterion."
+    },
+    {
+      "counterevidence_or_objections": [
+        "The rival reading is that a marginal result should be resolved by more computation rather than by spending.",
+        "The decision table must therefore contain a revise cell with an explicit bounded scope, so 'run more designs' is a declared outcome rather than an improvised escape from a no-go."
+      ],
+      "id": "INQ-spend",
+      "kind": "inquiry",
+      "reporting_rule": "State the cell reached and the values that placed it there in the first paragraph of the memo, before any discussion.",
+      "statement": "Given the observed separation and yield, is committing gene-synthesis and wet-lab budget the right decision?",
+      "status": "open",
+      "support": [
+        "The frozen decision table mapping observed separation and cluster-corrected yield to go, revise, or no-go, applied once, with the memo stating which cell was reached."
+      ],
+      "verification": "The decision table is frozen in D-thresholds before any campaign design is scored, and is applied exactly once. Reaching a cell is mechanical; the memo may add context but may not move the cell."
+    },
+    {
+      "counterevidence_or_objections": [
+        "Composition or fold confounding; small positive-control set; published binders being unrepresentative of what this pipeline generates; assay heterogeneity across the papers supplying the positives."
+      ],
+      "id": "CLM-separation",
+      "inquiry_id": "INQ-separation",
+      "kind": "claim",
+      "reporting_rule": "Reported whether the margin is large, small, or absent. An absent margin is the campaign's terminal result.",
+      "statement": "The frozen filter stack separates published PD-L1 binders from composition-matched decoys by a margin recorded in the control calibration table.",
+      "status": "unevaluated",
+      "support": [
+        "Control score distributions from D-controls, computed through the identical pipeline used for campaign designs."
+      ],
+      "verification": "Compared against the composition-matched negative subset and reported as a distribution overlap, not a threshold pass rate."
+    },
+    {
+      "counterevidence_or_objections": [
+        "That a mechanical table oversimplifies a judgement the PI should make holistically.",
+        "The table's purpose is to prevent the judgement from being made after seeing which designs look attractive, not to remove the PI's authority; the PI may override it and the memo records the override as such."
+      ],
+      "id": "CLM-recommendation",
+      "inquiry_id": "INQ-spend",
+      "kind": "claim",
+      "reporting_rule": "The memo states the cell first and any narrative second. A PI override is recorded as an override with its reason, never folded into the recommendation.",
+      "statement": "The recommendation delivered to the principal investigator is the cell reached on the frozen decision table, together with the evidence that placed it there.",
+      "status": "unevaluated",
+      "support": [
+        "The frozen decision table in D-thresholds, the control calibration table, and the cluster-corrected yield from the ranked design table."
+      ],
+      "verification": "The cell is derived mechanically from two recorded numbers and is reproducible from the frozen table and the score files."
+    }
+  ]
+}

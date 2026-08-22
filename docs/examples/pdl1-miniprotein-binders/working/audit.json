@@ -1,0 +1,66 @@
+{
+  "artifact_verification": {
+    "CAMPAIGN_PROMPT.md": true,
+    "CLAIMS_EVIDENCE_MATRIX.json": true,
+    "KICKOFF.md": true,
+    "MANIFEST.sha256": true,
+    "REVIEW_REPORT.md": true,
+    "ROADMAP.md": true,
+    "RUNBOOK.md": true,
+    "TASK_BRIEF_TEMPLATE.md": true,
+    "campaign.json": true
+  },
+  "audited_at": "2026-08-22T02:43:11+00:00",
+  "campaign_id": "pdl1-miniprotein-binders",
+  "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+  "errors": [],
+  "ok": true,
+  "validation": {
+    "checked_at": "2026-08-22T02:43:11+00:00",
+    "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "counts": {
+      "canaries": 4,
+      "claims": 2,
+      "deliverables": 5,
+      "gates": 4,
+      "inquiries": 3,
+      "intent_dimensions": 10,
+      "interview_turns": 7,
+      "methods": 5,
+      "stages": 4,
+      "tools": 4,
+      "work_units": 4
+    },
+    "errors": [],
+    "execution_ready": true,
+    "release_status": "execution-ready",
+    "rescamp_version": "0.10.0",
+    "review": {
+      "attested_modes": {
+        "methods-evidence": "sequential-pass",
+        "operations-reproducibility": "sequential-pass"
+      },
+      "blocking": [],
+      "current": [
+        "methods-evidence",
+        "operations-reproducibility"
+      ],
+      "independence_is_self_attested": true,
+      "independence_ok": true,
+      "missing": [],
+      "required": [
+        "methods-evidence",
+        "operations-reproducibility"
+      ]
+    },
+    "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06",
+    "valid": true,
+    "warnings": [
+      {
+        "code": "review.sequential",
+        "message": "Standard review used sequential passes; disclose limited independence",
+        "path": "reviews.records"
+      }
+    ]
+  }
+}

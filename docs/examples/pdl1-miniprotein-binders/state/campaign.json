@@ -1,0 +1,1389 @@
+{
+  "archetypes": [
+    "computational",
+    "design-engineering"
+  ],
+  "assumptions": [],
+  "assurance": {
+    "pilot": {},
+    "pilot_required": false,
+    "risk_acceptances": []
+  },
+  "blockers": [],
+  "campaign": {
+    "canaries": [
+      {
+        "downstream_acceptance": "The filter stack must ingest the run manifest and score the canary output end to end, producing the same numbers when re-run from the stored artifacts. A canary whose output the scorer cannot ingest fails the gate.",
+        "expected_artifacts": [
+          "Predicted complex coordinates, per-residue confidence, interface confidence measures, and a run manifest carrying the image digest, seed, and wall-clock cost."
+        ],
+        "id": "CAN-predict",
+        "production_like_test": "Re-predict the deposited PD-1:PD-L1 complex named in D-target from sequence, using the exact production settings, container image, and seed policy that S2 and S3 will use.",
+        "quarantine_rules": "If the canary fails at any point, S3 does not start. Any campaign design already scored under a failed canary is quarantined and rescored after the fix; the deviation is recorded.",
+        "sanity_checks": [
+          "Positive: the predicted complex recovers the deposited interface within a pre-declared coordinate deviation.",
+          "Negative: predicting the same target against a scrambled partner sequence yields interface confidence in the low-confidence regime.",
+          "Sanity: two runs at the same seed produce identical scores, and two runs at different seeds produce scores within a pre-declared spread."
+        ],
+        "tool_id": "TOOL-predict"
+      },
+      {
+        "downstream_acceptance": "Terms must land in the score table under the exact column names the frozen threshold table references. A renamed or missing column fails the gate rather than silently dropping a filter.",
+        "expected_artifacts": [
+          "Interface energy terms, biophysical liability terms, and a manifest with package version, commit, flags, and cost."
+        ],
+        "id": "CAN-energy",
+        "production_like_test": "Score the deposited PD-1:PD-L1 interface and a deliberately disrupted variant of it through the exact production protocol.",
+        "quarantine_rules": "Failure blocks S3. Scores produced under a failed canary are quarantined and recomputed.",
+        "sanity_checks": [
+          "Positive: the native interface scores favourably.",
+          "Negative: the disrupted interface scores materially worse in the expected direction.",
+          "Sanity: rerunning the identical input reproduces the identical terms."
+        ],
+        "tool_id": "TOOL-energy"
+      },
+      {
+        "downstream_acceptance": "The decision table must be computable from the miniature output without manual editing. If the decision table cannot be applied mechanically to the canary output, the gate fails.",
+        "expected_artifacts": [
+          "A complete score table row for each design, with every column the frozen threshold table references populated and no nulls."
+        ],
+        "id": "CAN-pipeline",
+        "production_like_test": "Run a single miniature end-to-end pass — backbone generation, sequence design, prediction, scoring — on a handful of designs against the frozen target, at production settings, before any scale-up.",
+        "quarantine_rules": "Failure blocks S3 scale-up and consumes no further allocation until fixed.",
+        "sanity_checks": [
+          "Positive: rows are complete and within physically plausible ranges.",
+          "Negative: a deliberately malformed backbone is rejected by the pipeline rather than producing a plausible-looking row.",
+          "Sanity: the miniature pass reproduces exactly when re-run from its manifest."
+        ],
+        "tool_id": "TOOL-backbone"
+      },
+      {
+        "downstream_acceptance": "The redesigned sequences must flow end to end into the scorer and produce complete score rows under the exact column names the frozen threshold table references, reproducing when re-run from the stored manifest.",
+        "expected_artifacts": [
+          "Designed sequences with per-position confidence and the exact invocation recorded.",
+          "A run manifest carrying the model identity, weight digest, container image digest, seed, and wall-clock cost.",
+          "Downstream prediction and score rows for each redesigned sequence, populated in the columns the frozen threshold table references."
+        ],
+        "id": "CAN-sequence",
+        "production_like_test": "Redesign sequences onto the backbone of the deposited PD-L1 binding partner named in D-target, at exact production settings, container image, and seed policy, then predict and score the redesigned complex through the same downstream stack S3 will use.",
+        "quarantine_rules": "Failure blocks S3. Any sequence produced under a failed canary is quarantined and redesigned after the fix, with the deviation recorded.",
+        "sanity_checks": [
+          "Positive: redesigned sequences recover the native fold in prediction within a pre-declared coordinate deviation, and recover a pre-declared fraction of the native interface residue identities.",
+          "Negative: sequence design run against a deliberately masked or absent target context yields interface confidence in the low-confidence regime rather than confident nonsense.",
+          "Sanity: two runs at the same seed produce identical sequences, and two runs at different seeds produce sequences within a pre-declared identity spread."
+        ],
+        "tool_id": "TOOL-sequence"
+      }
+    ],
+    "claims": [
+      {
+        "counterevidence_or_objections": [
+          "Composition or fold confounding; small positive-control set; published binders being unrepresentative of what this pipeline generates; assay heterogeneity across the papers supplying the positives."
+        ],
+        "id": "CLM-separation",
+        "inquiry_id": "INQ-separation",
+        "reporting_rule": "Reported whether the margin is large, small, or absent. An absent margin is the campaign's terminal result.",
+        "statement": "The frozen filter stack separates published PD-L1 binders from composition-matched decoys by a margin recorded in the control calibration table.",
+        "status": "unevaluated",
+        "support": [
+          "Control score distributions from D-controls, computed through the identical pipeline used for campaign designs."
+        ],
+        "uncertainty": "Bounded by control-set size and by the fact that in-silico separation on known binders does not establish prospective accuracy on novel designs.",
+        "verification": "Compared against the composition-matched negative subset and reported as a distribution overlap, not a threshold pass rate."
+      },
+      {
+        "counterevidence_or_objections": [
+          "That a mechanical table oversimplifies a judgement the PI should make holistically.",
+          "The table's purpose is to prevent the judgement from being made after seeing which designs look attractive, not to remove the PI's authority; the PI may override it and the memo records the override as such."
+        ],
+        "id": "CLM-recommendation",
+        "inquiry_id": "INQ-spend",
+        "reporting_rule": "The memo states the cell first and any narrative second. A PI override is recorded as an override with its reason, never folded into the recommendation.",
+        "statement": "The recommendation delivered to the principal investigator is the cell reached on the frozen decision table, together with the evidence that placed it there.",
+        "status": "unevaluated",
+        "support": [
+          "The frozen decision table in D-thresholds, the control calibration table, and the cluster-corrected yield from the ranked design table."
+        ],
+        "uncertainty": "The table is a pre-commitment made under uncertainty about what the score distributions would look like; the memo reports proximity to adjacent cells.",
+        "verification": "The cell is derived mechanically from two recorded numbers and is reproducible from the frozen table and the score files."
+      }
+    ],
+    "constitution": {
+      "rules": [
+        "Freeze before you look: the target definition, software environment, and scoring thresholds are frozen with digests before any campaign design is scored. A threshold changed after designs are visible is a labelled deviation, never a silent edit.",
+        "Provenance: every structure, weight file, container image, seed, and score table is recorded with its source, version or accession, retrieval time, and digest.",
+        "Controls before candidates: no design is scored until the positive and negative control sets have been run through the identical pipeline and their separation recorded.",
+        "Fail closed on authority: no worker may order genes, commit synthesis spend, contact a vendor, or begin wet-lab work. The campaign terminates at a recommendation.",
+        "Reporting: a no-go recommendation is reported with the same completeness as a go, including the full ranked design table and every failed filter."
+      ],
+      "worker_inheritance": "Every stage worker, subagent, and delegated brief inherits these five rules verbatim. A local brief may narrow scope or tighten a threshold; it may not weaken freeze discipline, provenance, control-first ordering, the authority boundary, or the reporting rule."
+    },
+    "deliverables": [
+      {
+        "acceptance_test": "The accession resolves at RCSB to a PD-1:PD-L1 complex with the recorded chains, method, and resolution; the coordinate digest matches the retrieved file; every hotspot residue exists in the deposited numbering; and the artifact carries a freeze time and digest. An accession that does not verify fails the artifact rather than being footnoted.",
+        "id": "D-target",
+        "immutable_after_freeze": true,
+        "name": "Frozen target definition",
+        "owner": "ROLE-comp-lead",
+        "path": "deliverables/target-definition.md",
+        "schema": [
+          "PDB accession, chain identifiers, experimental method, and resolution, each verified against RCSB with the retrieval timestamp",
+          "Coordinate file digest",
+          "Hotspot residue set in the deposited numbering, with the numbering convention stated",
+          "Interface density gaps and any unmodelled residues at the interface",
+          "Known conformational-state caveats recorded as a threat, not resolved",
+          "Freeze time and artifact digest"
+        ]
+      },
+      {
+        "acceptance_test": "Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all three canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.",
+        "id": "D-environment",
+        "immutable_after_freeze": true,
+        "name": "Frozen software environment",
+        "owner": "ROLE-comp-lead",
+        "path": "deliverables/environment.md",
+        "schema": [
+          "Per tool: identity, release tag, weight-file digest, container image digest, licence, and licence-compatibility determination",
+          "Exact invocation, flags, template and MSA policy, and seed policy for each tool",
+          "Generation parameters: length range, topology constraints, batch size",
+          "Canary manifests for all three canaries with their positive, negative, and reproducibility results",
+          "Freeze time and artifact digest"
+        ]
+      },
+      {
+        "acceptance_test": "The positive set has at least 8 members with citable measurements and at least 3 post-cutoff; every negative is produced by the recorded matching procedure within its stated tolerances; every threshold traces to the control distributions rather than to an authored number; separation is reported by both named statistics on both subsets; the decision table is total over the AUROC-by-yield space with no undefined cells and a bounded revise cell; the attestation is present; and the artifact consumes the exact prior D-target and D-environment digests.",
+        "id": "D-thresholds",
+        "immutable_after_freeze": true,
+        "name": "Control calibration and frozen decision table",
+        "owner": "ROLE-methods",
+        "path": "deliverables/thresholds-and-decision-table.md",
+        "schema": [
+          "Exact D-target and D-environment digests consumed",
+          "Positive control set of at least 8 members, each with a cited experimental measurement and its assay",
+          "Per positive control: deposition or publication date recorded against the training cutoff of every model in the stack, and the resulting post-cutoff subset identified (at least 3 members)",
+          "Negative control set, separating scrambles from composition-matched unrelated-fold decoys, with the automated matching procedure, its tolerances, and its random seed recorded",
+          "Per-filter score distributions for both sets, and AUROC plus the fraction of matched negatives above the positive median, computed on all positives and again on the post-cutoff subset",
+          "Threshold value per filter, with the calibration rule that produced it",
+          "Clustering metric, the frozen cut, and both pre-declared alternative cuts",
+          "The complete decision table mapping AUROC and cluster-corrected yield to go, revise, or no-go, with the revise cell's bounded scope stated",
+          "Attestation that no campaign design had been generated or scored at freeze time",
+          "Freeze time and artifact digest"
+        ]
+      },
+      {
+        "acceptance_test": "Every design has every filter column populated; the D-thresholds digest matches G2; pass/fail is derivable mechanically from the recorded scores and the frozen thresholds; and cluster counts are reported at all three cuts. Designs scoring below the negative control distribution appear in the table rather than being dropped.",
+        "id": "D-designs",
+        "immutable_after_freeze": true,
+        "name": "Ranked design table",
+        "owner": "ROLE-comp-lead",
+        "path": "deliverables/ranked-designs.csv",
+        "schema": [
+          "Exact D-thresholds digest consumed, with a check that it is unchanged since G2",
+          "One row per campaign design: identifier, sequence, backbone reference, generation batch, seed",
+          "Every filter column the frozen threshold table references, populated, with no nulls",
+          "Pass or fail per filter and overall",
+          "Cluster assignment at the frozen cut and at both alternative cuts",
+          "Per-design compute cost"
+        ]
+      },
+      {
+        "acceptance_test": "The stated recommendation equals the cell mechanically reached on the frozen table; the memo leads with the cell rather than with narrative; no sentence states or implies that any design binds PD-L1; and a no-go memo carries the same completeness as a go, including the full ranked table.",
+        "id": "D-memo",
+        "immutable_after_freeze": false,
+        "name": "Go/no-go decision memo",
+        "owner": "ROLE-methods",
+        "path": "deliverables/decision-memo.md",
+        "schema": [
+          "First paragraph: the cell reached on the frozen decision table and the two values that placed it",
+          "Control separation reported as a distribution comparison with its overlap",
+          "Contamination-adjusted separation on the post-cutoff positive subset, stated next to the all-positives figure",
+          "Cluster-corrected yield at all three cuts",
+          "Proximity to adjacent decision cells",
+          "Residual uncertainty and the least favourable defensible interpretation",
+          "Any numbered deviations and what they invalidate",
+          "Any principal-investigator override, recorded as an override with its reason",
+          "Consumed artifact digests for D-target, D-environment, D-thresholds, and D-designs"
+        ]
+      }
+    ],
+    "dossier": {
+      "access_rights": [
+        {
+          "approval": "Already granted under the standing group allocation; no further approval required.",
+          "expiry": "End of the current quarter.",
+          "id": "ACC-compute",
+          "rights": "2,000 A100 GPU-hours on the existing institutional cluster allocation."
+        },
+        {
+          "approval": "Licence terms recorded per tool in D-environment; any tool whose licence forbids the intended use is excluded at S1 rather than used and disclosed later.",
+          "expiry": "None.",
+          "id": "ACC-models",
+          "rights": "Design, sequence-design, structure-prediction, and energy-scoring software used under their published licences."
+        },
+        {
+          "approval": "Not sought. Ordering is a prohibited action, not a pending approval.",
+          "expiry": "Not applicable.",
+          "id": "ACC-synthesis",
+          "rights": "None. No gene-synthesis account, vendor relationship, or purchasing authority exists under this campaign."
+        }
+      ],
+      "alternatives": [
+        {
+          "evidence": "Clinically validated anti-PD-L1 antibodies exist. The miniprotein route is chosen for size, stability, and expression cost, not because antibodies fail. The decision memo must state that a negative result rejects this pipeline for this target, not the target itself.",
+          "id": "ALT-antibody",
+          "status": "Known alternative approach: an anti-PD-L1 antibody or antibody fragment rather than a de novo miniprotein."
+        },
+        {
+          "evidence": "Published binders exist and serve as positive controls here. If campaign designs do not score above the positive control set under the frozen thresholds, that is itself decision-relevant and must be reported.",
+          "id": "ALT-existing-binder",
+          "status": "Known alternative: adapt a published de novo PD-L1 binder rather than generate new backbones."
+        }
+      ],
+      "context": [
+        {
+          "id": "CTX-decision",
+          "relevance": "The PI will not release synthesis budget on a ranked list alone; the recommendation must state how well the filter stack separated known binders from known non-binders, because that is the only in-silico evidence that the ranking means anything."
+        },
+        {
+          "id": "CTX-allocation",
+          "relevance": "The GPU allocation expires at quarter end and does not roll over. Under-spending it while design branches remain unexplored is an incomplete campaign, not a saving."
+        }
+      ],
+      "objects": [
+        {
+          "boundary": "The epitope is defined by an explicit residue set on a named chain of a named accession, recorded in D-target. The plan does not assert an accession: the exact PDB id, chain, resolution, and residue numbering are pinned in D-target and verified against RCSB at freeze time. A design targeting any other surface is out of scope.",
+          "current_state": "Not yet pinned. D-target is the first frozen artifact and the S1 gate blocks on it.",
+          "description": "The PD-1-binding face of the human PD-L1 (CD274) IgV domain, defined by hotspot residues read from a deposited PD-1:PD-L1 co-crystal structure.",
+          "id": "OBJ-target"
+        },
+        {
+          "boundary": "Length range and backbone topology are fixed in D-environment before generation. Designs are computational objects only; no physical material exists at any point in this campaign.",
+          "current_state": "None generated.",
+          "description": "De novo miniprotein binders, single chain, generated against OBJ-target.",
+          "id": "OBJ-designs"
+        },
+        {
+          "boundary": "Controls are selected and frozen in D-thresholds before any campaign design is generated. Positive controls must have published binding measurements; negatives must have no reported PD-L1 affinity. Set membership is never revised after freeze.",
+          "current_state": "Not yet selected.",
+          "description": "A positive control set of published, experimentally validated PD-L1 binders and a negative control set of sequence-scrambled and unrelated-fold decoys.",
+          "id": "OBJ-controls"
+        }
+      ],
+      "source_hierarchy": [
+        {
+          "admissibility": "Admissible for defining the epitope and for structural superposition. Resolution and any missing density at the interface must be recorded in D-target.",
+          "id": "SRC-structure",
+          "limitations": "A co-crystal captures one conformational state. Interface plasticity and crystallographic artefacts are not visible in a single structure.",
+          "tier": "Tier 1 — deposited experimental structures from the PDB, with accession, chain, method, and resolution recorded."
+        },
+        {
+          "admissibility": "Admissible for control-set membership only. Each positive control must cite a specific reported measurement with its assay and conditions.",
+          "id": "SRC-literature",
+          "limitations": "Reported affinities differ by assay format and are not directly comparable across papers. Publication bias against non-binders is why the negative set is constructed, not collected.",
+          "tier": "Tier 1 — peer-reviewed publications reporting experimental PD-L1 binding measurements, used to select positive controls."
+        },
+        {
+          "admissibility": "Admissible as ranking and filtering evidence only. Never admissible as evidence that a design binds.",
+          "id": "SRC-predictions",
+          "limitations": "Structure-prediction confidence correlates with, but does not establish, binding. Filter stacks of this class are known to pass designs that fail experimentally; the campaign's entire purpose is to decide whether the separation is good enough to pay to find out.",
+          "tier": "Tier 3 — model outputs from structure prediction, sequence design, and energy scoring."
+        }
+      ]
+    },
+    "ethics_rights_safety": {
+      "constraints": [
+        "No human subjects, no personal data, no clinical material, and no animal work at any point.",
+        "All structural data and literature used are public. No proprietary or restricted data enters the campaign.",
+        "Software is used within its licence; a licence forbidding the intended use excludes the tool at S1 rather than being disclosed after the fact.",
+        "PD-L1 is a human immuno-oncology target and the designs are candidate binders to a therapeutic target. The campaign produces sequences and scores only; it produces no physical material and authorizes no synthesis.",
+        "No design sequence is transmitted to any external vendor, service, or synthesis provider under this campaign.",
+        "Claim discipline is a safety constraint here, not only a reporting one: an in-silico score presented as evidence of binding could cause the PI to commit spend on a false premise.",
+        "No external action is permitted under this campaign: ordering genes, contacting a synthesis vendor, transmitting any design sequence outside the institution, and initiating wet-lab work are prohibited for every role, including ROLE-pi acting under this campaign.",
+        "Retrieving public structural data and published literature is read-only use of public resources and is not an external action in this sense."
+      ],
+      "external_actions": [],
+      "human_approval_points": [
+        {
+          "authority": "ROLE-methods",
+          "description": "Freezing thresholds and the decision table at G2, after which the campaign is confirmatory.",
+          "id": "HAP-freeze"
+        },
+        {
+          "authority": "ROLE-pi",
+          "description": "Accepting the recommendation at G4.",
+          "id": "HAP-accept"
+        },
+        {
+          "authority": "ROLE-pi",
+          "description": "Approving any post-freeze deviation to a frozen artifact.",
+          "id": "HAP-deviation"
+        },
+        {
+          "authority": "ROLE-pi",
+          "description": "Authorizing a separate wet-lab campaign. This campaign authorizes it under no outcome.",
+          "id": "HAP-wetlab"
+        }
+      ]
+    },
+    "evaluation": {
+      "comparators_or_adjudication": [
+        "Positive control set: published, experimentally validated PD-L1 binders, each citing a specific reported measurement and its assay. Minimum set size is 8; fewer is a terminal no-go.",
+        "Contamination subset: of those 8, at least 3 must have been deposited or published after the training cutoff of every model in the stack, and each control's deposition date is recorded against each cutoff in D-thresholds.",
+        "Negative control set, sequence scrambles: the coarse comparator, sufficient only to detect a stack that scores everything alike.",
+        "Negative control set, composition-matched decoys of unrelated fold: the operative comparator. Matching is automated and declared before any control is scored — length within 10 percent of the paired positive, amino-acid composition within a Euclidean distance of 0.15 over the 20-dimensional frequency vector, and predicted helix/sheet content within 15 percentage points. The set is at least three times the size of the positive set.",
+        "Campaign designs are scored through the identical pipeline as both control sets; a settings difference between control and design scoring invalidates the comparison and is a deviation.",
+        "The frozen decision table then maps AUROC and cluster-corrected yield onto go, revise, or no-go."
+      ],
+      "criteria": [
+        "Control separation, primary statistic: the area under the ROC curve for the combined filter rank, positive controls against composition-matched negative controls. Declared here, before S2, so it cannot be selected after the distributions are visible.",
+        "Control separation, secondary statistic: the fraction of composition-matched negatives scoring above the positive-set median. Reported alongside AUROC because AUROC alone hides the shape of the overlap.",
+        "Contamination-adjusted separation: both statistics recomputed on the subset of positive controls deposited after every model's training cutoff. Where that subset is too small to estimate, the all-positives figure is reported as an upper bound and labelled as one.",
+        "Cluster-corrected yield: the number of distinct clusters among campaign designs clearing every frozen threshold. A cluster is a single-linkage group at 60 percent global sequence identity and 2.0 Angstrom interface backbone RMSD; the two pre-declared alternative cuts are 50 and 70 percent identity at the same RMSD.",
+        "Provenance completeness: every scored design traceable to a seed, a batch manifest appended before compute was consumed, and the frozen artifact digests it consumed.",
+        "Threshold integrity: the D-thresholds digest unchanged between G2 and G3."
+      ],
+      "exploration_confirmation_policy": "S1 and S2 are exploratory with respect to method choice: filters may be added, removed, or reparameterized freely until D-thresholds is frozen at G2. From G2 onward the campaign is confirmatory: the filter stack, thresholds, clustering cuts, and decision table are fixed, and S3 produces a single scoring pass. Any post-G2 change is a numbered deviation that downgrades D-memo to exploratory.",
+      "frozen_before_production_asserted": "The complete evaluation instrument — filter stack, per-filter thresholds, the named separation statistics, the composition-matching rule and its tolerances, the clustering metric and its three cuts, and the decision table mapping AUROC and cluster-corrected yield to go, revise, or no-go — is frozen in D-thresholds with a digest at G2, before any campaign design has been generated or scored. The statistics and matching rule are named in this campaign rather than left to D-thresholds' author, so they cannot be chosen after the control distributions are visible. D-thresholds carries an explicit attestation, and G3 re-checks the digest before accepting any design score.",
+      "missing_evidence_policy": "A design missing any filter column is failed, not imputed and not dropped from the table. A control whose published measurement cannot be cited to a specific assay is excluded from the positive set before freeze and recorded as excluded. A filter that cannot be computed for the control sets is removed from the stack before freeze rather than applied only to campaign designs.",
+      "stop_pivot_no_go_rules": [
+        "Terminal no-go: positive and composition-matched negative controls fail to separate at G2 by the AUROC threshold frozen in D-thresholds. The campaign stops, the memo is written from the control calibration alone, and no design generation is funded. Retuning to manufacture separation is prohibited.",
+        "Terminal no-go: fewer than 8 positive controls with citable experimental measurements can be assembled, or fewer than 3 of them post-date every model's training cutoff.",
+        "Stop and escalate: a canary fails four times at G1.",
+        "Revise, not go: a result landing in the decision table's revise cell triggers exactly the bounded additional work that cell names, and nothing beyond it.",
+        "No-decision, not no-go: if the compute allocation lapses before the campaign design set is completely scored, D-memo records no-decision and states what fraction was scored. A partially scored set is never run through the decision table.",
+        "Deviation downgrade: any change to a frozen artifact after its gate downgrades D-memo to exploratory and is stated in the memo's first paragraph."
+      ]
+    },
+    "gates": [
+      {
+        "criteria": [
+          "The target and environment are frozen and the pipeline demonstrably works end to end at production settings."
+        ],
+        "id": "G1",
+        "on_fail": "S2 does not start and no allocation beyond the S1 budget is consumed. A failed canary is fixed and rerun; a structure that cannot be verified against RCSB sends the epitope definition back for reselection.",
+        "owner": "ROLE-methods",
+        "required_evidence": [
+          "D-target carrying a verified accession, chain, hotspot residue set, and file digest.",
+          "D-environment carrying every tool version, weight digest, image digest, and licence.",
+          "All three canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end."
+        ],
+        "stage_id": "S1"
+      },
+      {
+        "criteria": [
+          "Thresholds and the decision table are frozen, and the control sets separate against the composition-matched negatives."
+        ],
+        "id": "G2",
+        "on_fail": "Failure to separate is a terminal no-go. The campaign stops at S2, D-memo is written from the control calibration alone, and no design generation is funded. Retuning thresholds to manufacture separation is prohibited.",
+        "owner": "ROLE-comp-lead",
+        "required_evidence": [
+          "D-thresholds frozen with a digest, containing both control sets, their per-filter distributions, the overlap against composition-matched negatives, the threshold values, the three clustering cuts, and the complete decision table.",
+          "The post-cutoff positive subset with at least 3 members and its separately computed separation figures.",
+          "A cumulative calendar check against the allocation expiry date, with the S3 design count scoped to what the remaining allocation and calendar can complete."
+        ],
+        "stage_id": "S2"
+      },
+      {
+        "criteria": [
+          "The campaign design set has been scored exactly once against the frozen thresholds, with complete provenance and no post-hoc threshold change."
+        ],
+        "id": "G3",
+        "on_fail": "If D-thresholds changed after G2, every affected score is quarantined and rescored under the frozen table, and the change is recorded as a numbered deviation that downgrades the memo to exploratory. If the mid-stage checkpoint shows large under-spend with unexplored branches, escalate to ROLE-pi.",
+        "owner": "ROLE-methods",
+        "required_evidence": [
+          "The ranked design table with every threshold column populated and no nulls, cluster assignments at all three cuts, per-design seeds and manifests, the stage cost record, and a digest check showing D-thresholds unchanged since G2.",
+          "A reconciliation report showing every batch manifest was appended before its compute was consumed, and that no batch consumed compute without a prior manifest."
+        ],
+        "stage_id": "S3"
+      },
+      {
+        "criteria": [
+          "The recommendation is the cell mechanically reached on the frozen decision table, and the handoff package is complete and reproducible."
+        ],
+        "id": "G4",
+        "on_fail": "A memo whose recommendation does not match the table cell is returned. A PI override is permitted but is recorded as an override with its reason, and never presented as the table's output.",
+        "owner": "ROLE-pi",
+        "required_evidence": [
+          "D-memo stating the cell and the two values that placed it in its first paragraph, proximity to adjacent cells, residual uncertainty, and the least favourable defensible reading.",
+          "The complete frozen artifact set with digests, reproducing from stored manifests."
+        ],
+        "stage_id": "S4"
+      }
+    ],
+    "inquiries": [
+      {
+        "admissible_support": [
+          "Score distributions for the frozen positive and negative control sets, computed through the identical pipeline, with the overlap between distributions reported and the per-filter contribution broken out."
+        ],
+        "counterevidence_or_rival": [
+          "Apparent separation driven by a confound rather than by binding: positive controls sharing a fold, a length range, or an amino-acid composition with each other and not with the negatives.",
+          "The rival explanation is that the stack is detecting 'looks like a designed protein', not 'binds this epitope'.",
+          "Training-set contamination: published binders are frequently deposited structures, and deposited structures are frequently in a structure-prediction model's training data. Their interface confidence would then be partly memorization, inflating separation in a way that does not transfer to novel designs — which is exactly the transfer the go decision assumes."
+        ],
+        "discriminating_implication": "If separation is real, negatives matched to the positives on length and composition still score below them. If it is a composition artefact, matched negatives score alongside the positives and the apparent separation collapses. If contamination is driving the result, positives deposited after every model's training cutoff separate materially worse than the contaminated subset; if it is not, the two subsets separate alike.",
+        "id": "INQ-separation",
+        "importance": "This is the gating question of the campaign. If the stack cannot separate known binders from known non-binders, every score it assigns to a campaign design is uninterpretable and no amount of favourable-looking design scores can rescue it.",
+        "question_or_claim": "Under the frozen filter stack, do published PD-L1 binders separate from scrambled and unrelated-fold decoys well enough for the ranking to carry decision weight?",
+        "reporting_rule": "Report the full distribution comparison and its overlap. Failure to separate is reported as a terminal result, never as a calibration step.",
+        "uncertainty_boundary": "A control set of 8 bounds discrimination coarsely, and the post-cutoff subset of 3 or more bounds it more coarsely still. The memo reports separation as an interval, states which subset each figure came from, and states that in-silico separation on published binders is a weaker guarantee than any experimental measurement.",
+        "verification_or_adjudication": "Separation is judged against the composition-matched negative subset by AUROC, not against scrambles and not by threshold pass rate. It is computed on all positives and again on the post-cutoff subset, and both are reported. Judged once, on the frozen thresholds, before any campaign design is scored."
+      },
+      {
+        "admissible_support": [
+          "Count of campaign designs clearing every frozen threshold, after clustering to remove near-duplicates, with the diversity of the passing set reported as structural and sequence distance."
+        ],
+        "counterevidence_or_rival": [
+          "A passing set that is one design and its near-copies.",
+          "Cluster count, not raw pass count, is the decision-relevant quantity; a rival reading of a large pass count is that the pipeline converged on a single solution and the redundancy is an artefact of sampling."
+        ],
+        "discriminating_implication": "If yield is real, passing designs occupy multiple sequence and structural clusters. If it is convergence, they collapse to one cluster under the pre-declared distance cut.",
+        "id": "INQ-yield",
+        "importance": "A synthesis order has a fixed overhead cost. One passing design is not worth an order; a set of structurally diverse passing designs is. This question sets the go side of the recommendation.",
+        "question_or_claim": "Does the design pipeline produce enough distinct designs clearing the frozen thresholds to make a synthesis order worth placing?",
+        "reporting_rule": "Report cluster count, cluster occupancy, and the raw count separately. Never report the raw count alone.",
+        "uncertainty_boundary": "Cluster counts depend on the distance cut. The memo reports yield at the frozen cut and at two pre-declared alternatives so the reader can see the sensitivity.",
+        "verification_or_adjudication": "Counted after single-linkage clustering at 60 percent global sequence identity and 2.0 Angstrom interface backbone RMSD, declared before generation, with the 50 and 70 percent alternatives reported alongside. Raw pass counts are recorded but are not the criterion."
+      },
+      {
+        "admissible_support": [
+          "The frozen decision table mapping observed separation and cluster-corrected yield to go, revise, or no-go, applied once, with the memo stating which cell was reached."
+        ],
+        "counterevidence_or_rival": [
+          "The rival reading is that a marginal result should be resolved by more computation rather than by spending.",
+          "The decision table must therefore contain a revise cell with an explicit bounded scope, so 'run more designs' is a declared outcome rather than an improvised escape from a no-go."
+        ],
+        "discriminating_implication": "A genuine go lands in the go cell on the frozen table without argument. A result requiring narrative to reach go is by construction a revise or a no-go.",
+        "id": "INQ-spend",
+        "importance": "This is the deliverable question. Separation and yield are inputs to it; neither answers it alone, and the campaign exists to make the trade-off explicit rather than leaving it to a glance at a ranked list.",
+        "question_or_claim": "Given the observed separation and yield, is committing gene-synthesis and wet-lab budget the right decision?",
+        "reporting_rule": "State the cell reached and the values that placed it there in the first paragraph of the memo, before any discussion.",
+        "uncertainty_boundary": "The table converts two uncertain quantities into a discrete recommendation and therefore hides the uncertainty at the boundaries. The memo reports how close the result sits to an adjacent cell.",
+        "verification_or_adjudication": "The decision table is frozen in D-thresholds before any campaign design is scored, and is applied exactly once. Reaching a cell is mechanical; the memo may add context but may not move the cell."
+      }
+    ],
+    "kickoff": {
+      "command": "Begin WU-freeze. Read the campaign constitution and D-target's schema, then retrieve and verify a PD-1:PD-L1 co-crystal structure against RCSB, recording accession, chains, method, resolution, interface density gaps, and the coordinate file digest. Do not generate any design, do not score anything other than canary inputs, and do not set or imply any filter threshold. Stop at G1.",
+      "first_gate_id": "G1",
+      "initial_backlog": [
+        "Verify a PD-1:PD-L1 co-crystal structure against RCSB and record its accession, chains, method, resolution, and file digest",
+        "Define the hotspot residue set in the deposited numbering and write D-target",
+        "Pin every tool identity, version, weight digest, image digest, and licence into D-environment",
+        "Run CAN-predict, CAN-energy, and CAN-pipeline at production settings and record their manifests",
+        "Confirm the scorer ingests canary output end to end, then present G1 evidence to ROLE-methods, which accepts G1 on a stage it does not execute"
+      ]
+    },
+    "methods": [
+      {
+        "assumptions": [
+          "That a single deposited state adequately represents the surface a binder must engage."
+        ],
+        "can_change_decision": "Yes. A poorly chosen or wrongly numbered epitope invalidates every subsequent design and score, and the error would be invisible downstream because the pipeline would run happily against the wrong surface.",
+        "cost": "Negligible compute; roughly one working day.",
+        "dependencies": "None. This is the first artifact and everything else consumes its digest.",
+        "id": "M-target",
+        "inputs": [
+          "A deposited PD-1:PD-L1 co-crystal structure retrieved from the PDB, with its accession, chain identifiers, method, resolution, and any missing interface density recorded."
+        ],
+        "inquiry_ids": [
+          "INQ-separation",
+          "INQ-yield"
+        ],
+        "limitations": [
+          "One crystal form captures one conformation.",
+          "Interface plasticity, alternate rotamers, and crystallographic contacts are invisible here and are recorded as a threat rather than resolved."
+        ],
+        "name": "Epitope definition from a deposited co-crystal structure",
+        "outputs": [
+          "D-target: the accession and chain, the hotspot residue set in the deposited numbering, the coordinate file digest, the retrieval timestamp, and a note on interface density gaps."
+        ],
+        "purpose": "Convert 'the PD-1-binding face' from a phrase into an explicit, checkable residue set on a named structure, so that every later stage targets the same surface."
+      },
+      {
+        "assumptions": [
+          "That published binders are informative about the pipeline's ability to recognise binders it did not generate."
+        ],
+        "can_change_decision": "Yes, and it is the only method that can end the campaign on its own. Failure to separate is a terminal no-go.",
+        "cost": "Roughly 300 A100 GPU-hours.",
+        "dependencies": "M-target, and both canaries passing.",
+        "id": "M-controls",
+        "inputs": [
+          "A positive control set of published, experimentally validated PD-L1 binders with cited measurements, and a negative control set containing both scrambles and composition-matched decoys of unrelated fold."
+        ],
+        "inquiry_ids": [
+          "INQ-separation"
+        ],
+        "limitations": [
+          "Positive controls are few and were not produced by this pipeline; they may be easier or harder to score than campaign designs.",
+          "Published affinities come from heterogeneous assays.",
+          "This is why separation is reported as a distribution with overlap, not as an accuracy figure."
+        ],
+        "name": "Control-calibrated threshold freezing",
+        "outputs": [
+          "D-thresholds: the control sets, their score distributions, the per-filter threshold values, the clustering distance cut, the decision table, and the digest of all of it."
+        ],
+        "purpose": "Set the filter thresholds from the separation between known binders and known non-binders, before any campaign design exists, so the thresholds cannot be tuned to the designs."
+      },
+      {
+        "assumptions": [
+          "That the declared length range and topology constraints admit a solution for this epitope."
+        ],
+        "can_change_decision": "Yes. Yield after clustering is one of the two inputs to the decision table.",
+        "cost": "Roughly 1,200 A100 GPU-hours, the campaign's largest line.",
+        "dependencies": "M-target, M-controls frozen, canaries passed.",
+        "id": "M-generate",
+        "inputs": [
+          "D-target, the frozen environment in D-environment, and the generation parameters declared before generation begins."
+        ],
+        "inquiry_ids": [
+          "INQ-yield"
+        ],
+        "limitations": [
+          "Generative sampling is unbounded in principle and bounded in practice by allocation.",
+          "Absence of passing designs is evidence about this pipeline under this budget, never about the target's designability."
+        ],
+        "name": "Backbone generation and fixed-backbone sequence design",
+        "outputs": [
+          "Backbone coordinates, designed sequences, and a generation manifest recording parameters, seeds, and cost per batch."
+        ],
+        "purpose": "Produce a diverse set of candidate de novo miniproteins directed at the frozen epitope."
+      },
+      {
+        "assumptions": [
+          "That the scoring pipeline is deterministic given a seed, as the canaries verify."
+        ],
+        "can_change_decision": "Yes. This produces the numbers the decision table consumes.",
+        "cost": "Roughly 400 A100 GPU-hours.",
+        "dependencies": "M-generate, M-controls.",
+        "id": "M-score",
+        "inputs": [
+          "Designed sequences and backbones, D-thresholds, D-environment."
+        ],
+        "inquiry_ids": [
+          "INQ-yield",
+          "INQ-spend"
+        ],
+        "limitations": [
+          "The filter stack predicts; it does not measure.",
+          "Designs that clear it may fail experimentally, which is precisely the risk the recommendation is about."
+        ],
+        "name": "Frozen-threshold scoring and clustering",
+        "outputs": [
+          "The ranked design table with every filter column populated, the pass/fail per filter, cluster assignments at the frozen cut and at two pre-declared alternative cuts, and per-design provenance."
+        ],
+        "purpose": "Score every campaign design through the identical pipeline the controls passed through, apply the frozen thresholds once, and cluster the survivors."
+      },
+      {
+        "assumptions": [
+          "That the table's cells were drawn sensibly before the results were visible."
+        ],
+        "can_change_decision": "It is the decision.",
+        "cost": "Negligible compute; roughly two working days of writing.",
+        "dependencies": "M-score, M-controls.",
+        "id": "M-decide",
+        "inputs": [
+          "The control calibration table, the ranked design table, and the frozen decision table."
+        ],
+        "inquiry_ids": [
+          "INQ-spend"
+        ],
+        "limitations": [
+          "A discrete table hides uncertainty at its boundaries; the memo reports proximity explicitly.",
+          "The PI may override, and an override is recorded as an override."
+        ],
+        "name": "Mechanical application of the frozen decision table",
+        "outputs": [
+          "D-memo: the cell reached, the two values that placed it, proximity to adjacent cells, the residual uncertainty, and the recommendation."
+        ],
+        "purpose": "Convert observed separation and cluster-corrected yield into a go, revise, or no-go recommendation without post-hoc judgement."
+      }
+    ],
+    "mission": {
+      "completion_definition": "Complete when the target definition, environment, and threshold table are frozen with digests; the positive and negative control sets have been scored through the identical pipeline and their separation reported; the campaign design set has been scored once against the frozen thresholds; and a decision memo states go or no-go with the ranked table, the control separation, and the residual uncertainty behind it.",
+      "decision_or_purpose": "Produce a defensible go/no-go recommendation to the principal investigator on whether to commit gene-synthesis and wet-lab budget to a set of computationally designed de novo miniprotein binders against the PD-1-binding face of human PD-L1.",
+      "intended_users": [
+        "Principal investigator, who receives the recommendation and holds the synthesis budget",
+        "Computational design team executing the stages",
+        "A downstream wet-lab campaign, if and only if the recommendation is go"
+      ],
+      "non_goals": [
+        "Ordering synthetic genes, contacting a vendor, or committing any synthesis spend",
+        "Any wet-lab work, including expression, purification, or binding measurement",
+        "Claiming that any design binds PD-L1 — in-silico filters predict, they do not measure",
+        "Optimizing thresholds until designs pass",
+        "Retraining, fine-tuning, or modifying any design or structure-prediction model"
+      ],
+      "scope": "Computational design and in-silico evaluation only. Generate de novo miniprotein backbones against a frozen PD-L1 epitope definition, design sequences onto them, predict complexes, and score them against a control-calibrated filter stack frozen before any campaign design is inspected. Deliver a ranked design table and a decision memo."
+    },
+    "reporting": {
+      "claim_rules": [
+        "Never state or imply that a design binds PD-L1. Permitted form: the design cleared the frozen in-silico filter stack at rank N.",
+        "Every ranking claim cites the frozen threshold table digest it was scored against.",
+        "Control separation is reported as a distribution comparison with its overlap, never as a single summary number."
+      ],
+      "deviation_policy": "Any change to the frozen target definition, environment, control sets, or threshold table after freeze is recorded as a numbered deviation carrying the reason, the digest before and after, the approver, and an explicit statement of which conclusions it invalidates. A deviation made after campaign designs were scored downgrades the memo's recommendation to exploratory.",
+      "least_favorable_interpretation": "Lead the memo with the least favorable defensible reading: in-silico filters of this class routinely pass designs that fail experimentally, the control separation bounds how much the ranking can be trusted, and the recommendation is about whether the evidence justifies spend, not about whether the designs work.",
+      "negative_result_policy": "A no-go recommendation is a complete deliverable, not a failure to deliver. The decision memo, ranked design table, control calibration table, and every filter a design failed are retained and reported identically to a go outcome. Designs scoring below the negative control distribution are reported, not dropped."
+    },
+    "resources_dispatch": {
+      "access_constraints": [
+        "Compute: existing institutional cluster allocation, already approved, no further authorization needed.",
+        "Data: public structural data and published literature only. No proprietary, personal, or restricted data is used.",
+        "Software: used under published licences, with each licence determination recorded in D-environment at S1.",
+        "Synthesis and wet-lab: no access exists and none is sought. This is a prohibited action, not a pending approval."
+      ],
+      "approvals": [
+        {
+          "authority": "Cluster allocation committee",
+          "description": "Standing institutional GPU allocation, already granted; recorded in ACC-compute.",
+          "id": "APR-compute"
+        },
+        {
+          "authority": "ROLE-methods",
+          "description": "G1 acceptance: target and environment frozen, all three canaries passing.",
+          "id": "APR-G1"
+        },
+        {
+          "authority": "ROLE-comp-lead",
+          "description": "G2 acceptance: thresholds, clustering cuts, and decision table frozen; controls separate.",
+          "id": "APR-G2"
+        },
+        {
+          "authority": "ROLE-methods",
+          "description": "G3 acceptance: design set scored once against unchanged thresholds, with full provenance.",
+          "id": "APR-G3"
+        },
+        {
+          "authority": "ROLE-pi",
+          "description": "G4 acceptance: memo matches the table cell and the handoff package reproduces.",
+          "id": "APR-G4"
+        },
+        {
+          "authority": "ROLE-pi",
+          "description": "Approval of a numbered post-freeze deviation, which downgrades D-memo to exploratory.",
+          "id": "APR-deviation"
+        }
+      ],
+      "budgets": [
+        "Total compute: 2,000 A100 GPU-hours on the existing institutional allocation, expiring at quarter end.",
+        "S1: 50 GPU-hours. S2: 300 GPU-hours. S3: 1,600 GPU-hours with a checkpoint at 800. S4: 0 GPU-hours.",
+        "Cash: USD 0. The campaign authorizes no expenditure of any kind.",
+        "Budget floor: reaching S3's mid-stage checkpoint with substantially unspent allocation and unexplored design branches is an incomplete stage and is escalated to ROLE-pi, not reported as efficiency.",
+        "Calendar: approximately twelve weeks, bounded by the quarter-end allocation expiry.",
+        "Calendar ceiling: work-unit calendar ceilings sum to twelve weeks against a hard quarter-end allocation expiry, leaving no slack. ROLE-methods records cumulative elapsed calendar against the expiry date at every gate.",
+        "Expiry rule: at G2, the S3 design count is scoped to what the remaining allocation and remaining calendar can complete. If the allocation lapses before the design set is completely scored, the campaign reports no-decision rather than running the decision table on a partial set."
+      ],
+      "concurrency": "Design batches within S3 may run concurrently up to the cluster allocation. Stages are strictly sequential: the freeze discipline depends on S2 completing before S3 begins, so no part of S3 overlaps S2 even when idle capacity exists.",
+      "dispatch_rules": [
+        "A work unit dispatches only when every work unit in its dependency_ids has been accepted at its gate. WU-freeze has no dependencies; WU-calibrate waits on WU-freeze; WU-generate on WU-calibrate; WU-decide on WU-generate.",
+        "Dispatch is fail-closed: a work unit whose authoritative inputs are not present at their recorded digests does not start, and the condition is escalated rather than worked around.",
+        "No work unit may exceed its resource_ceiling. Reaching the ceiling escalates to ROLE-pi; it does not silently continue.",
+        "The stage owner is the single source of truth for stage status. A worker's self-report is evidence, not acceptance.",
+        "External actions are prohibited campaign-wide. There is no dispatch path to a vendor, a purchase, or a wet-lab action.",
+        "A batch manifest is appended to the event log before any compute is consumed. A batch that consumed compute without a prior manifest is a reconciliation error: the batch is quarantined and rerun, and the gap is recorded."
+      ]
+    },
+    "roles": [
+      {
+        "authority": "Sole authority to accept the recommendation, to override the decision table on the record, and to authorize any subsequent wet-lab campaign.",
+        "description": "Holds the synthesis budget and receives the recommendation.",
+        "id": "ROLE-pi",
+        "limits": "Does not score designs, set thresholds, or edit any frozen artifact. An override is recorded as an override.",
+        "name": "Principal investigator",
+        "responsibility": "Accepts G4. Decides whether to act on the recommendation."
+      },
+      {
+        "authority": "Allocates GPU-hours within the stage budgets; declares canary pass or fail.",
+        "description": "Runs generation, prediction, and scoring.",
+        "id": "ROLE-comp-lead",
+        "limits": "Cannot alter D-thresholds after G2, cannot order synthesis, cannot contact a vendor, and owns no gate on a stage it executes: G1 and G3 are accepted by ROLE-methods, and ROLE-comp-lead accepts G2, which it does not execute.",
+        "name": "Computational design lead",
+        "responsibility": "Owns S1 and S3 and maintains provenance and cost records. Accepts G2, a gate on a stage it does not execute."
+      },
+      {
+        "authority": "Fixes the threshold values, clustering cuts, and decision table before freeze.",
+        "description": "Owns control selection, threshold calibration, and the decision table.",
+        "id": "ROLE-methods",
+        "limits": "May not change thresholds, cuts, or the decision table after G2 except by a numbered deviation approved by ROLE-pi, which downgrades the memo to exploratory. Does not accept G2, the gate on its own stage.",
+        "name": "Methods and calibration lead",
+        "responsibility": "Owns S2 and S4, and accepts G1 and G3 on stages it does not execute."
+      },
+      {
+        "authority": "Records findings and verdicts.",
+        "description": "Reviews the frozen campaign against its own rules.",
+        "id": "ROLE-reviewer",
+        "limits": "Never edits canonical state, never sets thresholds, and never approves a gate.",
+        "name": "Independent reviewer",
+        "responsibility": "Reviews the plan and, at each gate, whether the required evidence is genuinely present."
+      },
+      {
+        "authority": "Only what its brief names.",
+        "description": "Executes a bounded brief within one stage.",
+        "id": "ROLE-worker",
+        "limits": "Inherits the constitution verbatim. No external action, no spend, no threshold change, no gate approval.",
+        "name": "Delegated stage worker",
+        "responsibility": "Produces the exact outputs named in its brief with full provenance."
+      }
+    ],
+    "runtime": {
+      "checkpoint_policy": "Checkpoint at every artifact freeze, at each gate decision, and after each S3 scoring batch. The batch manifest — parameters, seed, and the frozen digests it consumes — is appended to the event log before the batch consumes any compute, so an interrupted batch is always visible to reconciliation. A checkpoint records the manifest and cumulative cost so an interrupted stage resumes at batch granularity rather than restarting.",
+      "continuation_trigger": "Work resumes from the campaign state directory and the append-only event log, never from chat history. A new session reads the last accepted gate and the frozen artifact digests, and starts the first work unit whose dependencies are accepted and whose outputs are absent.",
+      "enabled": true,
+      "event_log": "Append-only. Every artifact freeze, canary run, scoring batch, gate decision, deviation, and escalation is appended with its timestamp, actor, inputs consumed by digest, and cost. Events are never edited or removed.",
+      "idempotency": "Every batch is keyed by its generation parameters and seed. Rerunning a completed batch reproduces its score rows and appends no duplicate event. Scoring is applied once per design; a rerun that would change a recorded score is a deviation, not a retry.",
+      "liveness": "A stage worker records a heartbeat with each batch. A stage with no batch event for more than one working day is treated as stalled and escalated to its stage owner. A chat session ending is not stage completion.",
+      "recovery": "On interruption, reconcile the event log against artifacts actually on disk. Because every manifest is appended before its compute runs, a batch with a manifest and no complete score row is an interrupted batch and is rerun from its recorded seed. A batch whose outputs exist with no prior manifest cannot have arisen from a compliant run: it is quarantined, not adopted. Artifacts present but not recorded as frozen are quarantined pending a digest check.",
+      "state_store": "The campaign state directory holds canonical state; the deliverables directory holds frozen artifacts, each carrying its own digest. Frozen artifacts are the durable record; a session's working notes are not."
+    },
+    "stages": [
+      {
+        "activities": [
+          "Retrieve and verify a PD-1:PD-L1 co-crystal structure against RCSB; record accession, chain, method, resolution, interface density gaps, and file digest",
+          "Define the hotspot residue set in the deposited numbering and record it in D-target",
+          "Pin every tool identity, version, weight-file digest, container image digest, and licence in D-environment",
+          "Run all three canaries at production settings and record their manifests"
+        ],
+        "budget": "50 A100 GPU-hours; approximately one week.",
+        "gate_id": "G1",
+        "id": "S1",
+        "inputs": "Public structural data; installed software.",
+        "name": "Freeze the target and the environment",
+        "outputs": [
+          "D-target and D-environment, both frozen with digests; three canary manifests."
+        ],
+        "owner": "ROLE-comp-lead",
+        "pace": "One week. If S1 is not frozen within two weeks, escalate to ROLE-pi rather than proceeding on an unpinned environment.",
+        "prerequisite_stage_ids": [],
+        "purpose": "Pin what is being designed against and what is doing the designing, before anything is generated or scored."
+      },
+      {
+        "activities": [
+          "Select the positive control set from published, experimentally measured PD-L1 binders, citing each measurement and its assay",
+          "Construct the negative set with both scrambles and composition-matched unrelated-fold decoys",
+          "Score both sets end to end through the production pipeline",
+          "Record the score distributions and their overlap, broken out per filter",
+          "Fix the threshold values, the clustering distance cut, the two alternative cuts, and the decision table, and freeze D-thresholds with a digest",
+          "Record each positive control's deposition or publication date against every model's training cutoff and identify the post-cutoff subset",
+          "Check cumulative elapsed calendar against the allocation expiry and scope the S3 design count to what the remaining allocation and calendar can complete"
+        ],
+        "budget": "300 A100 GPU-hours; approximately two weeks.",
+        "gate_id": "G2",
+        "id": "S2",
+        "inputs": "D-target, D-environment, published binder literature.",
+        "name": "Calibrate on controls and freeze the thresholds",
+        "outputs": [
+          "D-thresholds, frozen with a digest, containing the control sets, distributions, thresholds, cuts, and decision table."
+        ],
+        "owner": "ROLE-methods",
+        "pace": "Two weeks. Under-spend here is not a saving: an under-powered control set weakens every downstream claim.",
+        "prerequisite_stage_ids": [
+          "S1"
+        ],
+        "purpose": "Establish whether the filter stack can tell known binders from known non-binders, and fix the thresholds and decision table before any campaign design exists."
+      },
+      {
+        "activities": [
+          "Generate backbones against the frozen epitope in batches, recording parameters, seeds, and cost per batch",
+          "Design sequences onto the backbones",
+          "Predict complexes and compute interface and liability terms at the identical settings the controls used",
+          "Apply the frozen thresholds once and record pass/fail per filter per design",
+          "Cluster survivors at the frozen cut and at both pre-declared alternatives"
+        ],
+        "budget": "1,600 A100 GPU-hours; approximately four weeks.",
+        "gate_id": "G3",
+        "id": "S3",
+        "inputs": "D-target, D-environment, D-thresholds.",
+        "name": "Generate and score the campaign design set",
+        "outputs": [
+          "The ranked design table with full provenance, cluster assignments at three cuts, and a stage cost record."
+        ],
+        "owner": "ROLE-comp-lead",
+        "pace": "Four weeks, with a mid-stage checkpoint at 800 GPU-hours. Reaching the checkpoint with the allocation largely unspent and design branches unexplored is an incomplete stage, and is escalated rather than declared efficient.",
+        "prerequisite_stage_ids": [
+          "S2"
+        ],
+        "purpose": "Produce candidate designs and score them once against the frozen thresholds."
+      },
+      {
+        "activities": [
+          "Read the cell reached from the frozen decision table",
+          "Record proximity to adjacent cells and the residual uncertainty",
+          "Write D-memo leading with the least favourable defensible interpretation",
+          "Package all frozen artifacts and their digests for handoff"
+        ],
+        "budget": "0 GPU-hours; approximately one week of writing.",
+        "gate_id": "G4",
+        "id": "S4",
+        "inputs": "Control calibration table, ranked design table, frozen decision table.",
+        "name": "Decide and hand off",
+        "outputs": [
+          "D-memo and the complete frozen artifact set with digests."
+        ],
+        "owner": "ROLE-methods",
+        "pace": "One week.",
+        "prerequisite_stage_ids": [
+          "S3"
+        ],
+        "purpose": "Apply the frozen decision table once and deliver the recommendation."
+      }
+    ],
+    "tools": [
+      {
+        "access": "Institutional cluster, existing allocation.",
+        "documentation": "Model card, published method paper, and the exact invocation recorded in D-environment.",
+        "id": "TOOL-backbone",
+        "identity_version": "Generative backbone design model. Exact model identity, release tag, weight-file digest, and container image digest are pinned in D-environment at S1; the plan deliberately names no version because an unpinned version string is worse than an explicit requirement to pin one.",
+        "license": "Recorded per tool in D-environment. A tool whose licence forbids the intended use is excluded at S1.",
+        "production": "Used at production scale in S3 only after its canary passes at S1.",
+        "purpose": "Generate de novo miniprotein backbones against the frozen epitope definition in D-target."
+      },
+      {
+        "access": "Institutional cluster, existing allocation.",
+        "documentation": "Model card and invocation recorded in D-environment.",
+        "id": "TOOL-sequence",
+        "identity_version": "Fixed-backbone sequence design model, pinned identically in D-environment.",
+        "license": "Recorded in D-environment.",
+        "production": "S3 only, after canary.",
+        "purpose": "Design amino-acid sequences onto generated backbones."
+      },
+      {
+        "access": "Institutional cluster, existing allocation.",
+        "documentation": "Settings, template policy, and random seeds recorded per run.",
+        "id": "TOOL-predict",
+        "identity_version": "Structure-prediction model used to predict the design-target complex, pinned with weights and any template or MSA settings in D-environment.",
+        "license": "Recorded in D-environment.",
+        "production": "S2 for controls and S3 for campaign designs, identical settings in both.",
+        "purpose": "Predict the complex and produce the interface confidence measures the filter stack consumes."
+      },
+      {
+        "access": "Institutional cluster, existing allocation.",
+        "documentation": "Protocol script and flags recorded in D-environment.",
+        "id": "TOOL-energy",
+        "identity_version": "Physics-based interface energy and biophysical-liability scoring package, pinned by version and commit in D-environment.",
+        "license": "Recorded in D-environment; academic licence terms checked at S1.",
+        "production": "S2 and S3, identical protocol in both.",
+        "purpose": "Compute interface energy and biophysical liability terms used by the filter stack."
+      }
+    ],
+    "work_units": [
+      {
+        "acceptance_test": "G1's required evidence is present in full: verified accession and digests, every tool pinned with a licence determination, and three passing canary manifests whose output the scorer ingests end to end.",
+        "authoritative_inputs": [
+          "The campaign constitution; the RCSB Protein Data Bank; the installed software stack and its licences."
+        ],
+        "escalation": "Escalate to ROLE-pi if no PD-1:PD-L1 structure verifies with adequate interface density, if a required tool's licence forbids the intended use, or if the two-week ceiling is reached.",
+        "id": "WU-freeze",
+        "method_constraints": "M-target only. Canaries run at exactly the settings S2 and S3 will use; a canary run at reduced settings does not count.",
+        "objective": "Produce D-target and D-environment, frozen with digests, and pass all three canaries at production settings.",
+        "outputs": [
+          "D-target, D-environment, and three canary manifests."
+        ],
+        "permitted_actions": [
+          "Retrieve public structural data and verify it against RCSB",
+          "Install, pin, and digest software, weights, and container images",
+          "Run the three canaries at production settings",
+          "Write D-target and D-environment"
+        ],
+        "prohibited_actions": [
+          "Generating any campaign design",
+          "Scoring anything other than the canary inputs",
+          "Setting or implying any filter threshold",
+          "Ordering synthesis, contacting a vendor, or committing any spend",
+          "Proceeding on an unverified accession or an unpinned tool version"
+        ],
+        "resource_ceiling": "50 A100 GPU-hours and two calendar weeks.",
+        "retry_policy": "A failed canary may be fixed and rerun without escalation up to three times; the fourth failure escalates to ROLE-pi."
+      },
+      {
+        "acceptance_test": "G2's required evidence is present: both control sets, per-filter distributions, overlap against the composition-matched subset, thresholds traceable to the distributions, three cuts, a total decision table with a bounded revise cell, and the no-designs-yet attestation.",
+        "authoritative_inputs": [
+          "The constitution; frozen D-target and D-environment with their exact digests; peer-reviewed literature reporting experimental PD-L1 binding measurements."
+        ],
+        "dependency_ids": [
+          "WU-freeze"
+        ],
+        "escalation": "Escalate to ROLE-pi if fewer than the pre-declared minimum number of positive controls can be found with citable measurements, or if the sets do not separate — the latter is a terminal no-go, not a retry.",
+        "id": "WU-calibrate",
+        "method_constraints": "M-controls only, at the exact settings recorded in D-environment.",
+        "objective": "Select and freeze the control sets, score them, and freeze the threshold values, clustering cuts, and decision table before any campaign design exists.",
+        "outputs": [
+          "D-thresholds, frozen with a digest."
+        ],
+        "permitted_actions": [
+          "Select positive controls from published experimentally measured binders, citing each measurement and assay",
+          "Construct scramble and composition-matched negative controls",
+          "Score both control sets end to end at production settings",
+          "Fix thresholds, the three clustering cuts, and the decision table, and freeze D-thresholds",
+          "Record each positive control's deposition date against every model's training cutoff and compute separation on the post-cutoff subset",
+          "Scope the S3 design count to the remaining allocation and calendar"
+        ],
+        "prohibited_actions": [
+          "Generating or scoring any campaign design before D-thresholds is frozen",
+          "Authoring a threshold value that does not trace to the control distributions",
+          "Leaving any cell of the decision table undefined",
+          "Revising control-set membership after freeze",
+          "Ordering synthesis or committing any spend",
+          "Assembling fewer than 8 positive controls, or fewer than 3 post-cutoff, and proceeding anyway",
+          "Constructing composition-matched negatives by hand or outside the recorded automated procedure and its tolerances"
+        ],
+        "resource_ceiling": "300 A100 GPU-hours and three calendar weeks.",
+        "retry_policy": "Scoring may be rerun on infrastructure failure. Control-set membership is selected once; reselection after seeing distributions is prohibited and is an escalation, not a retry."
+      },
+      {
+        "acceptance_test": "G3's required evidence is present: all filter columns populated with no nulls, the D-thresholds digest unchanged since G2, cluster counts at three cuts, per-design seeds and manifests, and the stage cost record.",
+        "authoritative_inputs": [
+          "The constitution; frozen D-target, D-environment, and D-thresholds with their exact digests."
+        ],
+        "dependency_ids": [
+          "WU-calibrate"
+        ],
+        "escalation": "Escalate to ROLE-pi at the 800 GPU-hour checkpoint if spend is far below pace with design branches unexplored, or if the allocation will expire before the stage completes.",
+        "id": "WU-generate",
+        "method_constraints": "M-generate and M-score, at exactly the settings the controls were scored under. A settings difference between control scoring and design scoring invalidates the comparison and is a deviation.",
+        "objective": "Generate and score the campaign design set once against the frozen thresholds, with complete provenance.",
+        "outputs": [
+          "D-designs: the ranked design table with cluster assignments at three cuts and full provenance."
+        ],
+        "permitted_actions": [
+          "Generate backbones and design sequences within the frozen parameters",
+          "Predict complexes and compute interface and liability terms at the frozen settings",
+          "Apply the frozen thresholds once and record pass/fail per filter",
+          "Cluster survivors at all three declared cuts",
+          "Record seeds, manifests, and per-design cost"
+        ],
+        "prohibited_actions": [
+          "Changing any value in D-thresholds",
+          "Rescoring a design under different thresholds to improve its rank",
+          "Dropping designs that score below the negative control distribution",
+          "Reporting raw pass count without cluster count",
+          "Ordering synthesis, contacting a vendor, or committing any spend",
+          "Consuming compute for a batch whose manifest has not already been appended to the event log"
+        ],
+        "resource_ceiling": "1,600 A100 GPU-hours and five calendar weeks.",
+        "retry_policy": "Batches may be regenerated on infrastructure failure with the failure recorded. Scoring is applied once per design; a design is never rescored to obtain a better result."
+      },
+      {
+        "acceptance_test": "G4's required evidence is present: the memo's recommendation equals the table cell, the cell and its two values appear in the first paragraph, proximity and residual uncertainty are stated, and the package reproduces from stored manifests.",
+        "authoritative_inputs": [
+          "The constitution; frozen D-thresholds and D-designs with their exact digests; the control calibration table."
+        ],
+        "dependency_ids": [
+          "WU-generate"
+        ],
+        "escalation": "Escalate to ROLE-pi if the memo's author believes the table cell is wrong — as an override request on the record, never as a rewritten recommendation.",
+        "id": "WU-decide",
+        "method_constraints": "M-decide only. The table is applied exactly once.",
+        "objective": "Apply the frozen decision table once and write D-memo.",
+        "outputs": [
+          "D-memo and the complete frozen artifact package."
+        ],
+        "permitted_actions": [
+          "Read the cell reached from the frozen decision table",
+          "Compute proximity to adjacent cells",
+          "Write the memo leading with the cell and the least favourable defensible reading",
+          "Package all frozen artifacts and digests for handoff"
+        ],
+        "prohibited_actions": [
+          "Stating a recommendation other than the cell mechanically reached",
+          "Stating or implying that any design binds PD-L1",
+          "Omitting the ranked table or the control calibration from a no-go memo",
+          "Presenting a principal-investigator override as the table's output",
+          "Ordering synthesis or authorizing wet-lab work",
+          "Running the decision table on a partially scored design set; an incomplete set yields a no-decision memo"
+        ],
+        "resource_ceiling": "0 GPU-hours and two calendar weeks.",
+        "retry_policy": "A memo returned at G4 is rewritten. The table cell is not recomputed."
+      }
+    ]
+  },
+  "campaign_id": "pdl1-miniprotein-binders",
+  "content_version": 29,
+  "contradictions": [],
+  "created_at": "2026-08-22T02:19:41+00:00",
+  "goal_verbatim": "Can our computational pipeline design de novo miniprotein binders to the PD-1-binding face of human PD-L1 that clear frozen in-silico filters well enough to justify ordering genes for wet-lab testing?",
+  "intent_dimensions": [
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "decision-use",
+      "importance": "critical",
+      "label": "Decision the campaign supports",
+      "reason": "",
+      "source": "user",
+      "status": "resolved",
+      "value": "Go/no-go recommendation to the PI on committing to gene synthesis and wet-lab testing."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "target-epitope",
+      "importance": "critical",
+      "label": "Target surface and structural basis",
+      "reason": "",
+      "source": "user",
+      "status": "resolved",
+      "value": "PD-1-binding face of the human PD-L1 IgV domain; exact accession, chain, resolution and hotspot set pinned in a frozen artifact and verified against RCSB."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "filter-thresholds",
+      "importance": "critical",
+      "label": "How in-silico thresholds are set",
+      "reason": "",
+      "source": "user",
+      "status": "resolved",
+      "value": "Calibrated on positive and negative control sets and frozen with a digest before any campaign design is scored."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "failure-modes",
+      "importance": "critical",
+      "label": "Terminal failure condition",
+      "reason": "",
+      "source": "user",
+      "status": "resolved",
+      "value": "Positive and negative controls failing to separate is a terminal no-go, not grounds for retuning."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "compute-budget",
+      "importance": "material",
+      "label": "Compute resources and ceiling",
+      "reason": "",
+      "source": "user",
+      "status": "resolved",
+      "value": "2,000 A100 GPU-hours on an existing institutional allocation expiring at quarter end; no cash spend authorized."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "wetlab-authority",
+      "importance": "critical",
+      "label": "Authority to order synthesis",
+      "reason": "",
+      "source": "user",
+      "status": "resolved",
+      "value": "No campaign role holds it. Ordering is prohibited for every worker; the campaign ends at a recommendation."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "reporting-discipline",
+      "importance": "material",
+      "label": "Null and negative result policy",
+      "reason": "",
+      "source": "user",
+      "status": "resolved",
+      "value": "No-go outcomes are reported identically to go outcomes, with the ranked design table and control calibration retained."
+    },
+    {
+      "confidence": "medium",
+      "dependencies": [],
+      "id": "software-versions",
+      "importance": "material",
+      "label": "Design and scoring software versions",
+      "reason": "Version pinning is a recorded artifact requirement, not a research decision the user must adjudicate.",
+      "source": "inferred",
+      "status": "explicit-default",
+      "value": "Design, sequence-design and structure-prediction tool versions, weights and commit hashes are pinned in the frozen environment artifact at S1 rather than chosen now."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "wetlab-execution",
+      "importance": "material",
+      "label": "Wet-lab execution design",
+      "reason": "The campaign terminates at a recommendation; wet-lab design is a different campaign with different authority and budget.",
+      "source": "user",
+      "status": "not-applicable",
+      "value": "Out of scope. Handed off as a separate campaign if the recommendation is go."
+    },
+    {
+      "confidence": "high",
+      "dependencies": [],
+      "id": "human-subjects",
+      "importance": "material",
+      "label": "Human subjects or personal data",
+      "reason": "No human participants, no personal data, no clinical material.",
+      "source": "inferred",
+      "status": "not-applicable",
+      "value": "None. The campaign uses public structural data and computational models only."
+    }
+  ],
+  "interview": {
+    "extension_authorized": false,
+    "hard_limit": 12,
+    "soft_limit": 8,
+    "stopping_note": "Every material decision is resolved, explicitly defaulted, or recorded not-applicable with a reason. Wet-lab design is out of scope by the user's decision, not deferred.",
+    "stopping_reason": "material-completeness",
+    "turns": [
+      {
+        "answer_utility": "high",
+        "answer_verbatim": "Yes — go/no-go on whether to order genes. We have compute but the wet-lab spend needs a separate approval, so I want the computational case made properly before anyone asks for money.",
+        "asked_at": "2026-08-22T02:20:41+00:00",
+        "branch": "decision-use",
+        "decision_impact": "critical",
+        "linked_dimensions": [
+          "decision-use"
+        ],
+        "normalized_decision": "The campaign's terminal output is a go/no-go recommendation on committing to gene synthesis and wet-lab testing. Wet-lab execution is out of scope and handed off as a separate campaign.",
+        "number": 1,
+        "question": "What decision does this campaign have to support, and who makes it? Recommended default: a go/no-go on ordering synthetic genes for wet-lab testing."
+      },
+      {
+        "answer_utility": "high",
+        "answer_verbatim": "The PD-1-binding face. Use a deposited co-crystal to define the hotspot residues — I do not want the exact PDB id guessed, it must be pinned and checked.",
+        "asked_at": "2026-08-22T02:20:42+00:00",
+        "branch": "target-definition",
+        "decision_impact": "critical",
+        "linked_dimensions": [
+          "target-epitope"
+        ],
+        "normalized_decision": "Target is the PD-1-binding face of the human PD-L1 IgV domain. The exact PDB accession, chain, resolution and hotspot residue set must be pinned in a frozen target-definition artifact and verified against RCSB, not asserted in the plan.",
+        "number": 2,
+        "question": "Which surface of PD-L1 must the binder engage, and does an existing structure define it? Recommended default: the PD-1-binding face defined by a deposited PD-1:PD-L1 co-crystal structure."
+      },
+      {
+        "answer_utility": "high",
+        "answer_verbatim": "I do not want to pick the numbers now — thresholds picked after seeing our own designs are worthless. Calibrate them on known binders and known non-binders first, then freeze.",
+        "asked_at": "2026-08-22T02:20:43+00:00",
+        "branch": "success-criteria",
+        "decision_impact": "critical",
+        "linked_dimensions": [
+          "filter-thresholds"
+        ],
+        "normalized_decision": "Thresholds are not authored by hand. They are calibrated on a positive control set (published PD-L1 binders) and a negative control set (scrambled and unrelated-fold decoys), frozen with a digest before any campaign design is scored, and changed only by a labelled deviation.",
+        "number": 3,
+        "question": "What in-silico result would be strong enough to justify the wet-lab spend? Recommended default: a fixed number of designs clearing pre-registered structural-confidence and interface-energy thresholds."
+      },
+      {
+        "answer_utility": "high",
+        "answer_verbatim": "If the positive and negative controls do not separate, the whole filter stack is uninformative and we should not spend anything. That is a no-go, not a tuning exercise.",
+        "asked_at": "2026-08-22T02:20:53+00:00",
+        "branch": "counterevidence",
+        "decision_impact": "material",
+        "linked_dimensions": [
+          "failure-modes"
+        ],
+        "normalized_decision": "Failure of the control sets to separate under the frozen filter stack is a terminal no-go for the campaign, reported as such, and explicitly not grounds for retuning thresholds.",
+        "number": 4,
+        "question": "What result should stop this campaign rather than be explained away? Recommended default: controls failing to separate, indicating the filter stack cannot discriminate."
+      },
+      {
+        "answer_utility": "medium",
+        "answer_verbatim": "About 2,000 A100 GPU-hours on our cluster allocation, no cash cost. It expires at the end of the quarter.",
+        "asked_at": "2026-08-22T02:20:54+00:00",
+        "branch": "resources",
+        "decision_impact": "material",
+        "linked_dimensions": [
+          "compute-budget"
+        ],
+        "normalized_decision": "Compute budget is 2,000 A100 GPU-hours on an existing institutional allocation expiring at quarter end; no cash expenditure is authorized by this campaign. Budget is a floor as well as a ceiling: large under-spend with unexplored design branches is an incomplete campaign.",
+        "number": 5,
+        "question": "What compute is available, and what is the ceiling? Recommended default: a fixed GPU-hour allocation with a checkpoint partway."
+      },
+      {
+        "answer_utility": "high",
+        "answer_verbatim": "No. Nobody here can commit synthesis spend. The output is a recommendation that goes to the PI.",
+        "asked_at": "2026-08-22T02:21:05+00:00",
+        "branch": "authority",
+        "decision_impact": "critical",
+        "linked_dimensions": [
+          "wetlab-authority"
+        ],
+        "normalized_decision": "No campaign role holds authority to order synthesis or begin wet-lab work. Ordering is a prohibited action for every worker; the campaign terminates at a recommendation delivered to the principal investigator.",
+        "number": 6,
+        "question": "Does anyone on this campaign have authority to order genes or start wet-lab work? Recommended default: no, and the campaign should fail closed on it."
+      },
+      {
+        "answer_utility": "medium",
+        "answer_verbatim": "Everything. A no-go with the data behind it is a real result and I want it written up the same as a go.",
+        "asked_at": "2026-08-22T02:21:07+00:00",
+        "branch": "reporting",
+        "decision_impact": "material",
+        "linked_dimensions": [
+          "reporting-discipline"
+        ],
+        "normalized_decision": "Null and negative outcomes are first-class deliverables. The decision memo, ranked design table, and control calibration are retained and reported identically whether the recommendation is go or no-go.",
+        "number": 7,
+        "question": "If the answer is no-go, what has to be preserved? Recommended default: full ranked design set, failed filters, and the negative recommendation retained and reported."
+      }
+    ]
+  },
+  "last_validation": {
+    "checked_at": "2026-08-22T02:42:35+00:00",
+    "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "counts": {
+      "canaries": 4,
+      "claims": 2,
+      "deliverables": 5,
+      "gates": 4,
+      "inquiries": 3,
+      "intent_dimensions": 10,
+      "interview_turns": 7,
+      "methods": 5,
+      "stages": 4,
+      "tools": 4,
+      "work_units": 4
+    },
+    "errors": [],
+    "execution_ready": true,
+    "release_status": "execution-ready",
+    "rescamp_version": "0.10.0",
+    "review": {
+      "attested_modes": {
+        "methods-evidence": "sequential-pass",
+        "operations-reproducibility": "sequential-pass"
+      },
+      "blocking": [],
+      "current": [
+        "methods-evidence",
+        "operations-reproducibility"
+      ],
+      "independence_is_self_attested": true,
+      "independence_ok": true,
+      "missing": [],
+      "required": [
+        "methods-evidence",
+        "operations-reproducibility"
+      ]
+    },
+    "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06",
+    "valid": true,
+    "warnings": [
+      {
+        "code": "review.sequential",
+        "message": "Standard review used sequential passes; disclose limited independence",
+        "path": "reviews.records"
+      }
+    ]
+  },
+  "outputs": {
+    "last_rendered_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "manifest": {
+      "CAMPAIGN_PROMPT.md": "760b072d4fc0a945251c5dbf2d67d3d339ba3dea428597b4c45dddc962d7fc8a",
+      "CLAIMS_EVIDENCE_MATRIX.json": "223bbd5c00a927cd9f49d55bb3d1260c8104260cce597f7b08032dfe80533275",
+      "KICKOFF.md": "ab489fe74deeef23bc59d7a63a2bdd5137db6478e41d1e2c9e82cb25385b2547",
+      "MANIFEST.sha256": "2bf126ee17d5378fc66fd96dec56b4febbe24279f66dfca25a78d438f101c838",
+      "REVIEW_REPORT.md": "752914c149ed875da3939eaf6d16400e7009f201bbf899f4a8618620f37157e8",
+      "ROADMAP.md": "420ee4c79b8ed92816b1228059b7a5ad33551b789cbefb036990d8cfe58e9b6f",
+      "RUNBOOK.md": "b0a4abb1f4bab4ab2cdfb9ea1625247c857a4a0e4061498314b23f6286220204",
+      "TASK_BRIEF_TEMPLATE.md": "51519b1b4c7b21cc75a14c8e806c1a2b7df72634ab372a2717869c26a70d8a47",
+      "campaign.json": "82b8fd7cd67fc183fe62f502c239d3c4e7894973159ed3f97ab3b2e0f96d47f5"
+    },
+    "status": "EXECUTION-READY"
+  },
+  "profile": "standard",
+  "rescamp_version": "0.10.0",
+  "reviews": {
+    "frozen_content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "records": [
+      {
+        "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+        "findings": [],
+        "ingested_at": "2026-08-22T02:42:32+00:00",
+        "mode": "sequential-pass",
+        "reviewed_sections": {
+          "@archetypes": "sha256:396d7a80d67cad4ed8913e646afcc84d5772b7bd21358d7463681f8eec2055e0",
+          "@assumptions": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "@contradictions": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "@goal_verbatim": "sha256:6631ac04559411d307ad8d3a390cfb5658e68e5a5e9f861ed7ff00868ab33751",
+          "@intent_dimensions": "sha256:9d79498ca0d23125100d096ad9aa82ac7e32b851f28d098c70e59a8fbdd2ba41",
+          "@profile": "sha256:cb2842d6687d19c69a6c0d4eb6a0f1af02951cef170de56ab331046ea5baac08",
+          "@sketch": "sha256:36843f4378706e6db15a2b4ac571eeffe9fd0c0b00896fdcf254d43803856e0f",
+          "claims": "sha256:bc5e2f7ff44b48672697c494f79b560ad74d61b50a87d01a268ff8ae394e9c1a",
+          "dossier": "sha256:cad27c8c1bf984ea93d0d053ad107a988277824def15c89bf42c188de10757c3",
+          "evaluation": "sha256:cc058a6062dd412d71318da6446896053f07f54384eae9d51bca510e827ba65f",
+          "inquiries": "sha256:b6d007a413ae777f1d4fbd49eedc854a36d8d57fcdca08b355ddfff917c81722",
+          "methods": "sha256:983a5734d2b0a53ded56cd8954cc70f1817fa36511bf313ad6c9b5b790752ffc",
+          "mission": "sha256:80cbbf1e492948ee64d49a8403cb8a33bdd03e6c679f7de31fb71706a838ea52"
+        },
+        "reviewer_id": "sequential-methods-r2",
+        "role": "methods-evidence",
+        "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06",
+        "summary": "Pass. All five round-1 methods findings are closed in the campaign itself rather than deferred to the artifact that was going to be written after the distributions were visible. AUROC is named as the primary separation statistic with the matched-negative-above-median fraction as its secondary; the composition-matching procedure is specified with numeric tolerances and a minimum set size; training-set contamination is now a named rival explanation with a discriminating implication, a recorded date check per control, and a post-cutoff subset that separation is recomputed on; the control-set floor is 8 with at least 3 post-cutoff, so the terminal stop rule can now fire; and the clustering metric is stated with its frozen cut and both alternatives. The residual limitation is inherent rather than a defect: 8 positives and 3 post-cutoff positives bound discrimination coarsely, and the campaign says so in its uncertainty boundary and requires the memo to report the post-cutoff figure as an upper bound where the subset is too small. In-silico separation on published binders remains a weaker guarantee than any measurement, which the reporting rules state plainly.",
+        "verdict": "pass"
+      },
+      {
+        "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+        "findings": [],
+        "ingested_at": "2026-08-22T02:42:33+00:00",
+        "mode": "sequential-pass",
+        "reviewed_sections": {
+          "@archetypes": "sha256:396d7a80d67cad4ed8913e646afcc84d5772b7bd21358d7463681f8eec2055e0",
+          "@assurance": "sha256:9de833c0e31d6274737c6a35d503a9b6821575a9c8d38f27cde956d454de6dc0",
+          "@blockers": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "@goal_verbatim": "sha256:6631ac04559411d307ad8d3a390cfb5658e68e5a5e9f861ed7ff00868ab33751",
+          "@profile": "sha256:cb2842d6687d19c69a6c0d4eb6a0f1af02951cef170de56ab331046ea5baac08",
+          "canaries": "sha256:cefc21c74922a941a99000cd7ab77b7aa995f56d553d7c44550e6453add11741",
+          "constitution": "sha256:a761435cb0f3ca68667e78aa232e5b546133c022a910cf47f63383907cd305ed",
+          "deliverables": "sha256:feaa87544d524e13fb60feb109c9ca8cb2eccdea35da2c6a6e9440be89752031",
+          "ethics_rights_safety": "sha256:b2f9695e5360a7fff11b4ef9ddaf7610dc8dd8453bf0ae47920b400532628a23",
+          "gates": "sha256:d9c68b9b4b938e483e10347704928da844dfbfba6ba707ec3e1aa38a1ea0e4ba",
+          "inquiries": "sha256:b6d007a413ae777f1d4fbd49eedc854a36d8d57fcdca08b355ddfff917c81722",
+          "kickoff": "sha256:b31e3fdbc1861622206ce947523d49a3c2766cb5770ea3d160fda2d2f197fc14",
+          "methods": "sha256:983a5734d2b0a53ded56cd8954cc70f1817fa36511bf313ad6c9b5b790752ffc",
+          "reporting": "sha256:e224ea2642bfae7affe0662ea1aa659cbf55148f7ab108e4c410964e8d880b39",
+          "resources_dispatch": "sha256:adc83c3e30216db5301e6c8b9f18a2d988dad3afe3ed2eac6bfd00bed5ec171f",
+          "roles": "sha256:9ebc388a0d9bd06126118ef561d86fccad2df32e94d5e19b3e21fab99de46c4a",
+          "runtime": "sha256:27951d116c85ac64269471e5fd1fd2397b896ab3718c6f517342824d4dddf70f",
+          "stages": "sha256:f1ea8c44de6d194fde83a702c5d03bdb8536dbd45dc1552139719652da483912",
+          "tools": "sha256:c26ec4348b4d843dea4620792f1659ac533ef725d2a6718027873c4dc778a948",
+          "work_units": "sha256:e9152dfbd028535674a5ed6dbfa2969c355dd95dfbd77f0c080e5809360edd8c"
+        },
+        "reviewer_id": "sequential-operations-r2",
+        "role": "operations-reproducibility",
+        "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06",
+        "summary": "Pass for beginning WU-freeze. All three round-1 operations findings are closed, and one defect the round-1 repair itself introduced has been closed with them: reassigning the gate owners left the kickoff backlog routing G1 evidence to ROLE-comp-lead and left three approval records naming the old authorities, both of which now match the gate table. No gate is owned by the role that executes its stage. A batch manifest must be appended before compute is consumed, which makes an interrupted batch visible to reconciliation and makes an output with no prior manifest a quarantine case rather than a silent adoption. The calendar now has a named owner, a check at every gate, an S3 scoping rule at G2, and an explicit no-decision outcome if the allocation lapses mid-scoring, so a partial design set can no longer reach the decision table. A fresh executor has an exact reversible first action — verify a PD-1:PD-L1 structure against RCSB and write D-target — with no missing material user decision, no spend, and no external action available to it.",
+        "verdict": "pass"
+      }
+    ],
+    "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06",
+    "section_digests": {
+      "@archetypes": "sha256:396d7a80d67cad4ed8913e646afcc84d5772b7bd21358d7463681f8eec2055e0",
+      "@assumptions": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "@assurance": "sha256:9de833c0e31d6274737c6a35d503a9b6821575a9c8d38f27cde956d454de6dc0",
+      "@blockers": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "@contradictions": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "@goal_verbatim": "sha256:6631ac04559411d307ad8d3a390cfb5658e68e5a5e9f861ed7ff00868ab33751",
+      "@intent_dimensions": "sha256:9d79498ca0d23125100d096ad9aa82ac7e32b851f28d098c70e59a8fbdd2ba41",
+      "@profile": "sha256:cb2842d6687d19c69a6c0d4eb6a0f1af02951cef170de56ab331046ea5baac08",
+      "@sketch": "sha256:36843f4378706e6db15a2b4ac571eeffe9fd0c0b00896fdcf254d43803856e0f",
+      "canaries": "sha256:cefc21c74922a941a99000cd7ab77b7aa995f56d553d7c44550e6453add11741",
+      "claims": "sha256:bc5e2f7ff44b48672697c494f79b560ad74d61b50a87d01a268ff8ae394e9c1a",
+      "constitution": "sha256:a761435cb0f3ca68667e78aa232e5b546133c022a910cf47f63383907cd305ed",
+      "deliverables": "sha256:feaa87544d524e13fb60feb109c9ca8cb2eccdea35da2c6a6e9440be89752031",
+      "dossier": "sha256:cad27c8c1bf984ea93d0d053ad107a988277824def15c89bf42c188de10757c3",
+      "ethics_rights_safety": "sha256:b2f9695e5360a7fff11b4ef9ddaf7610dc8dd8453bf0ae47920b400532628a23",
+      "evaluation": "sha256:cc058a6062dd412d71318da6446896053f07f54384eae9d51bca510e827ba65f",
+      "gates": "sha256:d9c68b9b4b938e483e10347704928da844dfbfba6ba707ec3e1aa38a1ea0e4ba",
+      "inquiries": "sha256:b6d007a413ae777f1d4fbd49eedc854a36d8d57fcdca08b355ddfff917c81722",
+      "kickoff": "sha256:b31e3fdbc1861622206ce947523d49a3c2766cb5770ea3d160fda2d2f197fc14",
+      "methods": "sha256:983a5734d2b0a53ded56cd8954cc70f1817fa36511bf313ad6c9b5b790752ffc",
+      "mission": "sha256:80cbbf1e492948ee64d49a8403cb8a33bdd03e6c679f7de31fb71706a838ea52",
+      "reporting": "sha256:e224ea2642bfae7affe0662ea1aa659cbf55148f7ab108e4c410964e8d880b39",
+      "resources_dispatch": "sha256:adc83c3e30216db5301e6c8b9f18a2d988dad3afe3ed2eac6bfd00bed5ec171f",
+      "roles": "sha256:9ebc388a0d9bd06126118ef561d86fccad2df32e94d5e19b3e21fab99de46c4a",
+      "runtime": "sha256:27951d116c85ac64269471e5fd1fd2397b896ab3718c6f517342824d4dddf70f",
+      "stages": "sha256:f1ea8c44de6d194fde83a702c5d03bdb8536dbd45dc1552139719652da483912",
+      "tools": "sha256:c26ec4348b4d843dea4620792f1659ac533ef725d2a6718027873c4dc778a948",
+      "work_units": "sha256:e9152dfbd028535674a5ed6dbfa2969c355dd95dfbd77f0c080e5809360edd8c"
+    }
+  },
+  "schema_version": "3.1",
+  "sketch": {
+    "assumptions_risks": [],
+    "core_inquiries": [],
+    "decision_or_purpose": "",
+    "likely_evidence": [],
+    "proposed_outputs": [],
+    "rough_methods_stages": [],
+    "scope": "",
+    "success_or_adjudication": ""
+  },
+  "status": "execution-ready",
+  "title": "Can our computational pipeline design de novo miniprotein binders to the PD-1-binding face of human PD-L1 that clear frozen…",
+  "updated_at": "2026-08-22T02:42:42+00:00"
+}

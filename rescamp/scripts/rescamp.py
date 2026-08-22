@@ -381,13 +381,31 @@ def save_state(campaign_dir: Path, state: dict[str, Any]) -> None:
     write_json(campaign_dir / STATE_REL, state)
 
 
+TITLE_LIMIT = 120
+
+
+def _title_from_goal(goal: str) -> str:
+    """Shorten a long goal to a title without cutting a word in half.
+
+    A hard slice produced headings like "...that clear fro" at the top of the
+    rendered prompt and kickoff. Break on the last whitespace instead and mark
+    the elision, so the heading reads as shortened rather than as corrupted.
+    """
+    text = " ".join(goal.split())
+    if len(text) <= TITLE_LIMIT:
+        return text
+    head = text[:TITLE_LIMIT - 1]
+    cut = head.rsplit(" ", 1)[0] if " " in head else head
+    return cut.rstrip(" ,;:.") + "…"
+
+
 def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: str) -> dict[str, Any]:
     limits = PROFILES[profile]
     return {
         "schema_version": SCHEMA_VERSION,
         "rescamp_version": VERSION,
         "campaign_id": campaign_id,
-        "title": goal.strip()[:120],
+        "title": _title_from_goal(goal),
         "goal_verbatim": goal.strip(),
         "profile": profile,
         "archetypes": archetypes,
@@ -2187,7 +2205,13 @@ def render_kickoff(state: dict[str, Any], status: str) -> str:
     lines.extend(["## Start here", "", kickoff.get("command") or "*No kickoff command recorded.*", ""])
     lines.extend(["## First gate", ""])
     if gate:
-        lines.append(f"**{gate.get('id')}** — {_fmt_value(gate.get('criteria')).lstrip()}")
+        criteria = _fmt_value(gate.get("criteria")).lstrip()
+        # Multi-criterion gates render as a bullet list; an em dash in front of a
+        # list produced "**G1** — - The target…". Put the list on its own lines.
+        if criteria.startswith("-"):
+            lines.extend([f"**{gate.get('id')}**", "", criteria])
+        else:
+            lines.append(f"**{gate.get('id')}** — {criteria}")
         for key, label in (("required_evidence", "Required evidence"), ("owner", "Owner"), ("on_fail", "On failure")):
             if _nonempty(gate.get(key)):
                 lines.append(_labelled(label, gate[key]))

@@ -1,185 +1,237 @@
 # ResCamp
 
-ResCamp turns an early research idea into a research plan that a person or agent team can actually execute.
+Turn an early research idea into a plan a person or an agent team can actually execute.
 
-A request such as:
+Ask an agent a research question and it will usually just answer. But a request like:
 
 > Does a four-day workweek reduce burnout in software companies?
 
-sounds clear, but it leaves consequential decisions unstated: which companies and workers, what comparison, how burnout is measured, whether the goal is causal or descriptive, what data are available, what evidence would change the conclusion, and what approvals are needed. An agent that begins immediately will often answer those questions for the user and hide the assumptions inside polished work.
+leaves consequential decisions unstated: which companies and workers, what comparison, how
+burnout is measured, whether the goal is causal or descriptive, what evidence would change
+the conclusion, and what approvals are needed. An agent that starts immediately answers
+those questions on your behalf and hides the assumptions inside polished work.
 
-ResCamp handles that gap. It proposes a useful first sketch, asks a small number of high-value questions, and compiles the answers into a structured research plan and execution prompt. It then checks the plan, prepares focused packets for separate reviewers, repairs material defects, and clearly distinguishes an execution-ready plan from a draft that still has blockers.
+ResCamp is an explicitly invoked skill for Claude Code and Codex that closes that gap. It
+sketches a first draft, asks only the questions whose answers change the plan, compiles the
+answers into a research contract, has it reviewed by separate agents, repairs what it can,
+and then tells you plainly whether the plan is executable or blocked.
 
-The result is not just an outline. It specifies the research question, evidence, methods, evaluation rules, stages, gates, resources, permissions, deliverables, review record, and first authorized action. It can support experimental, computational, observational, qualitative, humanities, policy, design, evidence-synthesis, conceptual, creative-practice, and mixed-methods work.
+It is not a STEM tool. Eleven research archetypes are supported — experimental,
+computational, observational, qualitative-field, humanities-interpretive,
+conceptual-normative, evidence-synthesis, policy-program-evaluation, design-engineering,
+creative-practice, and mixed-methods — and the vocabulary follows: where an experiment has a
+hypothesis and a control, an interpretive project has a claim, a rival reading, and a source
+criticism rule.
 
-ResCamp is an explicitly invoked skill for Claude Code and Codex. It plans the research; it does not silently start the campaign or claim that the eventual scientific conclusion is valid.
+## See what it produces
+
+A real campaign, compiled by ResCamp and committed unedited:
+[**de novo PD-L1 miniprotein binders**](docs/examples/pdl1-miniprotein-binders/) — 7 interview
+turns, 2 review rounds, `EXECUTION-READY`.
+
+The first question it asked was not about proteins:
+
+> **Question 1 — decision-use.** What decision does this campaign have to support, and who
+> makes it? *Why it matters:* a campaign that ends in "designs that look good" cannot be
+> finished; one that ends in a go/no-go on spending money can. *Recommended default:* a
+> go/no-go on ordering synthetic genes for wet-lab testing.
+
+That answer set the scope of everything after it. What review then found was not
+boilerplate:
+
+> **major** — The separation statistic is never named. The campaign says thresholds will be
+> "calibrated on controls and frozen", but whoever writes the calibration artifact is still
+> choosing between AUROC, overlap coefficient and median-crossing rate *after* seeing the
+> distributions. The instrument is not frozen until the statistic is named.
+
+> **major** — Training-set contamination of the positive controls is unaddressed. Published
+> binders are frequently deposited structures, and deposited structures are frequently in a
+> prediction model's training data. Their scores would be partly memorization, inflating
+> separation in a way that does not transfer to novel designs.
+
+> **major** — Reconciliation is written for a failure it cannot detect. Nothing requires a
+> batch manifest to exist *before* the batch runs, so an interrupted batch is invisible and
+> silently dropped — producing a design set that looks complete and is not.
+
+Eight findings, repaired, re-reviewed. The second round caught a defect the first repair
+had introduced. The full plan, both review rounds, and the honest limitations are in the
+[example](docs/examples/pdl1-miniprotein-binders/).
+
+## Install
+
+Requires Python 3.9+ and only the standard library at runtime. The installer needs Node 18+;
+the installed skill does not.
+
+```bash
+npx skills add Antimonyleo/ResearchPlan --skill rescamp -g -a claude-code -a codex -y
+```
+
+One canonical tree serves both hosts — Claude Code's explicit-only policy travels in the
+skill's own frontmatter and Codex's in `agents/openai.yaml`, so each host ignores the
+other's metadata and installation rewrites no user settings. Drop `-g` for a project-local
+install, add `--copy` if you would rather have files than symlinks.
+
+Then invoke it with your idea. Plain invocation means `start`:
+
+```text
+/rescamp   Does a four-day workweek reduce self-reported burnout in mid-size software firms?
+$rescamp   Does a four-day workweek reduce self-reported burnout in mid-size software firms?
+```
+
+Campaigns live in `research-campaigns/<name>/` and survive across sessions.
 
 ## How it works
 
-### 1. Sketch before interrogation
+**1. Sketch first, interrogate second.** ResCamp opens with a corrigible *Campaign sketch
+v0* — purpose, scope, inquiries, evidence, methods, risks, outputs — so you have something
+concrete to push back on. No form to fill in before you get value, and no treating the first
+plausible reading as settled.
 
-ResCamp begins by translating the vague idea into a corrigible **Campaign sketch v0**. The sketch gives the user something concrete to react to: the likely purpose, scope, central inquiries, evidence, methods, risks, success criteria, and outputs. It is explicitly provisional.
+**2. Ask only what changes the plan.** One question per turn, asked only when the answer can
+move scope, evidence, method, ethics, authority, resources, acceptance criteria, or outputs.
+Both your verbatim answer and the normalized decision are recorded, so later agents can
+trace what the plan rests on.
 
-This avoids two common failures: asking the user to fill out a long form before providing any value, and treating the first plausible interpretation as settled fact.
+Typical interviews run 3–5 questions on `scoped`, 4–8 on `standard`, and 6–12 on
+`high-assurance`. The enforced ceilings sit well above that — 8, 12 and 18 — and are
+stopping safeguards, not targets. The profile also scales review depth: `scoped` gets one
+skeptical pass, `standard` separates methods/evidence from operations/reproducibility, and
+`high-assurance` adds ethics/claim-integrity plus pilot evidence.
 
-### 2. Ask only decision-changing questions
+**3. Leave what you don't know as fog.** If you don't have an answer, ResCamp does not
+invent one. The decision stays unresolved or partial and is linked to a dependency or a
+blocker. A draft may carry fog; an execution-ready campaign may not.
 
-The interview proceeds one question at a time. A question is worth asking only if its answer can materially change the scope, evidence, method, ethics, authority, resources, acceptance criteria, or outputs. ResCamp records both the user's original answer and the normalized decision so later agents can trace what the plan is based on.
+**4. Compile a research contract.** Resolved decisions become a durable structure covering
+mission and boundaries, research objects and evidence hierarchy, inquiries and rival
+explanations, methods and tools, a frozen evaluation instrument, staged gates, budgets and
+approvals, ethics and rights, deliverables with acceptance tests, and the first authorized
+action. Proportionally: a literature question satisfies a section in a few lines; a costly
+autonomous campaign needs exact controls.
 
-Typical interview budgets are 3–5 questions for `scoped`, 4–8 for `standard`, and 6–12 for `high-assurance` work. These are ceilings and stopping safeguards, not targets. The profile also scales review depth: `scoped` uses a skeptical completeness pass, `standard` separates methods/evidence from operations/reproducibility, and `high-assurance` adds ethics/claim-integrity review and pilot evidence.
+**5. Review, repair, and label readiness honestly.** When the interview stops, ResCamp
+freezes the content and runs deterministic checks — missing structure, broken references,
+stage cycles, unsupported external actions, incomplete deliverables. Then it writes
+role-scoped packets for separate reviewer agents, so review is not the author rereading its
+own answer. Reviews bind to the exact sections they inspected: a later edit invalidates only
+what it touched. Agent-fixable defects get repaired; anything needing your authority, an
+external approval, or an accepted risk stays visible.
 
-If the user does not yet know an answer, ResCamp does not fabricate one. The unresolved decision remains **fog**: it is marked unresolved or partial and linked to a dependency or blocker. A draft may contain fog; an execution-ready campaign must resolve it or expose it as a real blocker.
+`finalize` then produces either an `EXECUTION-READY` bundle or a `NOT EXECUTION-READY` draft
+with exact blockers. It fails closed — no reviews, stale reviews, an unapproved external
+action, or an open critical blocker all stop it.
 
-### 3. Compile a complete research contract
+## Reference
 
-Resolved decisions are compiled into a durable campaign contract. The contract connects:
+<details>
+<summary><strong>Modes</strong></summary>
 
-- the mission, boundaries, research objects, and intended decisions;
-- inquiries or claims, admissible evidence, rival explanations, and counterevidence;
-- methods, tools, canaries, evaluation criteria, stages, and promotion gates;
-- budgets, access, delegation, recovery, ethics, rights, and human approvals;
-- deliverables, acceptance tests, claim discipline, review, and kickoff.
-
-The structure is proportional. A focused literature question can satisfy a section in a few lines; a costly experiment or autonomous campaign needs more exact controls.
-
-### 4. Review, repair, and label readiness honestly
-
-When the interview stops, ResCamp freezes the current content and runs deterministic checks for missing structure, broken references, stage cycles, stale reviews, unsupported external actions, and incomplete deliverables. It then prepares role-specific packets for separate reviewer agents—for example, methods/evidence and operations/reproducibility—so review is not just the author rereading its own answer. If the host cannot provide the required independence, ResCamp reports that limitation instead of claiming it was achieved.
-
-Reviews are bound to the exact sections they inspected. A later change invalidates only the affected reviews. Agent-fixable defects are repaired; questions requiring user authority, external approval, or accepted risk remain visible.
-
-`finalize` produces either an `EXECUTION-READY` bundle or a useful `NOT EXECUTION-READY` draft with exact blockers. Readiness means the plan passed its stated gates. It does not mean that the research result has been measured, replicated, or externally validated.
-
-## Installation
-
-ResCamp 0.10.0 requires Python 3.9+ and only the standard library at runtime. The standard Skills CLI installs the same canonical tree for both supported hosts:
-
-```bash
-npx skills add Antimonyleo/ResearchPlan --skill rescamp -g \
-  -a claude-code -a codex -y
-```
-
-This installs at user scope. For a project-local installation, omit `-g`:
-
-```bash
-npx skills add Antimonyleo/ResearchPlan --skill rescamp \
-  -a claude-code -a codex -y
-```
-
-The installer requires Node.js 18+, but the installed skill does not. Add `--copy` if symlinks are undesirable. Claude Code's manual-only policy and Codex's explicit-only policy ship inside the same skill tree, so installation does not need to rewrite user settings. See [host paths and acceptance checks](rescamp/references/hosts.md).
-
-## Using ResCamp
-
-Start by invoking the skill with the research idea. Plain invocation is treated as `start`.
-
-Claude Code:
-
-```text
-/rescamp Does a four-day workweek reduce self-reported burnout in mid-size software firms?
-```
-
-Codex:
-
-```text
-$rescamp Does a four-day workweek reduce self-reported burnout in mid-size software firms?
-```
-
-ResCamp stores campaigns under `research-campaigns/<campaign-name>/` by default, so the work can continue across sessions.
-
-### Modes
-
-| Mode | When to use it | What happens |
-|---|---|---|
-| `start <goal>` | Beginning a new idea | Creates Campaign sketch v0, initializes durable state, and starts the minimum-sufficient interview. |
-| `resume [campaign]` | Returning in a later session | Loads the saved decisions and continues from the highest-value unresolved branch. |
-| `status [campaign]` | Checking progress | Shows resolved decisions, assumptions, blockers, interview budget, review freshness, and the next likely action. It does not change the campaign. |
-| `draft [campaign]` | Needing an early plan for discussion | Renders the current material as a clearly non-final bundle. Missing decisions remain visible. |
-| `finalize [campaign]` | The interview appears complete | Runs validation and proportional review, repairs agent-fixable findings, asks only material remaining questions, and renders the final or blocked bundle. |
-| `review [campaign]` or `test [campaign]` | Manually checking the current plan | Re-runs deterministic checks and the required reviewer passes without running a comparative benchmark. |
-| `revise [campaign] <change>` | Requirements, evidence, access, or scope changed | Updates canonical state, invalidates affected reviews, and reruns the relevant checks. |
-| `audit [campaign]` | Before handoff or execution | Verifies canonical state, review freshness, references, rendered artifacts, and recorded hashes. |
-| `benchmark <config>` | Comparing versions, a no-skill baseline, or another tool | Runs the separate Team U/S/E evaluation harness. It is manual and never starts merely because a campaign was finalized. |
-| `help` | Looking up syntax | Shows concise skill usage. |
-
-A common lifecycle is:
-
-```text
-start → interview → status → finalize → audit
-                         ↘ revise → review → finalize
-```
-
-Use `draft` at any point when a stakeholder needs to inspect the current direction. Use `revise` rather than editing rendered outputs directly; the canonical campaign state is what review and audit track.
-
-The agent normally drives `rescamp/scripts/rescamp.py`. Developers integrating the engine directly can run its `--help` command for the low-level CLI.
-
-## Outputs and follow-up use
-
-The final bundle is written under the campaign's `outputs/` directory.
-
-| Artifact | Purpose and follow-up use |
+| Mode | When to use it |
 |---|---|
-| `CAMPAIGN_PROMPT.md` | The main execution prompt. Give it to the lead research agent or use it as the shared constitution for an agent team. |
-| `KICKOFF.md` | The first authorized action and gate. Use it to begin execution without asking a new agent to reinterpret the whole plan. |
-| `ROADMAP.md` | A concise human-facing summary. Share it with collaborators, decision owners, or reviewers. |
-| `campaign.json` | The machine-readable contract. Use it for continuation, integration, or programmatic inspection. |
-| `TASK_BRIEF_TEMPLATE.md` | Bounded worker instructions derived from declared work units. Use it when delegating stages or analyses. |
-| `REVIEW_REPORT.md` | Reviewer modes, verdicts, and findings. Use it to understand what was challenged and what still needs attention. |
-| `BLOCKERS.md` | Present only when execution is blocked. Resolve these items, record approvals, or deliberately revise the scope before finalizing again. |
-| `CLAIMS_EVIDENCE_MATRIX.json` | Links inquiries and claims to support, counterevidence, verification, uncertainty, and reporting rules. Use it during analysis and final writing. |
-| `RUNBOOK.md` | Checkpoints, continuation, recovery, budgets, and approvals. Use it to resume long or multi-stage work. |
-| `MANIFEST.sha256` | Hashes of rendered artifacts. Run `audit` before handoff to detect stale or changed outputs. |
+| `start <goal>` | Beginning a new idea. Creates the sketch, initializes state, starts the interview. |
+| `resume [campaign]` | Returning later. Continues from the highest-value unresolved branch. |
+| `status [campaign]` | Read-only: decisions, assumptions, blockers, question budget, review freshness, next action. |
+| `draft [campaign]` | Renders the current material as a clearly non-final bundle, missing decisions visible. |
+| `finalize [campaign]` | Runs validation and review, repairs what it can, asks any remaining material question, renders. |
+| `review` / `test` | Re-runs the checks and reviewer passes on demand. |
+| `revise [campaign] <change>` | Updates state, invalidates affected reviews, reruns the relevant checks. |
+| `audit [campaign]` | Verifies state, references, rendered artifacts, and hashes before handoff. |
+| `benchmark <config>` | Manual comparative evaluation. Never triggered by finalizing. |
 
-ResCamp does not schedule workers, spend resources, or grant authority. The bundle is the handoff from planning to an execution agent, human team, workflow system, or domain-specific tool. During execution, failed checks, new evidence, changed constraints, or unresolved approvals should flow back through `revise`, targeted review, and `finalize` rather than being hidden in an ad hoc copy of the prompt.
+Use `revise` rather than editing rendered outputs — canonical state is what review and audit
+track.
 
-## Benchmarks and evidence
+</details>
 
-The ordinary quality loop asks whether one campaign is internally complete, coherent, and likely executable. The optional benchmark asks a different question: whether ResCamp performs better than a previous version, a neutral no-skill prompt, or another system under matched conditions.
+<details>
+<summary><strong>What ends up in <code>outputs/</code></strong></summary>
 
-The benchmark separates three roles:
+| Artifact | What it is for |
+|---|---|
+| `CAMPAIGN_PROMPT.md` | The execution prompt. Hand it to a lead agent or use it as a team's shared constitution. |
+| `KICKOFF.md` | The first authorized action and its gate, so execution starts without reinterpreting the plan. |
+| `ROADMAP.md` | Human-facing summary for collaborators and decision owners. |
+| `campaign.json` | The machine-readable contract, for continuation or integration. |
+| `TASK_BRIEF_TEMPLATE.md` | Bounded worker instructions derived from the declared work units. |
+| `REVIEW_REPORT.md` | Reviewer modes, verdicts, and findings. |
+| `CLAIMS_EVIDENCE_MATRIX.json` | Claims linked to support, counterevidence, verification, and reporting rules. |
+| `BLOCKERS.md` | Present only when execution is blocked. |
+| `RUNBOOK.md` | Checkpoints, recovery, budgets, approvals for long or multi-stage work. |
+| `MANIFEST.sha256` | Artifact hashes; `audit` uses them to catch stale or edited outputs. |
 
-- **Team U** knows a hidden research brief and answers only what the tested system asks.
-- **Team S** sees the vague request and public interview. This is the system or condition being tested.
-- **Team E** sees frozen artifacts and an evaluator transcript under an opaque label, then scores the result against universal and archetype-specific criteria.
+ResCamp does not schedule workers, spend resources, or grant authority. The bundle is the
+handoff from planning to whoever executes.
 
-The harness measures decision recall, question efficiency, unsupported assumptions, interaction burden, campaign quality, critical defects, false readiness, cost, and tool use. Its 18 public scenarios span all supported archetypes, but they are calibration fixtures written inside this project. Synthetic fixture scores test the harness; they are not evidence that ResCamp improves live model performance.
+</details>
 
-Useful commands:
+<details>
+<summary><strong>Benchmarks</strong></summary>
+
+The quality loop asks whether one campaign is internally sound. The optional benchmark asks
+a different question: whether ResCamp beats a previous version, a no-skill prompt, or
+another system under matched conditions. It separates three roles — Team U holds a hidden
+brief and answers only what it is asked, Team S is the system under test, Team E scores
+frozen artifacts under an opaque label.
 
 ```bash
 make benchmark-smoke
 python3 rescamp/scripts/benchmark.py validate-scenarios benchmark/scenarios/public
 ```
 
-Live comparative claims require fresh sessions, matched models and permissions, private holdouts, repeated runs, blinded evaluation, and—when claiming better research outcomes—external evidence from execution. See the [benchmark guide](docs/BENCHMARKING.md) and [adapter protocol](benchmark/adapters/external_command_protocol.md).
+Its 18 public scenarios span every archetype, but they are calibration fixtures written
+inside this project. **Fixture scores test the harness; they are not evidence that ResCamp
+improves live model performance.** See the [benchmark guide](docs/BENCHMARKING.md).
 
-The separate `scripts/host_acceptance.py` checks that an installed Claude Code or Codex host can invoke ResCamp and create expected artifacts. It tests transport and artifact presence, not research quality.
+</details>
 
-## What the checks do not prove
-
-ResCamp can detect structural omissions, inconsistent references, stale reviews, unsupported readiness claims, and modified rendered artifacts. Independent agent review can reveal unclear instructions and weak research logic.
-
-It cannot determine whether the proposed science is true, authenticate real-world approvals, guarantee that later agents obey the prompt, or replace data, replication, domain expertise, ethics review, peer review, or external adjudication. The repository has not yet established superiority over a plain prompt on a private matched holdout or measured better downstream research outcomes.
-
-## Development validation
+<details>
+<summary><strong>Development</strong></summary>
 
 ```bash
-make test
-make skill-check
-make validate-full
+make test           # unit and end-to-end tests
+make skill-check    # skill structure and metadata
+make validate-full  # compiles scripts, validates schemas and scenarios, runs everything
 ```
 
-The full validator compiles the scripts, validates schemas and public scenarios, runs unit and end-to-end tests, and exercises deterministic and process-isolated Team U/S/E fixtures.
+`scripts/host_acceptance.py` checks that an installed host can invoke ResCamp and produce
+the expected artifacts. It tests transport, not research quality.
+
+</details>
+
+## What this does not prove
+
+ResCamp catches structural omissions, inconsistent references, stale reviews, unsupported
+readiness claims, and modified artifacts. Independent agent review can surface unclear
+instructions and weak research logic — as it did in the example above.
+
+It cannot tell you whether the proposed science is true. It cannot authenticate a real-world
+approval, guarantee that a later agent obeys the prompt, or substitute for data, replication,
+domain expertise, ethics review, peer review, or external adjudication. `EXECUTION-READY`
+means the plan passed its own declared gates and nothing more. Agent review checks internal
+coherence; it is not external validation.
+
+This repository has not established superiority over a plain prompt on a private matched
+holdout, and has not measured downstream research outcomes.
 
 ## Design inspirations
 
-ResCamp combines three ideas while keeping their evidence boundaries explicit:
+- Claude Science and Amir Shanehsazzadeh, [*Autonomous de novo protein binder design with
+  Claude*](https://www-cdn.anthropic.com/30bf50e22a01388bb29bf077ee3f244531594b7a.pdf),
+  Anthropic, 18 August 2026. ResCamp generalizes the campaign's structure — explicit
+  orchestration, frozen verification, staged evaluation, operations, external checks. It
+  inherits none of the paper's protein knowledge, host capabilities, laboratory validation,
+  or measured outcomes. [Mapping](docs/PAPER_ANTHROPIC_BINDER.md).
+- Travis Smith, [*The Little Scientist: LLM Agent-Driven Discovery via the Scientific
+  Method*](https://arxiv.org/abs/2608.16951), 16 August 2026 — the inquiry → prediction →
+  test → evidence → revise/retain/reject loop, used as a discipline-neutral pattern.
+- Matt Pocock, [*Wayfinder*](https://github.com/mattpocock/skills/blob/main/skills/engineering/wayfinder/SKILL.md)
+  — leaving premature decisions in the fog rather than filling them with false precision.
+  Unlike Wayfinder's rolling frontier, ResCamp requires every material unknown to be
+  resolved or exposed before it will claim execution readiness.
 
-- Claude Science and Amir Shanehsazzadeh, [*Autonomous de novo protein binder design with Claude*](https://www-cdn.anthropic.com/30bf50e22a01388bb29bf077ee3f244531594b7a.pdf), Anthropic, 18 August 2026. ResCamp translates the campaign's emphasis on explicit orchestration, verification, staged evaluation, operations, and external checks. It does not inherit the paper's protein knowledge, private host capabilities, laboratory validation, or measured outcomes. See the [paper mapping](docs/PAPER_ANTHROPIC_BINDER.md).
-- Travis Smith, [*The Little Scientist: LLM Agent-Driven Discovery via the Scientific Method*](https://arxiv.org/abs/2608.16951), 16 August 2026. ResCamp uses its inquiry → prediction or implication → test → evidence → revise/retain/reject loop as a discipline-neutral pattern for research reasoning.
-- Matt Pocock, [*Wayfinder*](https://github.com/mattpocock/skills/blob/main/skills/engineering/wayfinder/SKILL.md). ResCamp borrows the practice of leaving premature decisions in the fog rather than filling them with false precision. Unlike Wayfinder's rolling frontier, ResCamp requires every material unknown to be resolved or exposed before claiming execution readiness.
-
-The full provenance and generalization discussion is in the [design basis](docs/DESIGN_BASIS.md) and [generalization notes](docs/GENERALIZATION.md).
+Full provenance in the [design basis](docs/DESIGN_BASIS.md) and
+[generalization notes](docs/GENERALIZATION.md).
 
 ## License
 
-ResCamp is released under the [MIT License](LICENSE). Third-party papers, tools, models, and comparison systems retain their own licenses.
+[MIT](LICENSE). Third-party papers, tools, and models retain their own licenses.
