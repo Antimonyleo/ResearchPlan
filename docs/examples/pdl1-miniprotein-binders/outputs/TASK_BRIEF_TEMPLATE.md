@@ -1,18 +1,18 @@
 # Bounded work-unit briefs
 
 Campaign: `pdl1-miniprotein-binders`
-Content digest: `sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e`
+Content digest: `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195`
 
 A local brief may narrow scope but may not weaken the campaign constitution.
 
-## WU-freeze — Produce D-target and D-environment, frozen with digests, and pass all three canaries at production settings.
+## WU-freeze — Produce D-target and D-environment, frozen with digests, and pass all four canaries at production settings.
 
 - **Authoritative inputs and hashes:**
   - The campaign constitution; the RCSB Protein Data Bank; the installed software stack and its licences.
 - **Permitted actions:**
   - Retrieve public structural data and verify it against RCSB
   - Install, pin, and digest software, weights, and container images
-  - Run the three canaries at production settings
+  - Run the four canaries at production settings
   - Write D-target and D-environment
 - **Prohibited actions:**
   - Generating any campaign design
@@ -22,7 +22,7 @@ A local brief may narrow scope but may not weaken the campaign constitution.
   - Proceeding on an unverified accession or an unpinned tool version
 - **Method and tool constraints:** M-target only. Canaries run at exactly the settings S2 and S3 will use; a canary run at reduced settings does not count.
 - **Exact outputs:**
-  - D-target, D-environment, and three canary manifests.
+  - D-target, D-environment, and four canary manifests.
 - **Verification and acceptance:** G1's required evidence is present in full: verified accession and digests, every tool pinned with a licence determination, and three passing canary manifests whose output the scorer ingests end to end.
 - **Resource ceiling:** 50 A100 GPU-hours and two calendar weeks.
 - **Retry and failure classes:** A failed canary may be fixed and rerun without escalation up to three times; the fourth failure escalates to ROLE-pi.

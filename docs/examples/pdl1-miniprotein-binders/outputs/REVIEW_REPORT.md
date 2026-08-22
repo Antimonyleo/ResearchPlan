@@ -1,6 +1,6 @@
 # Review report
 
-**Content digest:** `sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e`
+**Content digest:** `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195`
 
 **Rubric digest:** `sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06`
 
@@ -28,8 +28,8 @@ Pass. All five round-1 methods findings are closed in the campaign itself rather
 
 ### operations-reproducibility — pass
 
-Reviewer: `sequential-operations-r2`; attested mode: `sequential-pass`
+Reviewer: `sequential-operations-r3`; attested mode: `sequential-pass`
 
-Pass for beginning WU-freeze. All three round-1 operations findings are closed, and one defect the round-1 repair itself introduced has been closed with them: reassigning the gate owners left the kickoff backlog routing G1 evidence to ROLE-comp-lead and left three approval records naming the old authorities, both of which now match the gate table. No gate is owned by the role that executes its stage. A batch manifest must be appended before compute is consumed, which makes an interrupted batch visible to reconciliation and makes an output with no prior manifest a quarantine case rather than a silent adoption. The calendar now has a named owner, a check at every gate, an S3 scoping rule at G2, and an explicit no-decision outcome if the allocation lapses mid-scoring, so a partial design set can no longer reach the decision table. A fresh executor has an exact reversible first action — verify a PD-1:PD-L1 structure against RCSB and write D-target — with no missing material user decision, no spend, and no external action available to it.
+Pass. The canary count is now consistent across G1's required evidence, S1's activities, WU-freeze's outputs and acceptance test, the APR-G1 approval record, and the kickoff backlog, which now names CAN-sequence alongside the other three. This was a counting error, not a control gap: the fourth canary existed and was enforced by the gate's own evidence requirement; the prose simply undercounted it, which would have let an executor present three manifests and believe G1 was satisfiable. Gate ownership, the manifest-before-compute rule, and the calendar-expiry rule are unaffected and remain as accepted at round 2.
 
 

@@ -2,6 +2,8 @@
 
 The automatic loop runs after the interview stopping rule and whenever `finalize` or `revise` is used. It is current-campaign quality assurance, not a full comparative benchmark.
 
+These reviews approve a plan version before execution. A broad long-running campaign may also require fresh reviews at major execution checkpoints; those inspect stage artifacts and decide whether the current plan remains usable. They do not reuse or replace the records here. See `architecture.md`, sections 8 and 11.
+
 Phases A–D inspect a static artifact. They can show that the campaign is coherent, complete, and internally consistent; they cannot show that it survives contact with the work. That is a weaker guarantee than it appears, and the campaign must say so. Phase E is how a campaign earns the stronger one.
 
 ## Phase A — freeze

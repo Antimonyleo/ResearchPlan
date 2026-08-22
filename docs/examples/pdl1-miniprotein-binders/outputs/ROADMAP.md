@@ -10,7 +10,7 @@
 
 - **Purpose:** Pin what is being designed against and what is doing the designing, before anything is generated or scored.
 - **Outputs:**
-  - D-target and D-environment, both frozen with digests; three canary manifests.
+  - D-target and D-environment, both frozen with digests; four canary manifests.
 - **Owner:** ROLE-comp-lead
 - **Budget:** 50 A100 GPU-hours; approximately one week.
 - **Expected pace:** One week. If S1 is not frozen within two weeks, escalate to ROLE-pi rather than proceeding on an unpinned environment.
@@ -87,9 +87,9 @@
   - Per tool: identity, release tag, weight-file digest, container image digest, licence, and licence-compatibility determination
   - Exact invocation, flags, template and MSA policy, and seed policy for each tool
   - Generation parameters: length range, topology constraints, batch size
-  - Canary manifests for all three canaries with their positive, negative, and reproducibility results
+  - Canary manifests for all four canaries with their positive, negative, and reproducibility results
   - Freeze time and artifact digest
-- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all three canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
+- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all four canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
 

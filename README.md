@@ -121,6 +121,22 @@ external approval, or an accepted risk stays visible.
 with exact blockers. It fails closed — no reviews, stale reviews, an unapproved external
 action, or an open critical blocker all stop it.
 
+**6. Keep a long campaign aligned.** A broad multi-day plan carries its active digest into
+every work brief and checkpoint. Each major decision-bearing execution stage can name a
+fresh, read-only reviewer in its gate; eight such stages normally produce eight review
+gates, not one review after every task. Each review presents at most three material findings
+— and must say so when it found more, so a capped review is never mistaken for a clean one.
+After two rounds, remaining blockers escalate to the gate owner. Operational changes are
+logged in place, method changes create a new version and targeted re-review, and changes to
+the mission, primary evaluation, ethics, authority, budget ceiling, stop rules, or permitted
+claims pause for approval. Old pending briefs become stale; completed evidence stays attached
+to the plan version that produced it.
+
+Unlike steps 1–5, this step is **compiled into the plan as instructions to whoever executes
+it**. ResCamp renders the procedure into `CAMPAIGN_PROMPT.md` and `RUNBOOK.md`; it does not
+schedule checkpoints, count review rounds, or enforce the finding cap. A chat is not a
+scheduler, and neither is a plan.
+
 ## Reference
 
 <details>
@@ -134,7 +150,7 @@ action, or an open critical blocker all stop it.
 | `draft [campaign]` | Renders the current material as a clearly non-final bundle, missing decisions visible. |
 | `finalize [campaign]` | Runs validation and review, repairs what it can, asks any remaining material question, renders. |
 | `review` / `test` | Re-runs the checks and reviewer passes on demand. |
-| `revise [campaign] <change>` | Updates state, invalidates affected reviews, reruns the relevant checks. |
+| `revise [campaign] <change>` | Versions a plan change, invalidates affected reviews, and reruns only the relevant checks. Use it for material changes discovered during execution. |
 | `audit [campaign]` | Verifies state, references, rendered artifacts, and hashes before handoff. |
 | `benchmark <config>` | Manual comparative evaluation. Never triggered by finalizing. |
 
@@ -156,7 +172,7 @@ track.
 | `REVIEW_REPORT.md` | Reviewer modes, verdicts, and findings. |
 | `CLAIMS_EVIDENCE_MATRIX.json` | Claims linked to support, counterevidence, verification, and reporting rules. |
 | `BLOCKERS.md` | Present only when execution is blocked. |
-| `RUNBOOK.md` | Checkpoints, recovery, budgets, approvals for long or multi-stage work. |
+| `RUNBOOK.md` | Resume procedure, major-stage reviews, controlled amendments, recovery, budgets, and approvals. |
 | `MANIFEST.sha256` | Artifact hashes; `audit` uses them to catch stale or edited outputs. |
 
 ResCamp does not schedule workers, spend resources, or grant authority. The bundle is the

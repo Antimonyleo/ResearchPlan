@@ -162,6 +162,71 @@ class BundleContentTests(unittest.TestCase):
         for item in state["campaign"]["kickoff"]["initial_backlog"]:
             self.assertIn(item, kickoff)
 
+    def test_long_campaign_outputs_carry_checkpoint_and_amendment_protocol(self):
+        state = complete_state()
+        prompt = engine.render_campaign_prompt(state, "EXECUTION-READY")
+        roadmap = engine.render_roadmap(state, "EXECUTION-READY")
+        runbook = engine.runbook(state)
+
+        self.assertIn(state["campaign"]["gates"][0]["checkpoint_review"], prompt)
+        self.assertIn(state["campaign"]["gates"][0]["checkpoint_review"], roadmap)
+        for text in (prompt, runbook):
+            self.assertIn(engine.content_digest(state), text)
+            self.assertIn("at most three material findings", text)
+            self.assertIn("Methodological", text)
+            self.assertIn("Constitutional", text)
+            self.assertIn("older digest is stale", text)
+
+    def test_short_campaign_omits_the_large_checkpoint_review_protocol(self):
+        state = complete_state()
+        for gate in state["campaign"]["gates"]:
+            gate.pop("checkpoint_review", None)
+
+        protocol = engine.plan_continuity_protocol(state)
+
+        self.assertIn(engine.content_digest(state), protocol)
+        self.assertIn("older digest is stale", protocol)
+        self.assertNotIn("eight major execution stages", protocol)
+        self.assertNotIn("at most three material findings", protocol)
+
+    def test_kickoff_carries_the_first_gates_checkpoint_review(self):
+        """The kickoff exists so execution starts without rereading the plan.
+
+        Omitting `checkpoint_review` let the first gate look executable without the
+        independent review it requires — the one artifact where that omission is
+        least recoverable, because it is the only one an executor may have read.
+        """
+        state = complete_state()
+        review = state["campaign"]["gates"][0]["checkpoint_review"]
+        self.assertIn(review, engine.render_kickoff(state, "EXECUTION-READY"))
+
+        for gate in state["campaign"]["gates"]:
+            gate.pop("checkpoint_review", None)
+        self.assertNotIn("Independent checkpoint review",
+                         engine.render_kickoff(state, "EXECUTION-READY"),
+                         "a gate without a checkpoint review must not grow an empty heading")
+
+    def test_kickoff_renders_every_gate_criterion_at_the_same_level(self):
+        """All criteria are siblings; none is a sub-point of the first."""
+        state = complete_state()
+        state["campaign"]["gates"][0]["criteria"] = ["first criterion", "second criterion"]
+        first_gate = engine.render_kickoff(state, "EXECUTION-READY").split("## First gate", 1)[1]
+        for criterion in ("first criterion", "second criterion"):
+            self.assertIn(f"- {criterion}", first_gate)
+            self.assertNotIn(f"  - {criterion}", first_gate,
+                             "a later criterion must not be indented under the first")
+
+    def test_the_finding_cap_requires_disclosure_rather_than_silent_truncation(self):
+        """A cap that hides its own truncation reports three findings as a clean result."""
+        protocol = engine.plan_continuity_protocol(complete_state())
+        self.assertIn("at most three material findings", protocol)
+        for obligation in ("returns `block`", "how many it found", "highest severity",
+                           "never reported as a clean result"):
+            self.assertIn(obligation, protocol,
+                          f"the cap must oblige the reviewer to disclose: {obligation!r}")
+        self.assertIn("escalate any remaining blocker to the gate owner", protocol,
+                      "two exhausted rounds must name an escalation target, not a passive")
+
     def test_claims_matrix_includes_inquiries(self):
         state = complete_state()
         rows = engine.claims_evidence_matrix(state)["rows"]

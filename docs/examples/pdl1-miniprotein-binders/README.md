@@ -9,7 +9,7 @@ A complete campaign, compiled by ResCamp 0.10.0 and committed here unedited. Eve
 > of human PD-L1 that clear frozen in-silico filters well enough to justify ordering genes
 > for wet-lab testing?
 
-**Result:** `EXECUTION-READY`, `audit --strict` exit 0, 7 interview turns, 2 review rounds.
+**Result:** `EXECUTION-READY`, `audit --strict` exit 0, 7 interview turns, 3 review rounds.
 
 ## What it demonstrates
 
@@ -47,6 +47,14 @@ that the executing role approved its own work at half the gates.
 **Round 2 — pass.** It also caught a defect the round-1 repair introduced: reassigning
 gate owners left the kickoff backlog routing G1 evidence to the old owner and three
 approval records naming the wrong authorities.
+
+**Round 3 — pass, operations only.** A later pass found the campaign declared four canaries
+while eight passages still said three: `CAN-sequence` had been added to clear the engine's
+`tool.no_canary` error without propagating the count, so an executor could have presented
+three manifests and believed G1 was satisfiable. Correcting it staled *only* the operations
+review — the methods review stayed current, because nothing in its scope moved. That is
+per-section binding doing its job, and it is why the record below shows
+`sequential-operations-r3` beside `sequential-methods-r2`.
 
 ## Honest limitations of this example
 

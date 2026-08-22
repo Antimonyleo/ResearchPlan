@@ -1,6 +1,6 @@
 {
-  "checked_at": "2026-08-22T02:42:34+00:00",
-  "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+  "checked_at": "2026-08-22T21:48:03+00:00",
+  "content_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
   "counts": {
     "canaries": 4,
     "claims": 2,

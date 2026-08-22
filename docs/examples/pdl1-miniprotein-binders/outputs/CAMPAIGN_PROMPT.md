@@ -3,8 +3,8 @@
 **Status:** EXECUTION-READY
 
 **Campaign ID:** `pdl1-miniprotein-binders`  
-**Content version:** 29  
-**Content digest:** `sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e`  
+**Content version:** 30  
+**Content digest:** `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195`  
 **Profile:** standard  
 **Archetypes:** computational, design-engineering
 
@@ -72,9 +72,9 @@ Every worker inherits these rules. Local briefs may narrow scope but may not wea
   - Per tool: identity, release tag, weight-file digest, container image digest, licence, and licence-compatibility determination
   - Exact invocation, flags, template and MSA policy, and seed policy for each tool
   - Generation parameters: length range, topology constraints, batch size
-  - Canary manifests for all three canaries with their positive, negative, and reproducibility results
+  - Canary manifests for all four canaries with their positive, negative, and reproducibility results
   - Freeze time and artifact digest
-- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all three canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
+- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all four canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
 
@@ -488,9 +488,9 @@ A successful import or help command is not a canary.
   - Retrieve and verify a PD-1:PD-L1 co-crystal structure against RCSB; record accession, chain, method, resolution, interface density gaps, and file digest
   - Define the hotspot residue set in the deposited numbering and record it in D-target
   - Pin every tool identity, version, weight-file digest, container image digest, and licence in D-environment
-  - Run all three canaries at production settings and record their manifests
+  - Run all four canaries (CAN-predict, CAN-energy, CAN-pipeline, CAN-sequence) at production settings and record their manifests
 - **Outputs:**
-  - D-target and D-environment, both frozen with digests; three canary manifests.
+  - D-target and D-environment, both frozen with digests; four canary manifests.
 - **Owner:** ROLE-comp-lead
 - **Budget:** 50 A100 GPU-hours; approximately one week.
 - **Expected pace:** One week. If S1 is not frozen within two weeks, escalate to ROLE-pi rather than proceeding on an unpinned environment.
@@ -562,7 +562,7 @@ A successful import or help command is not a canary.
 - **Required evidence:**
   - D-target carrying a verified accession, chain, hotspot residue set, and file digest.
   - D-environment carrying every tool version, weight digest, image digest, and licence.
-  - All three canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end.
+  - All four canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end.
 - **Owner:** ROLE-methods
 - **On failure:** S2 does not start and no allocation beyond the S1 budget is consumed. A failed canary is fixed and rerun; a structure that cannot be verified against RCSB sends the epitope definition back for reselection.
 - **Criteria:**
@@ -631,7 +631,7 @@ A successful import or help command is not a canary.
 
 **Approvals**
 - **APR-compute:** Standing institutional GPU allocation, already granted; recorded in ACC-compute.
-- **APR-G1:** G1 acceptance: target and environment frozen, all three canaries passing.
+- **APR-G1:** G1 acceptance: target and environment frozen, all four canaries passing.
 - **APR-G2:** G2 acceptance: thresholds, clustering cuts, and decision table frozen; controls separate.
 - **APR-G3:** G3 acceptance: design set scored once against unchanged thresholds, with full provenance.
 - **APR-G4:** G4 acceptance: memo matches the table cell and the handoff package reproduces.
@@ -680,14 +680,14 @@ A successful import or help command is not a canary.
 
 Delegates return artifacts and concise findings, not unbounded narrative. A local brief may narrow scope but may not weaken the constitution.
 
-### WU-freeze — Produce D-target and D-environment, frozen with digests, and pass all three canaries at production settings.
+### WU-freeze — Produce D-target and D-environment, frozen with digests, and pass all four canaries at production settings.
 
 - **Authoritative inputs and hashes:**
   - The campaign constitution; the RCSB Protein Data Bank; the installed software stack and its licences.
 - **Permitted actions:**
   - Retrieve public structural data and verify it against RCSB
   - Install, pin, and digest software, weights, and container images
-  - Run the three canaries at production settings
+  - Run the four canaries at production settings
   - Write D-target and D-environment
 - **Prohibited actions:**
   - Generating any campaign design
@@ -697,7 +697,7 @@ Delegates return artifacts and concise findings, not unbounded narrative. A loca
   - Proceeding on an unverified accession or an unpinned tool version
 - **Method and tool constraints:** M-target only. Canaries run at exactly the settings S2 and S3 will use; a canary run at reduced settings does not count.
 - **Exact outputs:**
-  - D-target, D-environment, and three canary manifests.
+  - D-target, D-environment, and four canary manifests.
 - **Verification and acceptance:** G1's required evidence is present in full: verified accession and digests, every tool pinned with a licence determination, and three passing canary manifests whose output the scorer ingests end to end.
 - **Resource ceiling:** 50 A100 GPU-hours and two calendar weeks.
 - **Retry and failure classes:** A failed canary may be fixed and rerun without escalation up to three times; the fourth failure escalates to ROLE-pi.
@@ -805,6 +805,12 @@ Delegates return artifacts and concise findings, not unbounded narrative. A loca
 
 A conversational session is not a scheduler.
 
+**Plan continuity and amendments**
+
+Use `campaign.json` at `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195` as the active contract. At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit; verify required inputs before acting.
+
+Record material deviations at the next gate. If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them.
+
 ## 12. Ethics, safety, rights, and external actions
 
 **Constraints**
@@ -895,9 +901,9 @@ Once a ranked or selected deliverable is frozen there is no post-hoc re-ranking,
   - Per tool: identity, release tag, weight-file digest, container image digest, licence, and licence-compatibility determination
   - Exact invocation, flags, template and MSA policy, and seed policy for each tool
   - Generation parameters: length range, topology constraints, batch size
-  - Canary manifests for all three canaries with their positive, negative, and reproducibility results
+  - Canary manifests for all four canaries with their positive, negative, and reproducibility results
   - Freeze time and artifact digest
-- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all three canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
+- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all four canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
 
@@ -961,7 +967,7 @@ The weakest rung bounds the challenge, not the strongest: one sequential pass in
 Rungs: 1 sequential self-critique < 2 separate agent context < 3 separate agent blinded to conclusions < 4 human domain expert < 5 external adjudicator with its own data. Rungs 1–3 are agent review: they check internal coherence and are **not** external validation. The mode is self-attested — recorded for audit, never proven.
 
 - **methods-evidence:** pass — Pass. All five round-1 methods findings are closed in the campaign itself rather than deferred to the artifact that was going to be written after the distributions were visible. AUROC is named as the primary separation statistic with the matched-negative-above-median fraction as its secondary; the composition-matching procedure is specified with numeric tolerances and a minimum set size; training-set contamination is now a named rival explanation with a discriminating implication, a recorded date check per control, and a post-cutoff subset that separation is recomputed on; the control-set floor is 8 with at least 3 post-cutoff, so the terminal stop rule can now fire; and the clustering metric is stated with its frozen cut and both alternatives. The residual limitation is inherent rather than a defect: 8 positives and 3 post-cutoff positives bound discrimination coarsely, and the campaign says so in its uncertainty boundary and requires the memo to report the post-cutoff figure as an upper bound where the subset is too small. In-silico separation on published binders remains a weaker guarantee than any measurement, which the reporting rules state plainly. (mode: sequential-pass, reviewer: sequential-methods-r2)
-- **operations-reproducibility:** pass — Pass for beginning WU-freeze. All three round-1 operations findings are closed, and one defect the round-1 repair itself introduced has been closed with them: reassigning the gate owners left the kickoff backlog routing G1 evidence to ROLE-comp-lead and left three approval records naming the old authorities, both of which now match the gate table. No gate is owned by the role that executes its stage. A batch manifest must be appended before compute is consumed, which makes an interrupted batch visible to reconciliation and makes an output with no prior manifest a quarantine case rather than a silent adoption. The calendar now has a named owner, a check at every gate, an S3 scoping rule at G2, and an explicit no-decision outcome if the allocation lapses mid-scoring, so a partial design set can no longer reach the decision table. A fresh executor has an exact reversible first action — verify a PD-1:PD-L1 structure against RCSB and write D-target — with no missing material user decision, no spend, and no external action available to it. (mode: sequential-pass, reviewer: sequential-operations-r2)
+- **operations-reproducibility:** pass — Pass. The canary count is now consistent across G1's required evidence, S1's activities, WU-freeze's outputs and acceptance test, the APR-G1 approval record, and the kickoff backlog, which now names CAN-sequence alongside the other three. This was a counting error, not a control gap: the fourth canary existed and was enforced by the gate's own evidence requirement; the prose simply undercounted it, which would have let an executor present three manifests and believe G1 was satisfiable. Gate ownership, the manifest-before-compute rule, and the calendar-expiry rule are unaffected and remain as accepted at round 2. (mode: sequential-pass, reviewer: sequential-operations-r3)
 
 ## 16. Kickoff
 
@@ -973,5 +979,5 @@ Rungs: 1 sequential self-critique < 2 separate agent context < 3 separate agent 
 - Verify a PD-1:PD-L1 co-crystal structure against RCSB and record its accession, chains, method, resolution, and file digest
 - Define the hotspot residue set in the deposited numbering and write D-target
 - Pin every tool identity, version, weight digest, image digest, and licence into D-environment
-- Run CAN-predict, CAN-energy, and CAN-pipeline at production settings and record their manifests
+- Run CAN-predict, CAN-energy, CAN-pipeline, and CAN-sequence at production settings and record their manifests
 - Confirm the scorer ingests canary output end to end, then present G1 evidence to ROLE-methods, which accepts G1 on a stage it does not execute

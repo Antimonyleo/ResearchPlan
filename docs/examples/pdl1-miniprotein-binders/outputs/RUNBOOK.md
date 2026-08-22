@@ -12,6 +12,12 @@ Work resumes from the campaign state directory and the append-only event log, ne
 - Events: Append-only. Every artifact freeze, canary run, scoring batch, gate decision, deviation, and escalation is appended with its timestamp, actor, inputs consumed by digest, and cost. Events are never edited or removed.
 - Checkpoints: Checkpoint at every artifact freeze, at each gate decision, and after each S3 scoring batch. The batch manifest — parameters, seed, and the frozen digests it consumes — is appended to the event log before the batch consumes any compute, so an interrupted batch is always visible to reconciliation. A checkpoint records the manifest and cumulative cost so an interrupted stage resumes at batch granularity rather than restarting.
 
+## Plan continuity and amendments
+
+Use `campaign.json` at `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195` as the active contract. At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit; verify required inputs before acting.
+
+Record material deviations at the next gate. If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them.
+
 ## Liveness and recovery
 
 - Liveness: A stage worker records a heartbeat with each batch. A stage with no batch event for more than one working day is treated as stalled and escalated to its stage owner. A chat session ending is not stage completion.
@@ -40,7 +46,7 @@ Work resumes from the campaign state directory and the append-only event log, ne
 ## Approvals
 
 - **APR-compute:** Standing institutional GPU allocation, already granted; recorded in ACC-compute.
-- **APR-G1:** G1 acceptance: target and environment frozen, all three canaries passing.
+- **APR-G1:** G1 acceptance: target and environment frozen, all four canaries passing.
 - **APR-G2:** G2 acceptance: thresholds, clustering cuts, and decision table frozen; controls separate.
 - **APR-G3:** G3 acceptance: design set scored once against unchanged thresholds, with full provenance.
 - **APR-G4:** G4 acceptance: memo matches the table cell and the handoff package reproduces.

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Added a living-plan procedure for broad, multi-day campaigns: active plan digests at every resume, fresh independent review at major decision-bearing gates, bounded findings and review rounds, stale work-brief refusal, and versioned operational/methodological/constitutional amendments. It reuses existing gates, digests, and targeted review invalidation; no scheduler was added. The procedure is compiled into `CAMPAIGN_PROMPT.md` and `RUNBOOK.md` as instructions to whoever executes the plan — the engine does not schedule checkpoints, count rounds, or enforce the finding cap.
+- `KICKOFF.md` now carries the first gate's `checkpoint_review`. It was the one bundle artifact that omitted it, so a gate requiring an independent review could look executable to an executor working from the kickoff alone.
+- The checkpoint-review finding cap now bounds cost rather than disclosure: a reviewer finding more than three material findings returns `block`, reports the total and the highest severity, and presents the top three. A capped review is never reported as a clean result.
+- Two exhausted review rounds now escalate to the gate owner instead of "surfacing" a blocker to nobody.
+- Review volume is counted in major execution stages, not "sections", which collides with the sixteen architecture sections of the plan itself.
+- Amendment guidance no longer instructs an execution agent to "use ResCamp `revise`". The rendered prompt is handed to agents and teams that may not have the skill, and `revise` is a mode rather than a CLI subcommand.
+- Fixed multi-criterion gates in `KICKOFF.md` rendering every criterion after the first as a sub-point of the first.
+
 ## 0.10.0
 
 ResCamp is narrower and easier to install.

@@ -88,6 +88,8 @@ class MalformedStateTests(unittest.TestCase):
              lambda state: state["campaign"]["methods"][0].update(inquiry_ids=[{}])),
             ("campaign.stages.0.prerequisite_stage_ids", False,
              lambda state: state["campaign"]["stages"][0].update(prerequisite_stage_ids=[{}])),
+            ("campaign.gates.0.checkpoint_review", False,
+             lambda state: state["campaign"]["gates"][0].update(checkpoint_review=False)),
             ("campaign.work_units.0.dependency_ids", False,
              lambda state: state["campaign"].update(work_units=[{"id": "unit-1", "dependency_ids": [{}]}])),
             ("campaign.canaries.0.tool_id", False,

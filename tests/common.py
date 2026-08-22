@@ -97,8 +97,8 @@ def complete_state(archetype: str = "evidence-synthesis", profile: str = "standa
          "pace": "complete after stage-1", "gate_id": "gate-2", "prerequisite_stage_ids": ["stage-1"]},
     ]
     camp["gates"] = [
-        {"id": "gate-1", "stage_id": "stage-1", "criteria": ["scope and rights verified", "canary passes"], "required_evidence": ["dossier", "canary log"], "owner": "campaign lead", "on_fail": "repair or stop"},
-        {"id": "gate-2", "stage_id": "stage-2", "criteria": ["claims trace to support and counterevidence"], "required_evidence": ["claims matrix"], "owner": "campaign lead", "on_fail": "revise conclusion or report inconclusive"},
+        {"id": "gate-1", "stage_id": "stage-1", "criteria": ["scope and rights verified", "canary passes"], "required_evidence": ["dossier", "canary log"], "owner": "campaign lead", "on_fail": "repair or stop", "checkpoint_review": "Fresh operations reviewer inspects the frozen dossier and canary log; pass, revise, or block."},
+        {"id": "gate-2", "stage_id": "stage-2", "criteria": ["claims trace to support and counterevidence"], "required_evidence": ["claims matrix"], "owner": "campaign lead", "on_fail": "revise conclusion or report inconclusive", "checkpoint_review": "Fresh methods reviewer inspects the frozen analysis and claims matrix; pass, revise, or block."},
     ]
     camp["resources_dispatch"] = {
         "budgets": ["Maximum eight agent-hours and no external spend without approval"],

@@ -20,6 +20,10 @@ The engine hashes rendered artifacts and verifies them with `audit`. These check
 or changed outputs; they are not a security boundary against someone who can rewrite the whole
 workspace.
 
+For broad long-running campaigns, the rendered prompt and runbook bind work to the active plan
+digest, place fresh review at major decision gates, and route material changes through versioned
+`revise`. This is an execution procedure; the compiler does not run the reviewers or scheduler.
+
 ## Manual comparative benchmark
 
 The Team U/S/E harness compares versions, baselines, or external tools under matched conditions.

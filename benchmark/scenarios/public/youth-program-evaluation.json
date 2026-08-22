@@ -162,6 +162,10 @@
     {
       "description": "linkage approval gate",
       "id": "data-approval"
+    },
+    {
+      "description": "fresh independent review at major stage gates with versioned amendments",
+      "id": "checkpoint-review-amendments"
     }
   ],
   "title": "Evaluation of a youth employment program"

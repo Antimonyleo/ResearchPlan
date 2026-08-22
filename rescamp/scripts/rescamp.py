@@ -155,6 +155,7 @@ OBJECT_SPECS: dict[str, dict[str, Any]] = {
         "fields": (
             ("stage_id", "Stage"), ("required_evidence", "Required evidence"),
             ("owner", "Owner"), ("on_fail", "On failure"),
+            ("checkpoint_review", "Independent checkpoint review"),
         ),
     },
     "campaign.roles": {
@@ -1045,6 +1046,8 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     for index, gate in enumerate(camp["gates"]):
         if "stage_id" in gate:
             require_string(gate, "stage_id", f"campaign.gates.{index}.stage_id")
+        if "checkpoint_review" in gate:
+            require_string(gate, "checkpoint_review", f"campaign.gates.{index}.checkpoint_review")
     for index, unit in enumerate(camp["work_units"]):
         require_string_list(unit, "dependency_ids", f"campaign.work_units.{index}.dependency_ids")
     for index, claim in enumerate(camp["claims"]):
@@ -2090,7 +2093,7 @@ def render_campaign_prompt(state: dict[str, Any], status: str) -> str:
     parts.append(_section("9. Resources and fail-closed dispatch", f"**Budgets**\n{_md_list(resources.get('budgets'))}\n\n**Access constraints**\n{_md_list(resources.get('access_constraints'))}\n\n**Concurrency:** {resources.get('concurrency','')}\n\n**Dispatch rules**\n{_md_list(resources.get('dispatch_rules'))}\n\n**Approvals**\n{_md_list(resources.get('approvals'))}"))
     parts.append(_section("10. Delegation", f"**Roles**\n\n{_render_objects(camp.get('roles'), 'campaign.roles')}\n\n**Bounded work units**\n\nDelegates return artifacts and concise findings, not unbounded narrative. A local brief may narrow scope but may not weaken the constitution.\n\n{_render_objects(camp.get('work_units'), 'campaign.work_units')}"))
     runtime = camp["runtime"]
-    parts.append(_section("11. Durable operations and recovery", f"**Continuous runtime enabled:** {runtime.get('enabled')}\n\n**Continuation trigger:** {runtime.get('continuation_trigger','')}\n\n**State store:** {runtime.get('state_store','')}\n\n**Event log:** {runtime.get('event_log','')}\n\n**Checkpoint policy:** {runtime.get('checkpoint_policy','')}\n\n**Liveness:** {runtime.get('liveness','')}\n\n**Recovery:** {runtime.get('recovery','')}\n\n**Idempotency:** {runtime.get('idempotency','')}\n\nA conversational session is not a scheduler."))
+    parts.append(_section("11. Durable operations and recovery", f"**Continuous runtime enabled:** {runtime.get('enabled')}\n\n**Continuation trigger:** {runtime.get('continuation_trigger','')}\n\n**State store:** {runtime.get('state_store','')}\n\n**Event log:** {runtime.get('event_log','')}\n\n**Checkpoint policy:** {runtime.get('checkpoint_policy','')}\n\n**Liveness:** {runtime.get('liveness','')}\n\n**Recovery:** {runtime.get('recovery','')}\n\n**Idempotency:** {runtime.get('idempotency','')}\n\nA conversational session is not a scheduler.\n\n**Plan continuity and amendments**\n\n{plan_continuity_protocol(state)}"))
     ethics = camp["ethics_rights_safety"]
     parts.append(_section("12. Ethics, safety, rights, and external actions", f"**Constraints**\n{_md_list(ethics.get('constraints'))}\n\n**External actions**\n{_md_list(ethics.get('external_actions'))}\n\n**Human approval points**\n{_md_list(ethics.get('human_approval_points'))}"))
     reporting = camp["reporting"]
@@ -2147,6 +2150,8 @@ def render_roadmap(state: dict[str, Any], status: str) -> str:
         gate = gate_by_id.get(stage.get("gate_id"))
         if gate:
             lines.append(f"- **Gate {gate.get('id')}:** {_fmt_value(gate.get('criteria'))}")
+            if _nonempty(gate.get("checkpoint_review")):
+                lines.append(f"- **Independent checkpoint review:** {_fmt_value(gate.get('checkpoint_review'))}")
             if _nonempty(gate.get("on_fail")):
                 lines.append(f"- **On gate failure:** {_fmt_value(gate.get('on_fail'))}")
         elif _nonempty(stage.get("gate_id")):
@@ -2205,14 +2210,20 @@ def render_kickoff(state: dict[str, Any], status: str) -> str:
     lines.extend(["## Start here", "", kickoff.get("command") or "*No kickoff command recorded.*", ""])
     lines.extend(["## First gate", ""])
     if gate:
-        criteria = _fmt_value(gate.get("criteria")).lstrip()
-        # Multi-criterion gates render as a bullet list; an em dash in front of a
-        # list produced "**G1** — - The target…". Put the list on its own lines.
-        if criteria.startswith("-"):
-            lines.extend([f"**{gate.get('id')}**", "", criteria])
+        # Multi-criterion gates render as a list. `_fmt_value` indents for nesting
+        # under a parent bullet, which is right in the roadmap but wrong here, where
+        # the list is a top-level block: lstrip() alone un-indented only the first
+        # criterion and left the rest nested beneath it. Use the top-level renderer.
+        if isinstance(gate.get("criteria"), (list, tuple)):
+            lines.extend([f"**{gate.get('id')}**", "", _md_list(gate.get("criteria"))])
         else:
-            lines.append(f"**{gate.get('id')}** — {criteria}")
-        for key, label in (("required_evidence", "Required evidence"), ("owner", "Owner"), ("on_fail", "On failure")):
+            lines.append(f"**{gate.get('id')}** — {_fmt_value(gate.get('criteria')).lstrip()}")
+        # `checkpoint_review` belongs here: the kickoff exists so execution can start
+        # without rereading the whole plan, so omitting it let the first gate look
+        # executable without the independent review it actually requires.
+        for key, label in (("required_evidence", "Required evidence"),
+                           ("checkpoint_review", "Independent checkpoint review"),
+                           ("owner", "Owner"), ("on_fail", "On failure")):
             if _nonempty(gate.get(key)):
                 lines.append(_labelled(label, gate[key]))
     else:
@@ -2279,10 +2290,39 @@ def _blank_task_brief() -> str:
     return "\n".join(f"## {name}\n\n- {value}\n" for name, value in fields)
 
 
+def plan_continuity_protocol(state: dict[str, Any]) -> str:
+    """A small runtime contract shared by the prompt and operator runbook."""
+    digest = content_digest(state)
+    opening = f"""Use `campaign.json` at `{digest}` as the active contract. At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit; verify required inputs before acting."""
+    checkpoint_reviews = [
+        gate.get("checkpoint_review")
+        for gate in state.get("campaign", {}).get("gates", [])
+        if isinstance(gate, dict) and _nonempty(gate.get("checkpoint_review"))
+    ]
+    if not checkpoint_reviews:
+        return opening + """
+
+Record material deviations at the next gate. If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them."""
+
+    return opening + """
+
+At each major promotion gate, freeze the stage artifacts and a checkpoint receipt containing the plan digest, work completed, evidence, gate result, deviations, remaining budget, and next action. When the gate declares an independent checkpoint review, give a fresh read-only reviewer only those frozen artifacts, the relevant contract sections, and the rubric. The reviewer returns `pass`, `revise`, or `block` and presents at most three material findings, highest priority first. The cap bounds cost, not disclosure: if more material findings exist, the reviewer returns `block`, states how many it found and the highest severity among them, and presents only the top three. A capped review is never reported as a clean result. Repair once and recheck only the affected scope; after two review rounds, escalate any remaining blocker to the gate owner rather than continuing. Minor or stylistic suggestions go to the backlog.
+
+For a broad campaign spanning multiple days or contexts, place one such review at each major execution stage that produces a decision-bearing artifact: eight major execution stages normally produce eight review gates, not a review after every task. Group small or low-risk steps, and add a further review only where it protects a distinct material decision.
+
+Classify changes before continuing:
+
+- **Operational:** retry, reorder, or substitute an equivalent tool inside frozen limits. Record it in the checkpoint; the plan version stays current.
+- **Methodological:** change a method, intermediate criterion, sample, dependency, or stage design. Pause affected future work, re-freeze the plan under a new digest — in ResCamp, the `revise` mode — and rerun only affected reviews.
+- **Constitutional:** change the mission, primary evaluation or estimand, ethics or authority boundary, resource ceiling, stop rule, or permitted claim. Stop, obtain the required user or institutional approval, version the plan, and re-review every affected section. If production outcomes motivated the change, keep prior results under their original version and label the affected inference exploratory.
+
+Never rewrite a frozen plan or completed record in place. A pending brief carrying an older digest is stale and must be regenerated; completed artifacts remain bound to the version that produced them."""
+
+
 def runbook(state: dict[str, Any]) -> str:
     runtime = state["campaign"]["runtime"]
     resources = state["campaign"]["resources_dispatch"]
-    return f"""# Operator runbook\n\n**Continuous runtime enabled:** {runtime.get('enabled')}\n\n## Start/resume trigger\n\n{runtime.get('continuation_trigger') or 'No autonomous continuation is authorized.'}\n\n## Canonical state and events\n\n- State: {runtime.get('state_store') or 'Not applicable'}\n- Events: {runtime.get('event_log') or 'Not applicable'}\n- Checkpoints: {runtime.get('checkpoint_policy') or 'Not applicable'}\n\n## Liveness and recovery\n\n- Liveness: {runtime.get('liveness') or 'Not applicable'}\n- Recovery: {runtime.get('recovery') or 'Not applicable'}\n- Idempotency: {runtime.get('idempotency') or 'Not applicable'}\n\n## Resource governor\n\n{_md_list(resources.get('budgets'))}\n\n## Fail-closed dispatch\n\n{_md_list(resources.get('dispatch_rules'))}\n\n## Approvals\n\n{_md_list(resources.get('approvals'))}\n"""
+    return f"""# Operator runbook\n\n**Continuous runtime enabled:** {runtime.get('enabled')}\n\n## Start/resume trigger\n\n{runtime.get('continuation_trigger') or 'No autonomous continuation is authorized.'}\n\n## Canonical state and events\n\n- State: {runtime.get('state_store') or 'Not applicable'}\n- Events: {runtime.get('event_log') or 'Not applicable'}\n- Checkpoints: {runtime.get('checkpoint_policy') or 'Not applicable'}\n\n## Plan continuity and amendments\n\n{plan_continuity_protocol(state)}\n\n## Liveness and recovery\n\n- Liveness: {runtime.get('liveness') or 'Not applicable'}\n- Recovery: {runtime.get('recovery') or 'Not applicable'}\n- Idempotency: {runtime.get('idempotency') or 'Not applicable'}\n\n## Resource governor\n\n{_md_list(resources.get('budgets'))}\n\n## Fail-closed dispatch\n\n{_md_list(resources.get('dispatch_rules'))}\n\n## Approvals\n\n{_md_list(resources.get('approvals'))}\n"""
 
 
 def render_blocking_errors(validation: dict[str, Any]) -> list[dict[str, str]]:

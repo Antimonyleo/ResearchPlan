@@ -105,6 +105,14 @@ A rubric calibrated on one genre, jurisdiction, or period does not transfer by d
 
 Order stages so that cheap, reversible checks precede expensive, irreversible work. Each stage must have inputs, activities, outputs, owner, budget, prerequisites, and a gate with evidence. Adaptive work must operate within frozen bounds and preserve every branch and decision. Confirmatory assessment uses a held-out or otherwise protected instrument where feasible.
 
+For a broad campaign spanning multiple days, contexts, or teams, put an independent checkpoint review at each major execution stage that produces a decision-bearing artifact. Record it in the gate's `checkpoint_review`: reviewer role, frozen inputs, and the decision it controls. Eight major execution stages normally produce eight review gates, not a review after every task. This counts execution stages, not the sixteen architecture sections of the plan itself. Group small or low-risk steps, and add a further review only where it protects a distinct material decision.
+
+The reviewer works in a fresh read-only context and receives only the active plan digest, relevant frozen sections, stage artifacts, and rubric. It returns `pass`, `revise`, or `block` and presents at most three material findings, highest priority first, each tied to its execution consequence and smallest repair.
+
+The cap bounds cost, not disclosure. A reviewer that finds more than three material findings returns `block`, states the total it found and the highest severity among them, and presents only the top three. Silent truncation is the failure mode here: a capped review that reports three findings and nothing else is indistinguishable from a review that found exactly three, and the difference is the whole signal.
+
+Repair once and recheck the affected scope. After two rounds, escalate any remaining blocker to the gate owner rather than continuing under it; minor or stylistic suggestions go to the backlog.
+
 ## 9. Resources and fail-closed dispatch
 
 Define budget units, time, personnel, compute/materials, access, concurrency, and approval ceilings. A dispatcher must refuse new work when state is stale, budget is exhausted, approval is absent, or required artifacts are missing. Name the single canonical owner of each mutable record.
@@ -145,6 +153,18 @@ The published campaign delegated through private host primitives — a `host.del
 Long-running work requires a real trigger such as a queue worker, scheduled job, CI workflow, automation, or operator command. Record append-only events, atomic checkpoints, leases or dispatch tokens, heartbeats, stale-worker recovery, idempotency keys, retry policy, and restart reconciliation. A chat session is not a background service.
 
 Long autonomy in the published campaign also depended on a host-supplied blocking wait (`wait_for_notification`) that let the orchestrator sleep until a result arrived. A portable campaign must replace it with a durable checkpoint plus a real re-entry trigger — a queue worker, scheduled job, CI run, or operator command — that reconstructs state from the ledger rather than from a live process. State which mechanism this campaign uses, or record that continuous execution is unavailable and deliver a runbook instead.
+
+### Plan continuity and controlled amendments
+
+Use the campaign digest as the active plan identity. At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit. Verify the required inputs before acting. Each major-gate checkpoint records the digest, completed work, evidence, gate result, deviations, remaining budget, and next action.
+
+Classify change before continuing:
+
+- **Operational:** retry, reorder, or substitute an equivalent tool inside frozen limits. Record it in the checkpoint; keep the current plan version.
+- **Methodological:** change a method, intermediate criterion, sample, dependency, or stage design. Pause affected future work, re-freeze the plan under a new digest — in ResCamp, the `revise` mode — and rerun only affected reviewers.
+- **Constitutional:** change the mission, primary evaluation or estimand, ethics or authority boundary, resource ceiling, stop rule, or permitted claim. Stop for user or institutional approval, version the plan, and re-review every affected section. When production outcomes motivated the change, preserve the prior result under its original version and label the affected inference exploratory.
+
+Never rewrite a frozen plan or completed record in place. A pending work brief carrying an older digest is stale and must be regenerated; completed artifacts remain bound to the version that produced them.
 
 ## 12. Safety, ethics, rights, and authority
 

@@ -1,6 +1,6 @@
 # Design basis
 
-ResCamp combines four evidence streams. The first two are documents you can read; the last two are bodies of practice, and claims drawn from them are weaker.
+ResCamp combines five evidence streams. The first three are documents you can read; the last two are bodies of practice, and claims drawn from them are weaker.
 
 ## 1. Anthropic's protein-binder campaign
 
@@ -22,11 +22,19 @@ Travis Smith, *The Little Scientist: LLM Agent-Driven Discovery via the Scientif
 
 This is the source of the hypothesis → discriminating prediction → test → observation → reconciliation → retain/revise/reject/branch loop in ResCamp's "Inquiry logic" section. The binder campaign contains no such loop; do not attribute it there. The paper is a two-case-study preprint with confounded infrastructure changes and no external validation, so it is treated as workflow inspiration only.
 
-## 3. Scientific-agent benchmarks
+## 3. Long-horizon agents and living protocols
+
+Recent long-horizon work converges on a narrow operational pattern: keep the governing plan outside conversational memory, reconstruct each session from bounded canonical state, refine tactics at the frontier, and trigger replanning when evidence invalidates an assumption. Anthropic's [long-running-agent harness](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) uses progress artifacts, tests, and version history; [InfiAgent](https://aclanthology.org/2026.findings-acl.1787/) reconstructs bounded context from file-backed state; [AdaPlan-H](https://aclanthology.org/2026.findings-acl.77/) progressively refines a coarse plan; and [ARC](https://aclanthology.org/2026.findings-acl.930/) actively revises context rather than passively accumulating it.
+
+ResCamp translates that pattern into active plan digests, stage checkpoints, fresh review at major decision boundaries, and controlled amendments. This goes beyond the binder paper: its protocol was iterated in test campaigns and then frozen, but the paper does not describe material plan amendments inside a reported campaign. For research involving people, the amendment model also follows [SPIRIT 2025](https://doi.org/10.1038/s41591-025-03668-w): keep dated protocol versions, an amendment trail, and explicit approval or communication for important changes.
+
+These sources do not establish a universal checkpoint frequency. ResCamp's default of one review per major decision-bearing stage, capped at eight without a specific reason, is a cost-control design judgment.
+
+## 4. Scientific-agent benchmarks
 
 Practice, not a single citation: separate task-level engineering, planning, execution, and externally checked outcomes; preserve artifacts and costs; do not equate a polished report with valid science. This is the basis for the Team U / Team S / Team E separation in `docs/BENCHMARKING.md`.
 
-## 4. Interactive intent research
+## 5. Interactive intent research
 
 Practice, not a single citation: map material decision dimensions, present an early corrigible sketch, ask high-information questions, stop by value rather than by exhausting a checklist, and never infer consequential authority from weak preference evidence. This is the basis for the minimum-sufficient interview.
 

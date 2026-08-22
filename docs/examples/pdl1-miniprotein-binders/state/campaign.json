@@ -136,7 +136,7 @@
         ]
       },
       {
-        "acceptance_test": "Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all three canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.",
+        "acceptance_test": "Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all four canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.",
         "id": "D-environment",
         "immutable_after_freeze": true,
         "name": "Frozen software environment",
@@ -146,7 +146,7 @@
           "Per tool: identity, release tag, weight-file digest, container image digest, licence, and licence-compatibility determination",
           "Exact invocation, flags, template and MSA policy, and seed policy for each tool",
           "Generation parameters: length range, topology constraints, batch size",
-          "Canary manifests for all three canaries with their positive, negative, and reproducibility results",
+          "Canary manifests for all four canaries with their positive, negative, and reproducibility results",
           "Freeze time and artifact digest"
         ]
       },
@@ -365,7 +365,7 @@
         "required_evidence": [
           "D-target carrying a verified accession, chain, hotspot residue set, and file digest.",
           "D-environment carrying every tool version, weight digest, image digest, and licence.",
-          "All three canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end."
+          "All four canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end."
         ],
         "stage_id": "S1"
       },
@@ -468,7 +468,7 @@
         "Verify a PD-1:PD-L1 co-crystal structure against RCSB and record its accession, chains, method, resolution, and file digest",
         "Define the hotspot residue set in the deposited numbering and write D-target",
         "Pin every tool identity, version, weight digest, image digest, and licence into D-environment",
-        "Run CAN-predict, CAN-energy, and CAN-pipeline at production settings and record their manifests",
+        "Run CAN-predict, CAN-energy, CAN-pipeline, and CAN-sequence at production settings and record their manifests",
         "Confirm the scorer ingests canary output end to end, then present G1 evidence to ROLE-methods, which accepts G1 on a stage it does not execute"
       ]
     },
@@ -639,7 +639,7 @@
         },
         {
           "authority": "ROLE-methods",
-          "description": "G1 acceptance: target and environment frozen, all three canaries passing.",
+          "description": "G1 acceptance: target and environment frozen, all four canaries passing.",
           "id": "APR-G1"
         },
         {
@@ -740,7 +740,7 @@
           "Retrieve and verify a PD-1:PD-L1 co-crystal structure against RCSB; record accession, chain, method, resolution, interface density gaps, and file digest",
           "Define the hotspot residue set in the deposited numbering and record it in D-target",
           "Pin every tool identity, version, weight-file digest, container image digest, and licence in D-environment",
-          "Run all three canaries at production settings and record their manifests"
+          "Run all four canaries (CAN-predict, CAN-energy, CAN-pipeline, CAN-sequence) at production settings and record their manifests"
         ],
         "budget": "50 A100 GPU-hours; approximately one week.",
         "gate_id": "G1",
@@ -748,7 +748,7 @@
         "inputs": "Public structural data; installed software.",
         "name": "Freeze the target and the environment",
         "outputs": [
-          "D-target and D-environment, both frozen with digests; three canary manifests."
+          "D-target and D-environment, both frozen with digests; four canary manifests."
         ],
         "owner": "ROLE-comp-lead",
         "pace": "One week. If S1 is not frozen within two weeks, escalate to ROLE-pi rather than proceeding on an unpinned environment.",
@@ -873,14 +873,14 @@
         "escalation": "Escalate to ROLE-pi if no PD-1:PD-L1 structure verifies with adequate interface density, if a required tool's licence forbids the intended use, or if the two-week ceiling is reached.",
         "id": "WU-freeze",
         "method_constraints": "M-target only. Canaries run at exactly the settings S2 and S3 will use; a canary run at reduced settings does not count.",
-        "objective": "Produce D-target and D-environment, frozen with digests, and pass all three canaries at production settings.",
+        "objective": "Produce D-target and D-environment, frozen with digests, and pass all four canaries at production settings.",
         "outputs": [
-          "D-target, D-environment, and three canary manifests."
+          "D-target, D-environment, and four canary manifests."
         ],
         "permitted_actions": [
           "Retrieve public structural data and verify it against RCSB",
           "Install, pin, and digest software, weights, and container images",
-          "Run the three canaries at production settings",
+          "Run the four canaries at production settings",
           "Write D-target and D-environment"
         ],
         "prohibited_actions": [
@@ -996,7 +996,7 @@
     ]
   },
   "campaign_id": "pdl1-miniprotein-binders",
-  "content_version": 29,
+  "content_version": 30,
   "contradictions": [],
   "created_at": "2026-08-22T02:19:41+00:00",
   "goal_verbatim": "Can our computational pipeline design de novo miniprotein binders to the PD-1-binding face of human PD-L1 that clear frozen in-silico filters well enough to justify ordering genes for wet-lab testing?",
@@ -1213,8 +1213,8 @@
     ]
   },
   "last_validation": {
-    "checked_at": "2026-08-22T02:42:35+00:00",
-    "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "checked_at": "2026-08-22T21:48:03+00:00",
+    "content_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
     "counts": {
       "canaries": 4,
       "claims": 2,
@@ -1261,24 +1261,24 @@
     ]
   },
   "outputs": {
-    "last_rendered_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "last_rendered_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
     "manifest": {
-      "CAMPAIGN_PROMPT.md": "760b072d4fc0a945251c5dbf2d67d3d339ba3dea428597b4c45dddc962d7fc8a",
-      "CLAIMS_EVIDENCE_MATRIX.json": "223bbd5c00a927cd9f49d55bb3d1260c8104260cce597f7b08032dfe80533275",
-      "KICKOFF.md": "ab489fe74deeef23bc59d7a63a2bdd5137db6478e41d1e2c9e82cb25385b2547",
-      "MANIFEST.sha256": "2bf126ee17d5378fc66fd96dec56b4febbe24279f66dfca25a78d438f101c838",
-      "REVIEW_REPORT.md": "752914c149ed875da3939eaf6d16400e7009f201bbf899f4a8618620f37157e8",
-      "ROADMAP.md": "420ee4c79b8ed92816b1228059b7a5ad33551b789cbefb036990d8cfe58e9b6f",
-      "RUNBOOK.md": "b0a4abb1f4bab4ab2cdfb9ea1625247c857a4a0e4061498314b23f6286220204",
-      "TASK_BRIEF_TEMPLATE.md": "51519b1b4c7b21cc75a14c8e806c1a2b7df72634ab372a2717869c26a70d8a47",
-      "campaign.json": "82b8fd7cd67fc183fe62f502c239d3c4e7894973159ed3f97ab3b2e0f96d47f5"
+      "CAMPAIGN_PROMPT.md": "29d99ab31e1128d021e6849c9245945cf98d066cdd4d8fa46f643c327e450d4a",
+      "CLAIMS_EVIDENCE_MATRIX.json": "5c6e0896d44592a9b07828d4b910164d7a57cc0ffac14ad077f8c8494c5bf4e1",
+      "KICKOFF.md": "139394063dcffc7c01e8971c4aecb4f962cdac52d98b8dcdc378c088dcfb90f4",
+      "MANIFEST.sha256": "3acb297fbea5208e7cda24879788c26163c4fe78c858d64a405afbba54a05b9a",
+      "REVIEW_REPORT.md": "0e7674d975d9fdd6a60ab9b082cccd0983a3e8ec4cbda4ea34bb2087efd72fe3",
+      "ROADMAP.md": "f89912fbd32ede92aaeb026ba598d3dd04effe07b1a999532cf92a300f7a7e46",
+      "RUNBOOK.md": "4a7d1561fd4880f345297777ef2315b64325e0d00dbff513b51d0a215a46569b",
+      "TASK_BRIEF_TEMPLATE.md": "df64b494deb204753f730fb3e9870dc81923ae253af68ebbf20a2669dc83182b",
+      "campaign.json": "4dc07b6b50dcfc226fd5557d6f37dc6fd8a67f834858c074dae3250c53319e9c"
     },
     "status": "EXECUTION-READY"
   },
   "profile": "standard",
   "rescamp_version": "0.10.0",
   "reviews": {
-    "frozen_content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "frozen_content_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
     "records": [
       {
         "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
@@ -1307,9 +1307,9 @@
         "verdict": "pass"
       },
       {
-        "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+        "content_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
         "findings": [],
-        "ingested_at": "2026-08-22T02:42:33+00:00",
+        "ingested_at": "2026-08-22T21:48:03+00:00",
         "mode": "sequential-pass",
         "reviewed_sections": {
           "@archetypes": "sha256:396d7a80d67cad4ed8913e646afcc84d5772b7bd21358d7463681f8eec2055e0",
@@ -1319,24 +1319,24 @@
           "@profile": "sha256:cb2842d6687d19c69a6c0d4eb6a0f1af02951cef170de56ab331046ea5baac08",
           "canaries": "sha256:cefc21c74922a941a99000cd7ab77b7aa995f56d553d7c44550e6453add11741",
           "constitution": "sha256:a761435cb0f3ca68667e78aa232e5b546133c022a910cf47f63383907cd305ed",
-          "deliverables": "sha256:feaa87544d524e13fb60feb109c9ca8cb2eccdea35da2c6a6e9440be89752031",
+          "deliverables": "sha256:04072417c31cd12e08d5a0cfa887527cb1a78d51dea0c305e0dfe6d372ecda97",
           "ethics_rights_safety": "sha256:b2f9695e5360a7fff11b4ef9ddaf7610dc8dd8453bf0ae47920b400532628a23",
-          "gates": "sha256:d9c68b9b4b938e483e10347704928da844dfbfba6ba707ec3e1aa38a1ea0e4ba",
+          "gates": "sha256:308c61b16167df7ce28aec6803f2bcda1e9a202e1c133fb4aa07cec6e0a8d813",
           "inquiries": "sha256:b6d007a413ae777f1d4fbd49eedc854a36d8d57fcdca08b355ddfff917c81722",
-          "kickoff": "sha256:b31e3fdbc1861622206ce947523d49a3c2766cb5770ea3d160fda2d2f197fc14",
+          "kickoff": "sha256:4af3a7fe60760f2bf52a6976ff3f7c9bdc690dde034a43d8b4a3b5132b0b7a27",
           "methods": "sha256:983a5734d2b0a53ded56cd8954cc70f1817fa36511bf313ad6c9b5b790752ffc",
           "reporting": "sha256:e224ea2642bfae7affe0662ea1aa659cbf55148f7ab108e4c410964e8d880b39",
-          "resources_dispatch": "sha256:adc83c3e30216db5301e6c8b9f18a2d988dad3afe3ed2eac6bfd00bed5ec171f",
+          "resources_dispatch": "sha256:0f0317b60c30b1fadc0a3314c56e893cfba993acad5b15b9a98071b9c6d2e2f2",
           "roles": "sha256:9ebc388a0d9bd06126118ef561d86fccad2df32e94d5e19b3e21fab99de46c4a",
           "runtime": "sha256:27951d116c85ac64269471e5fd1fd2397b896ab3718c6f517342824d4dddf70f",
-          "stages": "sha256:f1ea8c44de6d194fde83a702c5d03bdb8536dbd45dc1552139719652da483912",
+          "stages": "sha256:563a8560ea5052f1aae3f5908d5e413c04e334350af1d7c29267e30de836bb2d",
           "tools": "sha256:c26ec4348b4d843dea4620792f1659ac533ef725d2a6718027873c4dc778a948",
-          "work_units": "sha256:e9152dfbd028535674a5ed6dbfa2969c355dd95dfbd77f0c080e5809360edd8c"
+          "work_units": "sha256:e90ba5c5aa45001e52981b1949e227ea28e7b24af88fe85e51d59ad287ed586e"
         },
-        "reviewer_id": "sequential-operations-r2",
+        "reviewer_id": "sequential-operations-r3",
         "role": "operations-reproducibility",
         "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06",
-        "summary": "Pass for beginning WU-freeze. All three round-1 operations findings are closed, and one defect the round-1 repair itself introduced has been closed with them: reassigning the gate owners left the kickoff backlog routing G1 evidence to ROLE-comp-lead and left three approval records naming the old authorities, both of which now match the gate table. No gate is owned by the role that executes its stage. A batch manifest must be appended before compute is consumed, which makes an interrupted batch visible to reconciliation and makes an output with no prior manifest a quarantine case rather than a silent adoption. The calendar now has a named owner, a check at every gate, an S3 scoping rule at G2, and an explicit no-decision outcome if the allocation lapses mid-scoring, so a partial design set can no longer reach the decision table. A fresh executor has an exact reversible first action — verify a PD-1:PD-L1 structure against RCSB and write D-target — with no missing material user decision, no spend, and no external action available to it.",
+        "summary": "Pass. The canary count is now consistent across G1's required evidence, S1's activities, WU-freeze's outputs and acceptance test, the APR-G1 approval record, and the kickoff backlog, which now names CAN-sequence alongside the other three. This was a counting error, not a control gap: the fourth canary existed and was enforced by the gate's own evidence requirement; the prose simply undercounted it, which would have let an executor present three manifests and believe G1 was satisfiable. Gate ownership, the manifest-before-compute rule, and the calendar-expiry rule are unaffected and remain as accepted at round 2.",
         "verdict": "pass"
       }
     ],
@@ -1354,22 +1354,22 @@
       "canaries": "sha256:cefc21c74922a941a99000cd7ab77b7aa995f56d553d7c44550e6453add11741",
       "claims": "sha256:bc5e2f7ff44b48672697c494f79b560ad74d61b50a87d01a268ff8ae394e9c1a",
       "constitution": "sha256:a761435cb0f3ca68667e78aa232e5b546133c022a910cf47f63383907cd305ed",
-      "deliverables": "sha256:feaa87544d524e13fb60feb109c9ca8cb2eccdea35da2c6a6e9440be89752031",
+      "deliverables": "sha256:04072417c31cd12e08d5a0cfa887527cb1a78d51dea0c305e0dfe6d372ecda97",
       "dossier": "sha256:cad27c8c1bf984ea93d0d053ad107a988277824def15c89bf42c188de10757c3",
       "ethics_rights_safety": "sha256:b2f9695e5360a7fff11b4ef9ddaf7610dc8dd8453bf0ae47920b400532628a23",
       "evaluation": "sha256:cc058a6062dd412d71318da6446896053f07f54384eae9d51bca510e827ba65f",
-      "gates": "sha256:d9c68b9b4b938e483e10347704928da844dfbfba6ba707ec3e1aa38a1ea0e4ba",
+      "gates": "sha256:308c61b16167df7ce28aec6803f2bcda1e9a202e1c133fb4aa07cec6e0a8d813",
       "inquiries": "sha256:b6d007a413ae777f1d4fbd49eedc854a36d8d57fcdca08b355ddfff917c81722",
-      "kickoff": "sha256:b31e3fdbc1861622206ce947523d49a3c2766cb5770ea3d160fda2d2f197fc14",
+      "kickoff": "sha256:4af3a7fe60760f2bf52a6976ff3f7c9bdc690dde034a43d8b4a3b5132b0b7a27",
       "methods": "sha256:983a5734d2b0a53ded56cd8954cc70f1817fa36511bf313ad6c9b5b790752ffc",
       "mission": "sha256:80cbbf1e492948ee64d49a8403cb8a33bdd03e6c679f7de31fb71706a838ea52",
       "reporting": "sha256:e224ea2642bfae7affe0662ea1aa659cbf55148f7ab108e4c410964e8d880b39",
-      "resources_dispatch": "sha256:adc83c3e30216db5301e6c8b9f18a2d988dad3afe3ed2eac6bfd00bed5ec171f",
+      "resources_dispatch": "sha256:0f0317b60c30b1fadc0a3314c56e893cfba993acad5b15b9a98071b9c6d2e2f2",
       "roles": "sha256:9ebc388a0d9bd06126118ef561d86fccad2df32e94d5e19b3e21fab99de46c4a",
       "runtime": "sha256:27951d116c85ac64269471e5fd1fd2397b896ab3718c6f517342824d4dddf70f",
-      "stages": "sha256:f1ea8c44de6d194fde83a702c5d03bdb8536dbd45dc1552139719652da483912",
+      "stages": "sha256:563a8560ea5052f1aae3f5908d5e413c04e334350af1d7c29267e30de836bb2d",
       "tools": "sha256:c26ec4348b4d843dea4620792f1659ac533ef725d2a6718027873c4dc778a948",
-      "work_units": "sha256:e9152dfbd028535674a5ed6dbfa2969c355dd95dfbd77f0c080e5809360edd8c"
+      "work_units": "sha256:e90ba5c5aa45001e52981b1949e227ea28e7b24af88fe85e51d59ad287ed586e"
     }
   },
   "schema_version": "3.1",
@@ -1385,5 +1385,5 @@
   },
   "status": "execution-ready",
   "title": "Can our computational pipeline design de novo miniprotein binders to the PD-1-binding face of human PD-L1 that clear frozen…",
-  "updated_at": "2026-08-22T02:42:42+00:00"
+  "updated_at": "2026-08-22T21:48:04+00:00"
 }

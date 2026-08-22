@@ -104,10 +104,10 @@ The final plan and execution prompt must preserve the governing architecture of 
 5. **Method portfolio** — complementary methods, diversity rules, dependencies, limitations, and why each method can change the decision.
 6. **Tools and canaries** — identities/versions, access, real production-like smoke tests, schemas, sanity checks, and downstream acceptance before scale-up.
 7. **Frozen evaluation instrument** — criteria, controls/comparators or adjudication rules, positive/negative cases where meaningful, scoring or judgment procedures, missing-evidence policy, and stop/no-go rules fixed before production evidence is inspected.
-8. **Staged funnel** — cheap checks before expensive work, promotion gates, iterative refinement, bounded adaptation, and confirmatory work separated from exploration.
+8. **Staged funnel** — cheap checks before expensive work, promotion gates, iterative refinement, bounded adaptation, and confirmatory work separated from exploration. For broad multi-day campaigns, major gates also name the fresh reviewer, frozen inputs, and `pass`/`revise`/`block` decision.
 9. **Resources and dispatch** — time, budget, access, compute/materials, concurrency, fail-closed dispatch, approvals, and a single source of truth. Budget is a floor as well as a ceiling: declare an expected pace and checkpoints, and treat large under-spend with unexplored branches as an incomplete campaign rather than a thrifty one.
 10. **Delegation** — bounded worker briefs with objective, authoritative inputs, permitted/prohibited actions, exact outputs, verification, resource ceiling, retry, and escalation.
-11. **Durable operations** — append-only events, atomic checkpoints, liveness, interruption recovery, idempotency, restart reconciliation, and artifact-based completion. A chat is not a scheduler.
+11. **Durable operations** — active plan digest, append-only events, atomic checkpoints, liveness, interruption recovery, idempotency, restart reconciliation, controlled amendments, and artifact-based completion. A chat is not a scheduler.
 12. **Ethics, safety, rights, and external actions** — consent, privacy, legal or institutional constraints, permissions, reversible boundaries, and human approval points.
 13. **Reporting and claim discipline** — claims linked to admissible support and disconfirming evidence; preserve null, negative, failed, contradictory, and deviating results.
 14. **Transactional closeout** — schema-checked deliverables, acceptance tests, unresolved deviations, hashes, and reproducible handoff.
@@ -134,6 +134,12 @@ When the interview stopping rule is met, automatically:
 7. Render a final bundle only when required gates pass. Otherwise render a useful draft labeled **NOT EXECUTION-READY** with exact blockers. `execution-ready` means the plan passed its gates, never that a conclusion is validated.
 
 This automatic loop evaluates the current campaign. The manual `benchmark` mode is the broader matched comparison across versions, baselines, or external tools.
+
+## Keep long campaigns aligned
+
+For work spanning multiple days, contexts, or agent teams, compile the plan-continuity and controlled-amendment procedure in `references/architecture.md`, sections 8 and 11. Keep the scientific and authority core locked while tactics adapt inside it. Bind every work brief and checkpoint to the active digest; a pending brief from an older version is stale.
+
+Place a fresh read-only review at each major execution stage that produces a decision-bearing artifact: eight major execution stages normally produce eight review gates, not one review after every task. Bound each review to three material findings and two rounds — and require the reviewer to disclose how many material findings it found when the cap hides any, so a capped review is never read as a clean result. After two rounds, escalate to the gate owner. Route methodological changes through targeted `revise`; stop constitutional changes for user or institutional approval.
 
 ## Durable tools and selective references
 

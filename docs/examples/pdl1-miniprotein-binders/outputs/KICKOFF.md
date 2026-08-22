@@ -2,7 +2,7 @@
 
 **Status:** EXECUTION-READY
 
-**Campaign contract:** `campaign.json` @ `sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e`
+**Campaign contract:** `campaign.json` @ `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195`
 
 ## Start here
 
@@ -16,7 +16,7 @@ Begin WU-freeze. Read the campaign constitution and D-target's schema, then retr
 - **Required evidence:**
   - D-target carrying a verified accession, chain, hotspot residue set, and file digest.
   - D-environment carrying every tool version, weight digest, image digest, and licence.
-  - All three canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end.
+  - All four canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end.
 - **Owner:** ROLE-methods
 - **On failure:** S2 does not start and no allocation beyond the S1 budget is consumed. A failed canary is fixed and rerun; a structure that cannot be verified against RCSB sends the epitope definition back for reselection.
 
@@ -25,7 +25,7 @@ Begin WU-freeze. Read the campaign constitution and D-target's schema, then retr
 - Verify a PD-1:PD-L1 co-crystal structure against RCSB and record its accession, chains, method, resolution, and file digest
 - Define the hotspot residue set in the deposited numbering and write D-target
 - Pin every tool identity, version, weight digest, image digest, and licence into D-environment
-- Run CAN-predict, CAN-energy, and CAN-pipeline at production settings and record their manifests
+- Run CAN-predict, CAN-energy, CAN-pipeline, and CAN-sequence at production settings and record their manifests
 - Confirm the scorer ingests canary output end to end, then present G1 evidence to ROLE-methods, which accepts G1 on a stage it does not execute
 
 ## Standing rules

@@ -5,10 +5,10 @@
     "review_packets_written",
     "findings_classified"
   ],
-  "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+  "content_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
   "deterministic_validation": {
-    "checked_at": "2026-08-22T02:41:38+00:00",
-    "content_digest": "sha256:2a21628f3efed539011947d8b30ace27c82d64dfeb23c4201bd12fbab767bb9e",
+    "checked_at": "2026-08-22T21:47:47+00:00",
+    "content_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
     "counts": {
       "canaries": 4,
       "claims": 2,
@@ -22,9 +22,15 @@
       "tools": 4,
       "work_units": 4
     },
-    "errors": [],
-    "execution_ready": true,
-    "release_status": "execution-ready",
+    "errors": [
+      {
+        "code": "outputs.stale",
+        "message": "The rendered bundle was produced from an older campaign version; re-render before relying on it or auditing it.",
+        "path": "outputs.last_rendered_digest"
+      }
+    ],
+    "execution_ready": false,
+    "release_status": "plan-ready-execution-blocked",
     "rescamp_version": "0.10.0",
     "review": {
       "blocking": [],
@@ -34,7 +40,7 @@
       "required": []
     },
     "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06",
-    "valid": true,
+    "valid": false,
     "warnings": []
   },
   "findings_by_action": {
@@ -43,8 +49,10 @@
       "paths": []
     },
     "agent-fix": {
-      "count": 0,
-      "paths": []
+      "count": 1,
+      "paths": [
+        "outputs.last_rendered_digest"
+      ]
     },
     "external-approval": {
       "count": 0,
@@ -55,25 +63,25 @@
       "paths": []
     }
   },
-  "next_action": "Execute only these review packets as separate read-only reviewers, ingest each record, then finalize: methods-evidence, operations-reproducibility",
+  "next_action": "Resolve deterministic errors before review",
   "not_run_by_this_command": [
     "reviewer_execution",
     "defect_repair"
   ],
-  "phase": "awaiting-review-execution",
+  "phase": "awaiting-design-repair",
   "review_packets_all": [
     "/home/hao/AI/githubrepo/ResearchPlan/research-campaigns/pdl1-miniprotein-binders/working/review_packets/methods-evidence.json",
     "/home/hao/AI/githubrepo/ResearchPlan/research-campaigns/pdl1-miniprotein-binders/working/review_packets/operations-reproducibility.json"
   ],
   "review_packets_are_inputs": true,
   "review_packets_to_execute": [
-    "/home/hao/AI/githubrepo/ResearchPlan/research-campaigns/pdl1-miniprotein-binders/working/review_packets/methods-evidence.json",
     "/home/hao/AI/githubrepo/ResearchPlan/research-campaigns/pdl1-miniprotein-binders/working/review_packets/operations-reproducibility.json"
   ],
-  "reviews_ingested": 0,
-  "reviews_still_current": [],
+  "reviews_ingested": 1,
+  "reviews_still_current": [
+    "methods-evidence"
+  ],
   "roles_requiring_review": [
-    "methods-evidence",
     "operations-reproducibility"
   ],
   "rubric_digest": "sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06"

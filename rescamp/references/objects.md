@@ -171,6 +171,7 @@ One gate. Heading is `id` plus `criteria`.
 | `required_evidence` | **yes** | Required evidence. |
 | `owner` | **yes** | Owner. |
 | `on_fail` | **yes** | On failure. |
+| `checkpoint_review` | no | Fresh reviewer role, frozen inputs, and `pass`/`revise`/`block` decision at this major gate. |
 | `criteria` | **yes** | Criteria. |
 
 ## `campaign.roles`
