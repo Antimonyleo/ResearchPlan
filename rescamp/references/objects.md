@@ -16,10 +16,12 @@ development, not normal campaign compilation.
 And `sketch`, top-level `assumptions`, and `contradictions` are campaign state that the
 prompt does not render — they inform the interview and the review, not the execution brief.
 
-The dict-valued sections (`campaign.mission`, `constitution`, `evaluation`,
-`resources_dispatch`, `runtime`, `ethics_rights_safety`, `reporting`, `kickoff`) are written
-with `set`, not `add`, and have no table here; their required fields are reported by
-`validate` and listed in `references/architecture.md`.
+The dict-valued sections (`campaign.starting_point`, `campaign.mission`,
+`campaign.constitution`, `campaign.evaluation`, `campaign.resources_dispatch`,
+`campaign.runtime`, `campaign.ethics_rights_safety`, `campaign.reporting`, and
+`campaign.kickoff`) are written with `set`, not `add`, and have no table here; their required
+fields are reported by `validate` and printed by `scripts/rescamp.py schema <path>` (for
+example, `scripts/rescamp.py schema campaign.starting_point`).
 
 ## `campaign.dossier.objects`
 

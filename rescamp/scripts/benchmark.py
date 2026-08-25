@@ -27,8 +27,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.10.0"
 SKILL_DIR = Path(__file__).resolve().parent.parent
+VERSION = (SKILL_DIR / "VERSION").read_text(encoding="utf-8").strip()
 RUBRIC_PATH = SKILL_DIR / "assets" / "universal_rubric.json"
 OVERLAY_PATH = SKILL_DIR / "assets" / "archetype_overlays.json"
 IMPORTANCE_WEIGHT = {"low": 1.0, "material": 2.0, "critical": 4.0}
@@ -1144,6 +1144,12 @@ def load_config(path: Path) -> dict[str, Any]:
             if not isinstance(controls.get(field), bool):
                 raise SystemExit(f"matched_controls.{field} must be boolean")
     live = [item for item in config["conditions"] if item["adapter"] == "external-command"]
+    provenance_complete = all(
+        item.get("skill_commit") == "none"
+        or (isinstance(item.get("skill_commit"), str)
+            and re.fullmatch(r"[0-9a-f]{40}", item["skill_commit"]))
+        for item in live
+    )
     pinned_equal = bool(len(live) >= 2)
     if pinned_equal:
         for field in ("model_id", "host_version", "user_adapter", "evaluator_adapter"):
@@ -1151,7 +1157,8 @@ def load_config(path: Path) -> dict[str, Any]:
             pinned_equal = pinned_equal and all(isinstance(value, str) and value for value in values) and len(set(values)) == 1
         capability_sets = [tuple(sorted(item.get("capabilities", []))) for item in live]
         pinned_equal = pinned_equal and len(set(capability_sets)) == 1
-    matched = bool(controls_declared and all(controls[field] for field in control_fields) and pinned_equal)
+    matched = bool(controls_declared and all(controls[field] for field in control_fields)
+                   and pinned_equal and provenance_complete)
     for item in config["conditions"]:
         item["_matched_controls"] = matched if item["adapter"] == "external-command" else True
     return config
@@ -1214,12 +1221,20 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def cmd_score(args: argparse.Namespace) -> None:
-    scenario = load_scenarios(Path(args.scenario))[0]
-    evaluation = read_json(Path(args.evaluation))
+    try:
+        scenario = load_scenarios(Path(args.scenario))[0]
+        evaluation = read_json(Path(args.evaluation))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read score input: {exc}") from exc
+    if not isinstance(evaluation, dict):
+        raise SystemExit("Evaluation must be a JSON object")
     # A standalone evaluation carries no condition manifest or matched-control proof.
     # Evaluator-authored provenance is therefore data, not an evidence classification.
     evaluation["evidence_class"] = UNSPECIFIED_EVIDENCE_CLASS
-    result = score_evaluation(scenario, evaluation)
+    try:
+        result = score_evaluation(scenario, evaluation)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     if args.output:
         write_json(Path(args.output), result)
     print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -1228,7 +1243,10 @@ def cmd_score(args: argparse.Namespace) -> None:
 def cmd_compare(args: argparse.Namespace) -> None:
     scores: list[dict[str, Any]] = []
     for path in args.inputs:
-        data = read_json(Path(path))
+        try:
+            data = read_json(Path(path))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"Could not read score input {path}: {exc}") from exc
         if isinstance(data, list):
             records = data
         elif isinstance(data, dict) and "score" in data:
@@ -1245,7 +1263,10 @@ def cmd_compare(args: argparse.Namespace) -> None:
             record = dict(record)
             record["evidence_class"] = UNSPECIFIED_EVIDENCE_CLASS
             scores.append(record)
-    result = aggregate(scores)
+    try:
+        result = aggregate(scores)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     if args.output:
         write_json(Path(args.output), result)
     print(json.dumps(result, indent=2, ensure_ascii=False))

@@ -18,6 +18,13 @@ HOST_SKILL = {"claude-code": ".claude/skills/rescamp/SKILL.md",
               "codex": ".agents/skills/rescamp/SKILL.md"}
 
 
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 def digest_tree(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(item for item in root.rglob("*")
@@ -29,6 +36,17 @@ def digest_tree(root: Path) -> str:
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def artifact_fingerprint(path: Path) -> dict[str, object] | None:
+    if not path.is_file():
+        return None
+    stat = path.stat()
+    return {
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
 
 
 def build_prompt(host: str, mode: str, goal: str | None, campaign: str | None) -> str:
@@ -65,7 +83,10 @@ def response_ok(host: str, response: str) -> bool:
         result = str(envelope.get("result", "")).strip()
     else:
         result = response.strip()
-    refusal_markers = ("skill is disabled", "can't invoke it", "cannot invoke it")
+    refusal_markers = (
+        "skill is disabled", "can't invoke it", "cannot invoke it",
+        "unknown skill", "skill not found", "no such skill",
+    )
     lowered = result.lower()
     return (bool(result) and not lowered.startswith(("error:", "fatal:"))
             and not any(marker in lowered for marker in refusal_markers))
@@ -79,7 +100,7 @@ def main() -> int:
     parser.add_argument("--goal")
     parser.add_argument("--campaign")
     parser.add_argument("--executable")
-    parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--timeout", type=positive_int, default=900)
     parser.add_argument("--receipt")
     parser.add_argument("--expect", action="append", default=[],
                         help="project-relative artifact that must exist after the host exits; repeatable")
@@ -105,7 +126,7 @@ def main() -> int:
             "command": command,
             "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
             "dry_run": bool(args.dry_run),
-            "acceptance_scope": "transport-response-and-artifact-presence",
+            "acceptance_scope": "transport-response-and-artifact-change",
         }
         if args.dry_run:
             receipt["prompt"] = prompt
@@ -114,31 +135,79 @@ def main() -> int:
             if not skill_path.is_file():
                 raise SystemExit(f"ResCamp is not installed for {args.host} at {skill_path}")
             skill_root = skill_path.parent
-            version_result = subprocess.run(
-                [executable, "--version"], cwd=project, text=True, capture_output=True,
-                timeout=min(args.timeout, 30), check=False,
-            )
-            host_version = (version_result.stdout or version_result.stderr).strip()
-            started = time.monotonic()
-            result = subprocess.run(command, cwd=project, input=prompt, text=True,
-                                    capture_output=True, timeout=args.timeout, check=False)
-            response = response_path.read_text(encoding="utf-8") if response_path.exists() else result.stdout
-            expected: dict[str, bool] = {}
+            expected_paths: dict[str, Path] = {}
+            expected_before: dict[str, dict[str, object] | None] = {}
             for relative in args.expect:
                 candidate = (project / relative).resolve()
                 if project not in candidate.parents and candidate != project:
                     raise SystemExit(f"--expect must stay inside the project: {relative}")
-                expected[relative] = candidate.is_file()
+                expected_paths[relative] = candidate
+            started = time.monotonic()
+            timeout_stage = ""
+            failure_stage = ""
+            try:
+                version_result = subprocess.run(
+                    [executable, "--version"], cwd=project, text=True, capture_output=True,
+                    timeout=min(args.timeout, 30), check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                timeout_stage = "version"
+                stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+                stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+                version_result = subprocess.CompletedProcess(
+                    [executable, "--version"], 124, stdout, stderr,
+                )
+            except OSError as exc:
+                failure_stage = "version"
+                version_result = subprocess.CompletedProcess(
+                    [executable, "--version"], 127, "", str(exc),
+                )
+            host_version = (version_result.stdout or version_result.stderr).strip()
+            # The version probe is not the accepted workflow. Snapshot only after it so
+            # an ill-behaved executable cannot satisfy the artifact check from --version.
+            expected_before = {
+                relative: artifact_fingerprint(candidate)
+                for relative, candidate in expected_paths.items()
+            }
+            if timeout_stage or failure_stage or version_result.returncode != 0:
+                failure_stage = failure_stage or ("" if timeout_stage else "version")
+                result = subprocess.CompletedProcess(
+                    command, version_result.returncode, "", "host version check failed",
+                )
+            else:
+                try:
+                    result = subprocess.run(command, cwd=project, input=prompt, text=True,
+                                            capture_output=True, timeout=args.timeout, check=False)
+                except subprocess.TimeoutExpired as exc:
+                    timeout_stage = "host"
+                    stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+                    stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+                    result = subprocess.CompletedProcess(command, 124, stdout, stderr)
+                except OSError as exc:
+                    failure_stage = "host"
+                    result = subprocess.CompletedProcess(command, 127, "", str(exc))
+            response = response_path.read_text(encoding="utf-8") if response_path.exists() else result.stdout
+            expected: dict[str, bool] = {}
+            expected_after: dict[str, dict[str, object] | None] = {}
+            for relative, candidate in expected_paths.items():
+                after = artifact_fingerprint(candidate)
+                expected_after[relative] = after
+                expected[relative] = after is not None and after != expected_before[relative]
             receipt.update({
                 "returncode": result.returncode,
                 "host_version": host_version,
                 "host_version_returncode": version_result.returncode,
                 "skill_tree_sha256": digest_tree(skill_root),
                 "elapsed_seconds": round(time.monotonic() - started, 3),
+                "timed_out": bool(timeout_stage),
+                "timeout_stage": timeout_stage or None,
+                "failure_stage": failure_stage or None,
                 "response_sha256": hashlib.sha256(response.encode("utf-8")).hexdigest(),
                 "stderr_sha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
                 "response_nonempty": bool(response.strip()),
                 "expected_artifacts": expected,
+                "expected_artifact_before": expected_before,
+                "expected_artifact_after": expected_after,
                 "passed": result.returncode == 0 and version_result.returncode == 0
                 and response_ok(args.host, response) and all(expected.values()),
             })

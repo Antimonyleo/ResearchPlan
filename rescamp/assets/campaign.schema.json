@@ -3,7 +3,7 @@
   "$id": "https://example.org/rescamp/campaign.schema.json",
   "title": "ResCamp campaign state",
   "type": "object",
-  "required": ["schema_version", "rescamp_version", "campaign_id", "goal_verbatim", "profile", "archetypes", "intent_dimensions", "interview", "campaign", "assurance", "reviews"],
+  "required": ["schema_version", "rescamp_version", "campaign_id", "goal_verbatim", "profile", "archetypes", "sketch", "intent_dimensions", "interview", "campaign", "assurance", "reviews"],
   "properties": {
     "schema_version": {"const": "3.1"},
     "rescamp_version": {"type": "string"},
@@ -11,11 +11,31 @@
     "goal_verbatim": {"type": "string"},
     "profile": {"enum": ["scoped", "standard", "high-assurance"]},
     "archetypes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "sketch": {"type": "object"},
     "intent_dimensions": {"type": "array", "items": {"type": "object"}},
     "interview": {"type": "object"},
     "campaign": {
       "type": "object",
-      "required": ["constitution", "mission", "dossier", "inquiries", "methods", "tools", "canaries", "evaluation", "stages", "gates", "resources_dispatch", "roles", "runtime", "work_units", "ethics_rights_safety", "reporting", "claims", "deliverables", "kickoff"]
+      "required": ["constitution", "mission", "dossier", "inquiries", "methods", "tools", "canaries", "evaluation", "stages", "gates", "resources_dispatch", "roles", "runtime", "work_units", "ethics_rights_safety", "reporting", "claims", "deliverables", "kickoff"],
+      "properties": {
+        "starting_point": {
+          "type": "object",
+          "required": ["entry_mode"],
+          "properties": {
+            "entry_mode": {"enum": ["new-project", "existing-project"]},
+            "status_as_of": {"type": "string"},
+            "status_summary": {"type": "string"},
+            "assessment_basis": {"type": "array", "items": {"type": "string"}},
+            "accepted_completed_work": {"type": "array", "items": {"type": "string"}},
+            "work_in_progress": {"type": "array", "items": {"type": "string"}},
+            "inherited_artifacts": {"type": "array", "items": {"type": "string"}},
+            "decisions_in_force": {"type": "array", "items": {"type": "string"}},
+            "known_deviations": {"type": "array", "items": {"type": "string"}},
+            "requires_recheck": {"type": "array", "items": {"type": "string"}},
+            "next_decision": {"type": "string"}
+          }
+        }
+      }
     },
     "assurance": {
       "type": "object",

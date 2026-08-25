@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Support both new and in-progress projects. Existing-project intake records an evidence-based
+  status baseline, preserves accepted work, identifies recheck needs, and starts the compiled
+  plan at the current decision frontier without retroactively relabeling prior results.
+- Resume status now exposes recorded decisions, assumptions, contradictions, blockers, the
+  question budget, and the next unresolved branch. The adoption frontier remains historical;
+  current execution starts from the compiled kickoff and stage graph.
+- Campaign sketch v0 is now required before release. Explicitly empty project baselines fail
+  closed, while legacy campaigns with no baseline retain their prior new-project semantics and
+  can add the recognized section through the safe `set` or atomic `apply` paths.
+- Replacing stale rendered outputs no longer creates a false design blocker or invites a review
+  that an immediate design repair would invalidate.
+
 - Added a living-plan procedure for broad, multi-day campaigns: active plan digests at every resume, fresh independent review at major decision-bearing gates, bounded findings and review rounds, stale work-brief refusal, and versioned operational/methodological/constitutional amendments. It reuses existing gates, digests, and targeted review invalidation; no scheduler was added. The procedure is compiled into `CAMPAIGN_PROMPT.md` and `RUNBOOK.md` as instructions to whoever executes the plan — the engine does not schedule checkpoints, count rounds, or enforce the finding cap.
 - `KICKOFF.md` now carries the first gate's `checkpoint_review`. It was the one bundle artifact that omitted it, so a gate requiring an independent review could look executable to an executor working from the kickoff alone.
 - The checkpoint-review finding cap now bounds cost rather than disclosure: a reviewer finding more than three material findings returns `block`, reports the total and the highest severity, and presents the top three. A capped review is never reported as a clean result.
@@ -12,9 +24,13 @@
 
 Review pass over code, files, and writing:
 
+- Rejected campaign IDs that escape the requested root, made manual benchmark scoring fail cleanly on malformed JSON, and tightened live-matrix and host-acceptance arguments at their CLI boundaries.
+- Release validation now ignores local skill installs, generated campaigns and benchmark runs, dependency trees, and caches instead of treating workspace debris as release source.
+- Removed redundant live benchmark templates and transient worked-example `working/` snapshots; the generator and reproducible audit command are the canonical paths.
+- Corrected the worked example's final three-versus-four-canary mismatch and stale review-round counts, preserved the original sequential-review history accurately, and added current digest-bound independent-subagent maintenance reviews.
 - `scripts/validate_release.py` skipped every JSON Schema check silently when `jsonschema` was absent, and still reported `valid: true` with zero warnings. Missing schema validation is now a warning that names what did not run.
 - `rescamp/assets/campaign.schema.json` was only checked for well-formedness, so the published contract for `campaign.json` was free to drift from the engine. Release validation now validates committed example state against it, and a unit test validates freshly built state for all three profiles.
-- The README credited the worked example to "independent agent review". Its reviews are `sequential-pass`, the weakest rung on the ladder, which the example's own report already said.
+- Release validation now strict-audits each committed example in a temporary copy; loose JSON Schema conformance can no longer certify a stale or semantically invalid example.
 - `benchmark/scenarios/templates/scenario.template.json` was referenced by nothing; `benchmark/README.md` now points to it as the starting point for a new case.
 
 ## 0.10.0

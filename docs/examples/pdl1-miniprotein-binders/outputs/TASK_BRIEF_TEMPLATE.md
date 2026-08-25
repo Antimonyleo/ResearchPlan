@@ -1,59 +1,65 @@
 # Bounded work-unit briefs
 
 Campaign: `pdl1-miniprotein-binders`
-Content digest: `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195`
+Content digest: `sha256:cec061c58fca6136d0d70765c7c307fa82692a7020455fdb2ce8691f7230bb2d`
 
 A local brief may narrow scope but may not weaken the campaign constitution.
 
-## WU-freeze — Produce D-target and D-environment, frozen with digests, and pass all four canaries at production settings.
+## WU-freeze — Produce D-target and D-environment with the allocation record, freeze them under detached digests, and pass four threshold-independent G1 raw-schema canaries.
 
 - **Authoritative inputs and hashes:**
-  - The campaign constitution; the RCSB Protein Data Bank; the installed software stack and its licences.
+  - The campaign constitution; RCSB Protein Data Bank; installed software and licences; authoritative APR-compute allocation evidence.
 - **Permitted actions:**
   - Retrieve public structural data and verify it against RCSB
   - Install, pin, and digest software, weights, and container images
-  - Run the four canaries at production settings
-  - Write D-target and D-environment
+  - Record APR-compute evidence, scope, available GPU-hours, and exact timezone-aware expiry
+  - Run all four G1 canaries at production settings and validate only deterministic versioned raw outputs on labelled non-campaign fixtures
+  - Write D-target and D-environment and update the detached manifest
 - **Prohibited actions:**
-  - Generating any campaign design
-  - Scoring anything other than the canary inputs
-  - Setting or implying any filter threshold
+  - Generating or scoring any campaign design
+  - Applying or implying a filter threshold or decision table at G1
+  - Using G1 canary fixtures as scientific controls or campaign results
   - Ordering synthesis, contacting a vendor, or committing any spend
-  - Proceeding on an unverified accession or an unpinned tool version
+  - Proceeding on an unverified accession, unpinned tool version, or unrecorded allocation expiry
 - **Method and tool constraints:** M-target only. Canaries run at exactly the settings S2 and S3 will use; a canary run at reduced settings does not count.
 - **Exact outputs:**
-  - D-target, D-environment, and four canary manifests.
-- **Verification and acceptance:** G1's required evidence is present in full: verified accession and digests, every tool pinned with a licence determination, and three passing canary manifests whose output the scorer ingests end to end.
+  - D-target, D-environment, and four G1 canary manifests including the CAN-pipeline raw fixture table.
+- **Verification and acceptance:** G1 evidence is complete: verified target and detached digests, pinned tools and licences, exact APR-compute scope/hours/expiry, and four passing canary manifests. Every canary proves deterministic raw-schema transport on labelled non-campaign fixtures without consulting or applying D-thresholds.
 - **Resource ceiling:** 50 A100 GPU-hours and two calendar weeks.
 - **Retry and failure classes:** A failed canary may be fixed and rerun without escalation up to three times; the fourth failure escalates to ROLE-pi.
 - **Escalation and handoff:** Escalate to ROLE-pi if no PD-1:PD-L1 structure verifies with adequate interface density, if a required tool's licence forbids the intended use, or if the two-week ceiling is reached.
 
-## WU-calibrate — Select and freeze the control sets, score them, and freeze the threshold values, clustering cuts, and decision table before any campaign design exists.
+## WU-calibrate — Freeze controls, groups, held-out results, thresholds, clustering cuts, and the decision table as D-thresholds; then test that immutable table against stored raw canary fixtures and freeze the separate D-canary-compat artifact before G2.
 
 - **Authoritative inputs and hashes:**
-  - The constitution; frozen D-target and D-environment with their exact digests; peer-reviewed literature reporting experimental PD-L1 binding measurements.
+  - The constitution; frozen D-target and D-environment with exact digests; D-environment's APR-compute allocation record; stored G1 raw canary fixture; peer-reviewed experimental PD-L1 binding literature.
 - **Permitted actions:**
-  - Select positive controls from published experimentally measured binders, citing each measurement and assay
-  - Construct scramble and composition-matched negative controls
-  - Score both control sets end to end at production settings
-  - Fix thresholds, the three clustering cuts, and the decision table, and freeze D-thresholds
-  - Record each positive control's deposition date against every model's training cutoff and compute separation on the post-cutoff subset
-  - Scope the S3 design count to the remaining allocation and calendar
+  - Select citable positive controls, freeze conservative scaffold groups, and construct topology-matched hard-negative strata
+  - Freeze group-fold membership, negative provenance, and the complete fitting/evaluation procedure before scoring
+  - Tune only inside each fold's training groups and score each held-out group once
+  - Compute fixed-seed group-held-out estimates and intervals
+  - After the held-out gate passes, fit final thresholds on all controls and freeze D-thresholds
+  - After D-thresholds freezes, apply it to stored CAN-pipeline, CAN-energy, and CAN-sequence raw fixtures and verify CAN-predict fields; record results only in separate D-canary-compat
+  - Consume the allocation-record digest to scope S3 to the remaining hours and exact expiry
+  - Freeze clustering cuts and a total decision table governed by the post-cutoff-group lower bound
 - **Prohibited actions:**
-  - Generating or scoring any campaign design before D-thresholds is frozen
-  - Authoring a threshold value that does not trace to the control distributions
-  - Leaving any cell of the decision table undefined
-  - Revising control-set membership after freeze
-  - Ordering synthesis or committing any spend
-  - Assembling fewer than 8 positive controls, or fewer than 3 post-cutoff, and proceeding anyway
-  - Constructing composition-matched negatives by hand or outside the recorded automated procedure and its tolerances
+  - Generating or scoring campaign designs before D-thresholds is frozen
+  - Allowing related sequences, structures, design lineages, or parent scaffolds to cross evaluation folds
+  - Using held-out scores to alter that fold's filters, weights, thresholds, groups, or membership
+  - Reporting individual-positive holdout or resubstitution performance as decision evidence
+  - Letting all-group AUROC override the post-cutoff-group governing statistic
+  - Regrouping or reselecting controls after any score is visible
+  - Claiming go without 8 positives spanning 6 groups, 5 cutoff-clean groups under the earliest-public-provenance rule, and defensible topology-matched hard-negative strata
+  - Hand-building matched negatives outside the frozen rule
+  - Ordering synthesis or committing spend
 - **Method and tool constraints:** M-controls only, at the exact settings recorded in D-environment.
 - **Exact outputs:**
-  - D-thresholds, frozen with a digest.
-- **Verification and acceptance:** G2's required evidence is present: both control sets, per-filter distributions, overlap against the composition-matched subset, thresholds traceable to the distributions, three cuts, a total decision table with a bounded revise cell, and the no-designs-yet attestation.
+  - D-thresholds, frozen with a detached digest before compatibility testing.
+  - D-canary-compat, frozen afterward with the consumed D-thresholds digest and all fixture results.
+- **Verification and acceptance:** G2 evidence includes cutoff-clean group-held-out results, governing intervals, immutable D-thresholds, separate immutable D-canary-compat binding that threshold digest, clustering cuts, total decision table, predecessor digests, timing attestations, and an allocation-bound capacity calculation.
 - **Resource ceiling:** 300 A100 GPU-hours and three calendar weeks.
-- **Retry and failure classes:** Scoring may be rerun on infrastructure failure. Control-set membership is selected once; reselection after seeing distributions is prohibited and is an escalation, not a retry.
-- **Escalation and handoff:** Escalate to ROLE-pi if fewer than the pre-declared minimum number of positive controls can be found with citable measurements, or if the sets do not separate — the latter is a terminal no-go, not a retry.
+- **Retry and failure classes:** Infrastructure failures may rerun an identical group fold from its frozen inputs. Control membership, scaffold groups, folds, hard-negative strata, fitting rules, and evaluation rules cannot change after any score is visible.
+- **Escalation and handoff:** Escalate if 8 citable positives spanning 6 independent groups or 5 cutoff-clean groups cannot be found, if linked precursor dates or defensible topology-matched hard negatives cannot be established, if groups cannot be formed without leakage, or if the governing rule fails. Follow the frozen revise/no-go cell; never redate or regroup after scoring.
 - **Depends on work units:**
   - WU-freeze
 
@@ -62,11 +68,13 @@ A local brief may narrow scope but may not weaken the campaign constitution.
 - **Authoritative inputs and hashes:**
   - The constitution; frozen D-target, D-environment, and D-thresholds with their exact digests.
 - **Permitted actions:**
+  - Through the single dispatcher, append an authorized batch event before compute, then started and exactly one completed or failed terminal event
   - Generate backbones and design sequences within the frozen parameters
-  - Predict complexes and compute interface and liability terms at the frozen settings
+  - Predict complexes and compute interface and liability terms at frozen settings
   - Apply the frozen thresholds once and record pass/fail per filter
   - Cluster survivors at all three declared cuts
-  - Record seeds, manifests, and per-design cost
+  - Record seeds, manifests, output digests, timestamps, actor, status, and per-design cost
+  - Generate and digest the immutable G3 reconciliation snapshot while leaving the event stream open only for S4/G4
 - **Prohibited actions:**
   - Changing any value in D-thresholds
   - Rescoring a design under different thresholds to improve its rank
@@ -76,23 +84,25 @@ A local brief may narrow scope but may not weaken the campaign constitution.
   - Consuming compute for a batch whose manifest has not already been appended to the event log
 - **Method and tool constraints:** M-generate and M-score, at exactly the settings the controls were scored under. A settings difference between control scoring and design scoring invalidates the comparison and is a deviation.
 - **Exact outputs:**
-  - D-designs: the ranked design table with cluster assignments at three cuts and full provenance.
-- **Verification and acceptance:** G3's required evidence is present: all filter columns populated with no nulls, the D-thresholds digest unchanged since G2, cluster counts at three cuts, per-design seeds and manifests, and the stage cost record.
+  - D-designs with cluster assignments and full provenance.
+  - D-runtime G3 reconciliation snapshot at `deliverables/runtime-g3-reconciliation.md`, with the exact prefix length and digest for `artifacts/runtime/events.ndjson`.
+- **Verification and acceptance:** G3 evidence includes complete D-designs, unchanged D-thresholds, costs, and an immutable D-runtime G3 reconciliation snapshot that binds the exact event-log prefix and proves authorized-to-terminal batch accounting without duplicate completion.
 - **Resource ceiling:** 1,600 A100 GPU-hours and five calendar weeks.
-- **Retry and failure classes:** Batches may be regenerated on infrastructure failure with the failure recorded. Scoring is applied once per design; a design is never rescored to obtain a better result.
+- **Retry and failure classes:** An infrastructure failure ends with a failed event. A retry receives a new batch ID linked to the failed predecessor and reuses its frozen inputs and seed. A completed batch is never dispatched again, and a design is never rescored to improve its result.
 - **Escalation and handoff:** Escalate to ROLE-pi at the 800 GPU-hour checkpoint if spend is far below pace with design branches unexplored, or if the allocation will expire before the stage completes.
 - **Depends on work units:**
   - WU-calibrate
 
-## WU-decide — Apply the frozen decision table once and write D-memo.
+## WU-decide — Apply the decision table, freeze the candidate D-memo, append its G4 acceptance event, then close and reconcile the final runtime stream without creating a memo/log digest cycle.
 
 - **Authoritative inputs and hashes:**
   - The constitution; frozen D-thresholds and D-designs with their exact digests; the control calibration table.
 - **Permitted actions:**
   - Read the cell reached from the frozen decision table
   - Compute proximity to adjacent cells
-  - Write the memo leading with the cell and the least favourable defensible reading
-  - Package all frozen artifacts and digests for handoff
+  - Write the memo leading with the cell and least favourable defensible reading, referencing only the immutable G3 runtime snapshot
+  - Freeze the memo candidate and its detached digest, then append one G4 acceptance event naming both
+  - Close and hash the complete runtime log, write final reconciliation, and package the detached manifest
 - **Prohibited actions:**
   - Stating a recommendation other than the cell mechanically reached
   - Stating or implying that any design binds PD-L1
@@ -102,10 +112,10 @@ A local brief may narrow scope but may not weaken the campaign constitution.
   - Running the decision table on a partially scored design set; an incomplete set yields a no-decision memo
 - **Method and tool constraints:** M-decide only. The table is applied exactly once.
 - **Exact outputs:**
-  - D-memo and the complete frozen artifact package.
-- **Verification and acceptance:** G4's required evidence is present: the memo's recommendation equals the table cell, the cell and its two values appear in the first paragraph, proximity and residual uncertainty are stated, and the package reproduces from stored manifests.
+  - Accepted immutable D-memo version, D-runtime final reconciliation, complete event log through G4, and detached manifest.
+- **Verification and acceptance:** G4 evidence includes the mechanically reached recommendation, an immutable D-memo version referencing the G3 runtime snapshot, a G4 event naming the memo path and digest, and final reconciliation/digests for the closed event stream.
 - **Resource ceiling:** 0 GPU-hours and two calendar weeks.
-- **Retry and failure classes:** A memo returned at G4 is rewritten. The table cell is not recomputed.
+- **Retry and failure classes:** A memo returned before G4 acceptance may be rewritten. After acceptance, any correction creates a new immutable version that references and retains the accepted predecessor; the table cell is not recomputed.
 - **Escalation and handoff:** Escalate to ROLE-pi if the memo's author believes the table cell is wrong — as an override request on the record, never as a rewritten recommendation.
 - **Depends on work units:**
   - WU-generate

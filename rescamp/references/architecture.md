@@ -25,9 +25,11 @@ Create a short campaign constitution that every orchestrator, worker, reviewer, 
 
 A worker's local brief narrows its scope but cannot weaken the constitution.
 
-## 2. Mission, boundary, and exact output
+## 2. Starting point, mission, boundary, and exact output
 
-State the mission as a decision or knowledge purpose, not merely a topic. Define objects of study, jurisdiction/time/population/corpus/construct boundaries, non-goals, intended users, exact deliverables, and completion tests. Record excluded interpretations and dependencies.
+For a new project, state that no prior work was supplied. For an existing project, establish an evidence-based baseline before redesigning it: status date and summary, assessment basis, accepted completed work, work in progress, inherited artifacts and decisions, known deviations, items requiring recheck, and the next decision frontier. Start the prospective stage graph at that frontier instead of replaying accepted work.
+
+State the mission as a decision or knowledge purpose, not merely a topic. Define objects of study, jurisdiction/time/population/corpus/construct boundaries, non-goals, intended users, exact deliverables, and completion tests. Record excluded interpretations and dependencies. Keep inherited results under their original provenance; a protocol written after those results were observed cannot retroactively make them confirmatory or preregistered.
 
 ## 3. Dossier before production
 

@@ -35,7 +35,7 @@ class MalformedStateTests(unittest.TestCase):
 
     def test_wrong_container_types_return_structured_errors(self):
         object_paths = (
-            "interview", "assurance", "campaign", "reviews", "outputs",
+            "interview", "assurance", "sketch", "campaign", "reviews", "outputs",
             "campaign.constitution", "campaign.mission", "campaign.dossier",
             "campaign.evaluation", "campaign.resources_dispatch", "campaign.runtime",
             "campaign.ethics_rights_safety", "campaign.reporting", "campaign.kickoff",
@@ -167,6 +167,30 @@ class MalformedStateTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue(json.loads(result.stdout)["rendered"])
             self.assertTrue((campaign_dir / "outputs/CAMPAIGN_PROMPT.md").is_file())
+
+    def test_status_reports_malformed_collections_without_a_traceback(self):
+        cases = (("intent_dimensions", ["not-an-object"]),
+                 ("contradictions", ["not-an-object"]),
+                 ("contradictions", 3),
+                 ("blockers", ["not-an-object"]))
+        for field, malformed in cases:
+            with self.subTest(field=field, malformed=malformed), tempfile.TemporaryDirectory() as temp:
+                campaign_dir = Path(temp) / "campaign"
+                for rel in ("state", "working", "outputs", "artifacts"):
+                    (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+                state = complete_state()
+                state[field] = malformed
+                engine.write_json(campaign_dir / engine.STATE_REL, state)
+
+                result = subprocess.run(
+                    [sys.executable, str(engine.__file__), "status", str(campaign_dir)],
+                    capture_output=True, text=True,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                payload = json.loads(result.stdout)
+                self.assertFalse(payload["design_valid"])
 
     def test_numeric_required_prose_is_rejected(self):
         cases = (

@@ -4,17 +4,18 @@ ResCamp 0.10 has three parts.
 
 ## Campaign compiler
 
-The skill conducts a minimum-sufficient interview and writes one canonical campaign contract.
-Unresolved decisions remain explicit fog or blockers; the compiler does not invent values to
-make the plan look complete.
+The skill assesses the starting point, conducts a minimum-sufficient interview, and writes one
+canonical campaign contract. An existing project keeps accepted prior work and begins at its
+current decision frontier. Unresolved decisions remain explicit fog or blockers; the compiler
+does not invent values to make the plan look complete.
 
 ## Current-campaign quality loop
 
 The Python engine validates structure and references, freezes content digests, prepares
-role-specific review packets, ingests independent findings, and renders either an
-execution-ready bundle or a clearly blocked draft. Reviews are invalidated only when content
-inside their scope changes. Required pilots and accepted major or critical risks are separately
-authorized and bound to the current digest.
+role-specific review packets, records each review's stated execution mode and findings, and
+renders either an execution-ready bundle or a clearly blocked draft. Reviews are invalidated
+only when content inside their scope changes. Required pilots and accepted major or critical
+risks are separately authorized and bound to the current digest.
 
 The engine hashes rendered artifacts and verifies them with `audit`. These checks detect stale
 or changed outputs; they are not a security boundary against someone who can rewrite the whole

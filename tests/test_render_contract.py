@@ -28,7 +28,45 @@ def render(state):
     return engine.render_campaign_prompt(state, "EXECUTION-READY"), validation
 
 
+def legacy_campaign_without_starting_point(temp: str) -> Path:
+    campaign_dir = Path(temp) / "legacy-campaign"
+    for rel in ("state", "working", "outputs", "artifacts"):
+        (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+    state = engine.default_state(
+        "Continue a legacy campaign", "standard", ["evidence-synthesis"],
+        "legacy-campaign",
+    )
+    del state["campaign"]["starting_point"]
+    engine.save_state(campaign_dir, state)
+    return campaign_dir
+
+
 class RenderContractTests(unittest.TestCase):
+    def test_existing_project_baseline_reaches_execution_artifacts(self):
+        state = complete_state()
+        state["campaign"]["starting_point"].update({
+            "entry_mode": "existing-project",
+            "status_as_of": "2026-08-24",
+            "status_summary": "Search and first-pass screening are complete.",
+            "assessment_basis": ["inspected: search exports and screening sheet"],
+            "accepted_completed_work": ["Database searches"],
+            "work_in_progress": ["Protocol reconciliation"],
+            "inherited_artifacts": ["screening.csv @ recorded checksum"],
+            "decisions_in_force": ["Population remains grades 6-8"],
+            "known_deviations": ["Eligibility criteria were not frozen before screening"],
+            "requires_recheck": ["Audit a sample of excluded titles"],
+            "next_decision": "Accept or repeat the first-pass screening",
+        })
+        prompt, _ = render(add_passing_reviews(state))
+        roadmap = engine.render_roadmap(state, "EXECUTION-READY")
+        kickoff = engine.render_kickoff(state, "EXECUTION-READY")
+        for text in (prompt, roadmap, kickoff):
+            self.assertIn("Search and first-pass screening are complete", text)
+            self.assertIn("Accept or repeat the first-pass screening", text)
+        self.assertIn("Eligibility criteria were not frozen before screening", prompt)
+        self.assertIn("Frozen before prospective production under this plan", prompt)
+        self.assertIn("This assertion is not retroactive", prompt)
+
     def test_campaign_prompt_contains_no_raw_json_blobs(self):
         prompt, _ = render(add_passing_reviews(complete_state()))
         offenders = [line for line in prompt.splitlines() if ":**" in line and line.rstrip().endswith("}")]
@@ -186,6 +224,7 @@ class BundleContentTests(unittest.TestCase):
 
         self.assertIn(engine.content_digest(state), protocol)
         self.assertIn("older digest is stale", protocol)
+        self.assertNotIn("latest checkpoint", protocol)
         self.assertNotIn("eight major execution stages", protocol)
         self.assertNotIn("at most three material findings", protocol)
 
@@ -362,6 +401,24 @@ class CliSafetyTests(unittest.TestCase):
             self.assertIn("scope", bad.stderr + bad.stdout)
             state = json.loads((campaign / engine.STATE_REL).read_text())
             self.assertNotIn("scop", state["campaign"]["mission"])
+
+    def test_set_can_add_a_known_section_to_a_legacy_campaign(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign = legacy_campaign_without_starting_point(temp)
+            starting_point = {
+                "entry_mode": "existing-project", "status_as_of": "2026-08-24",
+                "status_summary": "Prior collection is complete.",
+                "assessment_basis": ["inspected: collection manifest"],
+                "next_decision": "Decide whether the corpus is ready for analysis",
+            }
+            result = subprocess.run(
+                [sys.executable, str(ENGINE), "set", str(campaign),
+                 "campaign.starting_point", json.dumps(starting_point)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((campaign / engine.STATE_REL).read_text())
+            self.assertEqual(state["campaign"]["starting_point"], starting_point)
 
     def test_add_accepts_an_array_and_still_checks_fields(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -573,6 +630,24 @@ class ApplyCommandTests(unittest.TestCase):
             state = json.loads((campaign / engine.STATE_REL).read_text())
             self.assertEqual(state["campaign"]["methods"], [])
             self.assertEqual(state["campaign"]["mission"]["scope"], "")
+
+    def test_apply_can_add_a_known_section_to_a_legacy_campaign(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign = legacy_campaign_without_starting_point(temp)
+            starting_point = {
+                "entry_mode": "existing-project", "status_as_of": "2026-08-24",
+                "status_summary": "Prior collection is complete.",
+                "assessment_basis": ["inspected: collection manifest"],
+                "next_decision": "Decide whether the corpus is ready for analysis",
+            }
+            result = subprocess.run(
+                [sys.executable, str(ENGINE), "apply", str(campaign), "--json",
+                 json.dumps({"campaign.starting_point": starting_point})],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            state = json.loads((campaign / engine.STATE_REL).read_text())
+            self.assertEqual(state["campaign"]["starting_point"], starting_point)
 
 
 if __name__ == "__main__":

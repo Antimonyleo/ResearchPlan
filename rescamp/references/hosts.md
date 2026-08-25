@@ -31,8 +31,9 @@ python3 scripts/host_acceptance.py --host codex --project /path/to/project \
 ```
 
 The receipt records the host version, skill-tree digest, response hashes, elapsed time, and
-artifact presence. It proves only that invocation completed and expected files exist. It does
-not judge the research plan or prove reviewer independence.
+before/after fingerprints for expected artifacts. A pre-existing unchanged file cannot pass.
+This proves only that invocation completed and created or changed the named files; it does not
+judge the research plan or prove reviewer independence.
 
 ## Degrade honestly
 

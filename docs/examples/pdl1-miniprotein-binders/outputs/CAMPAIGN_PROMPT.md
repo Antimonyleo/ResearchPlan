@@ -2,10 +2,14 @@
 
 **Status:** EXECUTION-READY
 
-**Campaign ID:** `pdl1-miniprotein-binders`  
-**Content version:** 30  
-**Content digest:** `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195`  
-**Profile:** standard  
+**Campaign ID:** `pdl1-miniprotein-binders`
+
+**Content version:** 284
+
+**Content digest:** `sha256:cec061c58fca6136d0d70765c7c307fa82692a7020455fdb2ce8691f7230bb2d`
+
+**Profile:** standard
+
 **Archetypes:** computational, design-engineering
 
 ## 0. Coverage and standing caveats
@@ -14,7 +18,7 @@ You are executing a compiled research campaign. Read every section before acting
 
 **Sections left empty:** none. Empty is legitimate when the section cannot change the research decision — an archival study has no production tools — but it is never evidence of coverage.
 
-**Challenge applied:** sequential-pass. Independence is self-attested; agent review checks internal coherence and is not external validation.
+**Challenge applied:** independent-subagent. Independence is self-attested; agent review checks internal coherence and is not external validation.
 **Pilot:** not required and not recorded; this is reviewed-static plan evidence only.
 
 Deterministic validation checked presence, cross-references, and budgets. It did not judge whether any statement here is true, sufficient, or wise.
@@ -22,14 +26,16 @@ Deterministic validation checked presence, cross-references, and budgets. It did
 ## 1. Campaign constitution
 
 - Freeze before you look: the target definition, software environment, and scoring thresholds are frozen with digests before any campaign design is scored. A threshold changed after designs are visible is a labelled deviation, never a silent edit.
-- Provenance: every structure, weight file, container image, seed, and score table is recorded with its source, version or accession, retrieval time, and digest.
+- Provenance: every structure, weight file, container image, seed, score table, and runtime record is recorded with its source, version or accession, retrieval time, and digest. Artifact digests are SHA-256 over the exact stored bytes; digests are written to the detached UTF-8 `artifacts/MANIFEST.sha256`, never embedded in the bytes they identify.
 - Controls before candidates: no design is scored until the positive and negative control sets have been run through the identical pipeline and their separation recorded.
 - Fail closed on authority: no worker may order genes, commit synthesis spend, contact a vendor, or begin wet-lab work. The campaign terminates at a recommendation.
 - Reporting: a no-go recommendation is reported with the same completeness as a go, including the full ranked design table and every failed filter.
 
 Every worker inherits these rules. Local briefs may narrow scope but may not weaken them.
 
-## 2. Mission, boundaries, and deliverables
+## 2. Starting point, mission, boundaries, and deliverables
+
+**Entry mode:** New project — no prior project state was supplied.
 
 **Decision or purpose:** Produce a defensible go/no-go recommendation to the principal investigator on whether to commit gene-synthesis and wet-lab budget to a set of computationally designed de novo miniprotein binders against the PD-1-binding face of human PD-L1.
 
@@ -60,7 +66,7 @@ Every worker inherits these rules. Local briefs may narrow scope but may not wea
   - Hotspot residue set in the deposited numbering, with the numbering convention stated
   - Interface density gaps and any unmodelled residues at the interface
   - Known conformational-state caveats recorded as a threat, not resolved
-  - Freeze time and artifact digest
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
 - **Acceptance test:** The accession resolves at RCSB to a PD-1:PD-L1 complex with the recorded chains, method, and resolution; the coordinate digest matches the retrieved file; every hotspot residue exists in the deposited numbering; and the artifact carries a freeze time and digest. An accession that does not verify fails the artifact rather than being footnoted.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
@@ -72,9 +78,10 @@ Every worker inherits these rules. Local briefs may narrow scope but may not wea
   - Per tool: identity, release tag, weight-file digest, container image digest, licence, and licence-compatibility determination
   - Exact invocation, flags, template and MSA policy, and seed policy for each tool
   - Generation parameters: length range, topology constraints, batch size
-  - Canary manifests for all four canaries with their positive, negative, and reproducibility results
-  - Freeze time and artifact digest
-- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all four canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
+  - APR-compute approval identifier and evidence, allocation scope, available A100 GPU-hours, exact expiry timestamp with timezone, and record retrieval time
+  - Canary manifests for all four G1 canaries with positive, negative, raw-schema, and reproducibility results; fixtures are labelled non-campaign and threshold-independent
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
+- **Acceptance test:** Every tool appears with a pinned version and licence determination; APR-compute scope/hours/expiry are recorded; all four G1 canaries validate deterministic production-setting raw outputs against versioned schemas independent of D-thresholds; and each reproduces from its manifest.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
 
@@ -83,16 +90,18 @@ Every worker inherits these rules. Local briefs may narrow scope but may not wea
 - **Path:** deliverables/thresholds-and-decision-table.md
 - **Schema:**
   - Exact D-target and D-environment digests consumed
-  - Positive control set of at least 8 members, each with a cited experimental measurement and its assay
-  - Per positive control: deposition or publication date recorded against the training cutoff of every model in the stack, and the resulting post-cutoff subset identified (at least 3 members)
-  - Negative control set, separating scrambles from composition-matched unrelated-fold decoys, with the automated matching procedure, its tolerances, and its random seed recorded
-  - Per-filter score distributions for both sets, and AUROC plus the fraction of matched negatives above the positive median, computed on all positives and again on the post-cutoff subset
-  - Threshold value per filter, with the calibration rule that produced it
-  - Clustering metric, the frozen cut, and both pre-declared alternative cuts
-  - The complete decision table mapping AUROC and cluster-corrected yield to go, revise, or no-go, with the revise cell's bounded scope stated
-  - Attestation that no campaign design had been generated or scored at freeze time
-  - Freeze time and artifact digest
-- **Acceptance test:** The positive set has at least 8 members with citable measurements and at least 3 post-cutoff; every negative is produced by the recorded matching procedure within its stated tolerances; every threshold traces to the control distributions rather than to an authored number; separation is reported by both named statistics on both subsets; the decision table is total over the AUROC-by-yield space with no undefined cells and a bounded revise cell; the attestation is present; and the artifact consumes the exact prior D-target and D-environment digests.
+  - At least 8 positive controls with cited assays spanning at least 6 independent scaffold groups; every production-model cutoff recorded; at least 5 cutoff-clean groups identified
+  - Frozen connected-component grouping evidence and, for each group, the earliest public date across every linked sequence, structure, design lineage, and parent scaffold plus its cutoff-clean classification
+  - Frozen leave-one-scaffold-group-out membership linking each group to topology-matched hard negatives, with provenance and evidential class
+  - Pre-score filter candidates, within-fold tuning rule, combination rule, matching procedure, tolerances, and random seed
+  - Per-group held-out predictions plus pooled all-group and post-cutoff-group AUROC and hard-negative-above-median statistics
+  - Fixed-seed 10,000-resample independent-group bootstrap intervals and the post-cutoff one-sided 90 percent lower bound
+  - Final filter thresholds fitted on all controls only after group-held-out evaluation passes
+  - Clustering metric and the 50, 60, and 70 percent identity cuts
+  - A total decision table using the cutoff-clean-group lower bound and cluster-corrected yield, including bounded revise cells and all sample/provenance minimums
+  - Attestations that grouping and folds preceded control scoring and final thresholds preceded campaign-design generation or scoring
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
+- **Acceptance test:** Every control has citable provenance and a frozen scaffold group; no related group crosses folds; every group records its earliest linked public sequence/structure/lineage/scaffold date and cutoff-clean classification; every hard negative has recorded provenance; held-out statistics reproduce; at least 8 positives span 6 groups and go requires 5 cutoff-clean groups with defensible hard negatives; final thresholds were fitted only after held-out evaluation; the decision table has no undefined cell; all digests are present.
 - **Owner:** ROLE-methods
 - **Immutable after freeze:** yes
 
@@ -106,7 +115,9 @@ Every worker inherits these rules. Local briefs may narrow scope but may not wea
   - Pass or fail per filter and overall
   - Cluster assignment at the frozen cut and at both alternative cuts
   - Per-design compute cost
-- **Acceptance test:** Every design has every filter column populated; the D-thresholds digest matches G2; pass/fail is derivable mechanically from the recorded scores and the frozen thresholds; and cluster counts are reported at all three cuts. Designs scoring below the negative control distribution appear in the table rather than being dropped.
+  - References to the corresponding authorized, started, and terminal events in D-runtime
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
+- **Acceptance test:** Every design has every filter column populated; the D-thresholds digest matches G2; pass/fail is derivable mechanically from recorded scores and frozen thresholds; cluster counts are reported at all three cuts; D-runtime reconciles every batch; and D-designs has a detached manifest entry. Designs below the negative-control distribution remain in the table.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
 
@@ -116,16 +127,45 @@ Every worker inherits these rules. Local briefs may narrow scope but may not wea
 - **Schema:**
   - First paragraph: the cell reached on the frozen decision table and the two values that placed it
   - Control separation reported as a distribution comparison with its overlap
-  - Contamination-adjusted separation on the post-cutoff positive subset, stated next to the all-positives figure
+  - Contamination-adjusted separation on the post-cutoff independent-group subset, stated next to the all-group figure
   - Cluster-corrected yield at all three cuts
   - Proximity to adjacent decision cells
   - Residual uncertainty and the least favourable defensible interpretation
   - Any numbered deviations and what they invalidate
   - Any principal-investigator override, recorded as an override with its reason
-  - Consumed artifact digests for D-target, D-environment, D-thresholds, and D-designs
-- **Acceptance test:** The stated recommendation equals the cell mechanically reached on the frozen table; the memo leads with the cell rather than with narrative; no sentence states or implies that any design binds PD-L1; and a no-go memo carries the same completeness as a go, including the full ranked table.
+  - Consumed artifact digests for D-target, D-environment, D-thresholds, D-designs, and the immutable D-runtime G3 reconciliation snapshot
+  - Version identifier, predecessor memo digest if any, acceptance time, and detached SHA-256 entry; the G4 event names this digest before the runtime stream is finalized
+- **Acceptance test:** The accepted immutable memo version states the cell mechanically reached on the frozen table; leads with the cell; never implies that a design binds PD-L1; includes the full ranked table even for no-go; and is referenced by path and detached SHA-256 digest in the accepting G4 event. Corrections create new versions and retain the accepted predecessor.
 - **Owner:** ROLE-methods
-- **Immutable after freeze:** no
+- **Immutable after freeze:** yes
+
+### D-runtime — Runtime event log and reconciliation
+
+- **Path:** artifacts/runtime/events.ndjson; deliverables/runtime-g3-reconciliation.md; deliverables/runtime-final-reconciliation.md
+- **Schema:**
+  - Live UTF-8 JSON Lines event stream at `artifacts/runtime/events.ndjson` using rescamp-runtime-event-v1
+  - Each event records sequence, unique event_id, event_type, batch_id when applicable, status, timezone-aware timestamp, actor, frozen input digests, terminal output digests, cumulative cost, and predecessor event_id
+  - Single-dispatcher exclusive append rule and one complete atomic line per transition
+  - For every batch: authorization before compute, optional heartbeats, and exactly one completed or failed terminal event
+  - Immutable G3 reconciliation snapshot recording highest sequence, exact byte length, SHA-256 of the event-log prefix through G3, batch accounting, and its own detached digest; the live stream remains appendable only for S4/G4
+  - Final G4 reconciliation after the acceptance event, covering the complete event-log digest and proving no later append; detached SHA-256 entries for the final log and both reconciliation artifacts
+- **Acceptance test:** At G3, an immutable reconciliation snapshot validates the log prefix and accounts for every S3 batch while the D-runtime stream remains open only for S4/G4. At G4, the acceptance event names D-memo's digest, final reconciliation validates the complete stream, and D-runtime freezes permanently with detached digests for the final log and both snapshots.
+- **Owner:** ROLE-comp-lead
+- **Immutable after freeze:** yes
+
+### D-canary-compat — Frozen threshold-to-canary compatibility record
+
+- **Path:** deliverables/canary-compatibility.md
+- **Schema:**
+  - Exact D-thresholds digest consumed after D-thresholds was frozen
+  - Exact digests of every stored raw CAN-pipeline, CAN-energy, CAN-sequence, and CAN-predict fixture
+  - For CAN-pipeline, CAN-energy, and CAN-sequence: every table-derived field, value, and pass/fail result produced mechanically without manual edits
+  - For CAN-predict: field-to-table compatibility result and any table field not applicable to its raw schema
+  - Execution time, tool identity, and attestation that D-thresholds remained byte-identical during the checks
+  - Freeze time and detached SHA-256 entry in artifacts/MANIFEST.sha256
+- **Acceptance test:** The artifact binds the frozen D-thresholds digest and all raw-fixture digests; every required table field resolves; mechanical applications reproduce; no source fixture or D-thresholds changes during testing; and the detached digest verifies. Any incompatibility blocks G2 without modifying D-thresholds.
+- **Owner:** ROLE-methods
+- **Immutable after freeze:** yes
 
 ## 3. Object and evidence dossier
 
@@ -219,15 +259,15 @@ Each inquiry must be evaluated against admissible support and explicit counterev
 
 - **Why it matters:** This is the gating question of the campaign. If the stack cannot separate known binders from known non-binders, every score it assigns to a campaign design is uninterpretable and no amount of favourable-looking design scores can rescue it.
 - **Admissible support:**
-  - Score distributions for the frozen positive and negative control sets, computed through the identical pipeline, with the overlap between distributions reported and the per-filter contribution broken out.
+  - Predeclared leave-one-scaffold-group-out predictions for positives and topology-matched hard-negative strata, with group provenance, all-group and post-cutoff-group AUROC, fixed-seed interval estimates, and per-filter diagnostics.
 - **Counterevidence, rival explanation, reading, or objection:**
-  - Apparent separation driven by a confound rather than by binding: positive controls sharing a fold, a length range, or an amino-acid composition with each other and not with the negatives.
-  - The rival explanation is that the stack is detecting 'looks like a designed protein', not 'binds this epitope'.
-  - Training-set contamination: published binders are frequently deposited structures, and deposited structures are frequently in a structure-prediction model's training data. Their interface confidence would then be partly memorization, inflating separation in a way that does not transfer to novel designs — which is exactly the transfer the go decision assumes.
-- **Discriminating prediction or interpretive implication:** If separation is real, negatives matched to the positives on length and composition still score below them. If it is a composition artefact, matched negatives score alongside the positives and the apparent separation collapses. If contamination is driving the result, positives deposited after every model's training cutoff separate materially worse than the contaminated subset; if it is not, the two subsets separate alike.
-- **Verification or adjudication:** Separation is judged against the composition-matched negative subset by AUROC, not against scrambles and not by threshold pass rate. It is computed on all positives and again on the post-cutoff subset, and both are reported. Judged once, on the frozen thresholds, before any campaign design is scored.
-- **Uncertainty and external-validity boundary:** A control set of 8 bounds discrimination coarsely, and the post-cutoff subset of 3 or more bounds it more coarsely still. The memo reports separation as an interval, states which subset each figure came from, and states that in-silico separation on published binders is a weaker guarantee than any experimental measurement.
-- **Reporting rule:** Report the full distribution comparison and its overlap. Failure to separate is reported as a terminal result, never as a calibration step.
+  - Apparent separation driven by a confound rather than by binding: positive controls sharing a sequence family, design lineage, scaffold, or topology that the negatives do not share.
+  - The rival explanation is that the stack is detecting a familiar scaffold or 'looks like a designed protein', not 'binds this epitope'.
+  - Training-set contamination: published binders are frequently deposited structures, and deposited structures are frequently in a structure-prediction model's training data. Their interface confidence would then be partly memorization, inflating separation in a way that does not transfer to novel designs.
+- **Discriminating prediction or interpretive implication:** If separation is binding-relevant, an entirely held-out positive scaffold group still outranks topology-matched hard negatives. If it is scaffold recognition, performance collapses when related sequences, structures, and design lineages are kept in one group. If contamination is driving the result, cutoff-clean groups — whose earliest linked public sequence, structure, lineage, or parent scaffold post-dates every production-model cutoff — separate materially worse than the older groups.
+- **Verification or adjudication:** Use only pooled held-out scaffold-group predictions. Freeze each group's earliest public date across every linked sequence, structure, design lineage, and parent scaffold; the group is cutoff-clean only if that date is later than every production model's training cutoff. The decision table consumes the one-sided 90 percent lower confidence bound for at least 5 cutoff-clean groups with defensible topology-matched hard negatives. All-group AUROC is descriptive only.
+- **Uncertainty and external-validity boundary:** Eight positives spanning six independent scaffold groups provide only coarse discrimination evidence, and five cutoff-clean groups remain imprecise. A mixed-age group is classified by its earliest linked public precursor, never its newest binder. Report fixed-seed group-bootstrap intervals, disclose hard-negative limitations, and state that held-out in-silico discrimination does not establish wet-lab binding.
+- **Reporting rule:** Report group-level held-out results, pooled point estimates, intervals, and all-group versus post-cutoff-group disagreement. Failure of the post-cutoff-group lower bound, independent-group minimum, or hard-negative requirement is a revise or terminal no-go, never a calibration opportunity.
 
 ### INQ-yield — Does the design pipeline produce enough distinct designs clearing the frozen thresholds to make a synthesis order worth placing?
 
@@ -251,7 +291,7 @@ Each inquiry must be evaluated against admissible support and explicit counterev
   - The rival reading is that a marginal result should be resolved by more computation rather than by spending.
   - The decision table must therefore contain a revise cell with an explicit bounded scope, so 'run more designs' is a declared outcome rather than an improvised escape from a no-go.
 - **Discriminating prediction or interpretive implication:** A genuine go lands in the go cell on the frozen table without argument. A result requiring narrative to reach go is by construction a revise or a no-go.
-- **Verification or adjudication:** The decision table is frozen in D-thresholds before any campaign design is scored, and is applied exactly once. Reaching a cell is mechanical; the memo may add context but may not move the cell.
+- **Verification or adjudication:** Freeze the decision table in D-thresholds before campaign designs are generated. Apply it once using the one-sided 90 percent lower bound of post-cutoff out-of-fold AUROC and cluster-corrected yield. All-positive AUROC is descriptive only. The memo may add context but cannot move the mechanically reached cell.
 - **Uncertainty and external-validity boundary:** The table converts two uncertain quantities into a discrete recommendation and therefore hides the uncertainty at the boundaries. The memo reports how close the result sits to an adjacent cell.
 - **Reporting rule:** State the cell reached and the values that placed it there in the first paragraph of the memo, before any discussion.
 
@@ -278,19 +318,26 @@ Each inquiry must be evaluated against admissible support and explicit counterev
 
 ### M-controls — Control-calibrated threshold freezing
 
-- **Purpose:** Set the filter thresholds from the separation between known binders and known non-binders, before any campaign design exists, so the thresholds cannot be tuned to the designs.
+- **Purpose:** Estimate discrimination from held-out scaffold-group predictions without sequence, structure, design-lineage, or tuning leakage, then fit and freeze the final stack on all controls before any campaign design is generated or scored.
 - **Answers inquiries:**
   - INQ-separation
 - **Inputs:**
-  - A positive control set of published, experimentally validated PD-L1 binders with cited measurements, and a negative control set containing both scrambles and composition-matched decoys of unrelated fold.
+  - At least 8 published, experimentally validated PD-L1 binders spanning at least 6 frozen sequence/structure scaffold groups; at least 5 groups must be cutoff-clean for any go decision.
+  - Before scoring, form conservative connected-component groups: two positives share a group if they have at least 30 percent global sequence identity, binder-domain TM-score at least 0.5, or a shared published design lineage or parent scaffold.
+  - For each group, record the earliest public date among every linked sequence, structure, design lineage, and parent scaffold. A group is cutoff-clean only when that earliest date post-dates every production model's training cutoff; a mixed-age group is not cutoff-clean.
+  - For every evaluated group, at least three topology-matched hard negatives with recorded provenance: experimentally supported same-scaffold nonbinders where available, otherwise target-irrelevant structures matched on length, composition, and coarse topology. Scrambles remain a secondary coarse check.
 - **Outputs:**
-  - D-thresholds: the control sets, their score distributions, the per-filter threshold values, the clustering distance cut, the decision table, and the digest of all of it.
+  - D-thresholds: frozen scaffold-group definitions and folds, hard-negative provenance, group-held-out predictions, all-group and post-cutoff-group separation with intervals, final filter thresholds fitted only after held-out evaluation, clustering cuts, decision table, and artifact digest.
 - **Assumptions:**
-  - That published binders are informative about the pipeline's ability to recognise binders it did not generate.
+  - Published binders are informative about the pipeline's ability to recognize binders it did not generate.
+  - Conservative sequence/structure/design-lineage grouping prevents related binders from crossing evaluation folds.
+  - Topology-matched hard negatives are sufficiently well supported to test whether the stack recognizes binding rather than scaffold class.
 - **Limitations:**
-  - Positive controls are few and were not produced by this pipeline; they may be easier or harder to score than campaign designs.
+  - Positive controls and independent scaffold groups are few and were not produced by this pipeline; held-out discrimination may still transfer poorly to campaign designs.
   - Published affinities come from heterogeneous assays.
-  - This is why separation is reported as a distribution with overlap, not as an accuracy figure.
+  - Some hard negatives may lack direct nonbinding assays; their provenance and evidential class must be reported, and five defensible post-cutoff group strata are required for go.
+  - The cutoff-clean independent-group subset is small, and grouping by the earliest linked precursor is intentionally conservative, so its one-sided lower confidence bound may force revise or no-go.
+  - Final thresholds are fitted on all controls only after group-held-out evaluation passes; their prospective validity still requires wet-lab evidence outside this campaign.
 - **Cost:** Roughly 300 A100 GPU-hours.
 - **Dependencies:** M-target, and both canaries passing.
 - **Decision it can change:** Yes, and it is the only method that can end the campaign on its own. Failure to separate is a terminal no-go.
@@ -406,75 +453,80 @@ A successful import or help command is not a canary.
 - **Downstream acceptance:** The filter stack must ingest the run manifest and score the canary output end to end, producing the same numbers when re-run from the stored artifacts. A canary whose output the scorer cannot ingest fails the gate.
 - **Quarantine triggers:** If the canary fails at any point, S3 does not start. Any campaign design already scored under a failed canary is quarantined and rescored after the fix; the deviation is recorded.
 
-### CAN-energy — Score the deposited PD-1:PD-L1 interface and a deliberately disrupted variant of it through the exact production protocol.
+### CAN-energy — At G1, score the deposited PD-1:PD-L1 interface and a deliberately disrupted variant through the production protocol and emit deterministic raw energy/liability terms under a versioned schema independent of D-thresholds.
 
 - **Tool:** TOOL-energy
 - **Expected artifacts and schema:**
-  - Interface energy terms, biophysical liability terms, and a manifest with package version, commit, flags, and cost.
+  - Raw interface-energy and liability rows under the versioned G1 schema, plus a manifest with package version, commit, flags, seed, exact replay digest, and cost.
 - **Positive, negative, and sanity cases:**
   - Positive: the native interface scores favourably.
   - Negative: the disrupted interface scores materially worse in the expected direction.
   - Sanity: rerunning the identical input reproduces the identical terms.
-- **Downstream acceptance:** Terms must land in the score table under the exact column names the frozen threshold table references. A renamed or missing column fails the gate rather than silently dropping a filter.
-- **Quarantine triggers:** Failure blocks S3. Scores produced under a failed canary are quarantined and recomputed.
+- **Downstream acceptance:** At G1, raw terms validate and reproduce without D-thresholds. After D-thresholds freezes, G2 writes a separate D-canary-compat artifact that binds the threshold digest and proves the table mechanically consumes the stored rows; a missing or renamed field fails G2.
+- **Quarantine triggers:** Raw-schema or replay failure blocks S2. Post-freeze table-compatibility failure blocks S3. Canary rows are fixtures and never enter D-designs.
 
-### CAN-pipeline — Run a single miniature end-to-end pass — backbone generation, sequence design, prediction, scoring — on a handful of designs against the frozen target, at production settings, before any scale-up.
+### CAN-pipeline — Before any control or campaign design is scored, run a miniature generation-through-raw-score transport check on explicitly labelled non-campaign fixtures at production settings. It verifies interfaces, schemas, deterministic replay, and raw score transport only; it does not apply thresholds or supply binding evidence.
 
 - **Tool:** TOOL-backbone
 - **Expected artifacts and schema:**
-  - A complete score table row for each design, with every column the frozen threshold table references populated and no nulls.
+  - A versioned raw-score fixture table with every predeclared score field populated, no threshold-derived columns, a manifest, and an exact replay digest.
 - **Positive, negative, and sanity cases:**
-  - Positive: rows are complete and within physically plausible ranges.
-  - Negative: a deliberately malformed backbone is rejected by the pipeline rather than producing a plausible-looking row.
-  - Sanity: the miniature pass reproduces exactly when re-run from its manifest.
-- **Downstream acceptance:** The decision table must be computable from the miniature output without manual editing. If the decision table cannot be applied mechanically to the canary output, the gate fails.
-- **Quarantine triggers:** Failure blocks S3 scale-up and consumes no further allocation until fixed.
+  - Positive: raw fixture rows are complete and within physically plausible ranges.
+  - Negative: a deliberately malformed backbone is rejected rather than producing a plausible-looking row.
+  - Sanity: the raw miniature pass reproduces exactly from its manifest.
+  - Boundary: fixtures are labelled non-campaign and cannot enter D-designs or any scientific result.
+- **Downstream acceptance:** At G1, the versioned raw-score schema and exact replay pass without a decision table. After D-thresholds freezes, G2 writes D-canary-compat, binding the threshold digest and proving the real table emits every required derived column from this stored fixture before S3 dispatch.
+- **Quarantine triggers:** Raw transport failure blocks S2. Failure of the post-freeze table-application check blocks S3. Canary fixtures are permanently excluded from campaign results.
 
-### CAN-sequence — Redesign sequences onto the backbone of the deposited PD-L1 binding partner named in D-target, at exact production settings, container image, and seed policy, then predict and score the redesigned complex through the same downstream stack S3 will use.
+### CAN-sequence — At G1, redesign sequences on the deposited binding-partner backbone at production settings, then predict and emit deterministic raw downstream scores under versioned schemas independent of D-thresholds. These are labelled non-campaign fixtures.
 
 - **Tool:** TOOL-sequence
 - **Expected artifacts and schema:**
-  - Designed sequences with per-position confidence and the exact invocation recorded.
-  - A run manifest carrying the model identity, weight digest, container image digest, seed, and wall-clock cost.
-  - Downstream prediction and score rows for each redesigned sequence, populated in the columns the frozen threshold table references.
+  - Designed fixture sequences with per-position confidence and exact invocation.
+  - A run manifest carrying model identity, weight digest, container image digest, seed, exact replay digest, and cost.
+  - Raw prediction and score rows under the versioned G1 schemas, with no threshold-derived columns.
 - **Positive, negative, and sanity cases:**
   - Positive: redesigned sequences recover the native fold in prediction within a pre-declared coordinate deviation, and recover a pre-declared fraction of the native interface residue identities.
   - Negative: sequence design run against a deliberately masked or absent target context yields interface confidence in the low-confidence regime rather than confident nonsense.
   - Sanity: two runs at the same seed produce identical sequences, and two runs at different seeds produce sequences within a pre-declared identity spread.
-- **Downstream acceptance:** The redesigned sequences must flow end to end into the scorer and produce complete score rows under the exact column names the frozen threshold table references, reproducing when re-run from the stored manifest.
-- **Quarantine triggers:** Failure blocks S3. Any sequence produced under a failed canary is quarantined and redesigned after the fix, with the deviation recorded.
+- **Downstream acceptance:** At G1, sequence, prediction, and raw-score schemas validate and replay without D-thresholds. After D-thresholds freezes, G2 records in D-canary-compat that the table consumes the stored rows and emits every required derived column before S3 dispatch.
+- **Quarantine triggers:** Raw-schema or replay failure blocks S2. Post-freeze table-compatibility failure blocks S3. Fixture sequences and rows are permanently excluded from D-designs.
 
 ## 7. Frozen evaluation or adjudication instrument
 
-**Frozen before production (asserted, not verified):** The complete evaluation instrument — filter stack, per-filter thresholds, the named separation statistics, the composition-matching rule and its tolerances, the clustering metric and its three cuts, and the decision table mapping AUROC and cluster-corrected yield to go, revise, or no-go — is frozen in D-thresholds with a digest at G2, before any campaign design has been generated or scored. The statistics and matching rule are named in this campaign rather than left to D-thresholds' author, so they cannot be chosen after the control distributions are visible. D-thresholds carries an explicit attestation, and G3 re-checks the digest before accepting any design score.
+**Frozen before production (asserted, not verified):** Before any control is scored, freeze the scaffold grouping, every group's earliest linked public provenance date, the cutoff-clean classification against every production-model cutoff, leave-one-group-out folds, hard-negative rule, matching tolerances, filters, tuning, statistics, bootstrap seed and group-resampling rule, five-group minimum, and governing decision statistic. After held-out evaluation passes, fit final thresholds, clustering cuts, and the complete decision table once on all controls; freeze D-thresholds with its detached digest before any campaign design is generated or scored, and recheck it at G3.
 
 **Criteria**
-- Control separation, primary statistic: the area under the ROC curve for the combined filter rank, positive controls against composition-matched negative controls. Declared here, before S2, so it cannot be selected after the distributions are visible.
-- Control separation, secondary statistic: the fraction of composition-matched negatives scoring above the positive-set median. Reported alongside AUROC because AUROC alone hides the shape of the overlap.
-- Contamination-adjusted separation: both statistics recomputed on the subset of positive controls deposited after every model's training cutoff. Where that subset is too small to estimate, the all-positives figure is reported as an upper bound and labelled as one.
-- Cluster-corrected yield: the number of distinct clusters among campaign designs clearing every frozen threshold. A cluster is a single-linkage group at 60 percent global sequence identity and 2.0 Angstrom interface backbone RMSD; the two pre-declared alternative cuts are 50 and 70 percent identity at the same RMSD.
-- Provenance completeness: every scored design traceable to a seed, a batch manifest appended before compute was consumed, and the frozen artifact digests it consumed.
-- Threshold integrity: the D-thresholds digest unchanged between G2 and G3.
+- Primary separation statistic: out-of-fold AUROC for the combined filter rank against topology-matched hard negatives, pooled from predeclared leave-one-scaffold-group-out folds; individual-positive holdout and resubstitution AUROC are prohibited as decision evidence.
+- Governing uncertainty statistic: the one-sided 90 percent lower confidence bound for cutoff-clean group-held-out AUROC, from 10,000 fixed-seed bootstrap resamples of independent cutoff-clean scaffold groups together with their associated negative strata.
+- Secondary statistics: the held-out fraction of topology-matched hard negatives scoring above the positive-group median, reported for all groups and the post-cutoff groups; scramble performance is reported separately as a coarse check.
+- A go requires at least 6 independent scaffold groups overall and at least 5 cutoff-clean groups with defensible hard-negative strata, and uses only the cutoff-clean-group lower bound. If any minimum or the bound fails, the result is revise or no-go; the all-group estimate cannot carry go eligibility.
+- Cluster-corrected yield: distinct clusters among campaign designs clearing every final frozen threshold, using single linkage at 60 percent global sequence identity and 2.0 Angstrom interface backbone RMSD, with 50 and 70 percent alternatives reported.
+- Provenance completeness: every control prediction records its scaffold group, fold, hard-negative provenance, and frozen training inputs; every design traces to a seed, a pre-compute batch manifest, and the frozen artifact digests it consumed.
+- Threshold integrity: D-thresholds remains byte-identical from G2 through G3.
 
 **Comparators, controls, cases, or adjudication rules**
-- Positive control set: published, experimentally validated PD-L1 binders, each citing a specific reported measurement and its assay. Minimum set size is 8; fewer is a terminal no-go.
-- Contamination subset: of those 8, at least 3 must have been deposited or published after the training cutoff of every model in the stack, and each control's deposition date is recorded against each cutoff in D-thresholds.
-- Negative control set, sequence scrambles: the coarse comparator, sufficient only to detect a stack that scores everything alike.
-- Negative control set, composition-matched decoys of unrelated fold: the operative comparator. Matching is automated and declared before any control is scored — length within 10 percent of the paired positive, amino-acid composition within a Euclidean distance of 0.15 over the 20-dimensional frequency vector, and predicted helix/sheet content within 15 percentage points. The set is at least three times the size of the positive set.
-- Campaign designs are scored through the identical pipeline as both control sets; a settings difference between control and design scoring invalidates the comparison and is a deviation.
-- The frozen decision table then maps AUROC and cluster-corrected yield onto go, revise, or no-go.
+- Positive controls: at least 8 published, experimentally validated PD-L1 binders spanning at least 6 independent sequence/structure scaffold groups; at least 5 groups must be cutoff-clean for a go result.
+- Before scoring, freeze conservative connected-component groups: positives are linked by at least 30 percent global sequence identity, binder-domain TM-score at least 0.5, or shared published design lineage or parent scaffold. No connected group may cross folds.
+- For each frozen group, record the earliest public date across every linked sequence, structure, design lineage, and parent scaffold. Classify the group as cutoff-clean only if that earliest date post-dates every production model's training cutoff; a post-cutoff binder cannot make an older group cutoff-clean.
+- Assign each frozen scaffold group and its hard-negative stratum to one leave-one-group-out fold. Freeze membership, provenance, matching tolerances, random seed, filter candidates, tuning rule, and combination rule before any score is computed.
+- Within each fold, select or tune filters only on the other scaffold groups and their negatives. Score the held-out group and its negative stratum once; their scores cannot alter that fold's stack.
+- The operative negative stratum contains at least three topology-matched hard negatives per group: experimentally supported same-scaffold nonbinders where available, otherwise target-irrelevant structures matched on length, amino-acid composition, and coarse topology. Record provenance and evidential class. Scrambles are secondary only.
+- Pool only held-out group predictions for separation estimates. After the group-held-out gate passes, fit the final thresholds on all controls once and freeze them before generating or scoring campaign designs.
+- Campaign designs use the final frozen stack and settings. Any control/design settings difference invalidates the comparison.
+- The decision table consumes the one-sided 90 percent lower confidence bound of cutoff-clean group-held-out AUROC plus cluster-corrected yield. All-group AUROC is descriptive and can never override the cutoff-clean-group result.
 
 **Missing-evidence policy:** A design missing any filter column is failed, not imputed and not dropped from the table. A control whose published measurement cannot be cited to a specific assay is excluded from the positive set before freeze and recorded as excluded. A filter that cannot be computed for the control sets is removed from the stack before freeze rather than applied only to campaign designs.
 
-**Exploration versus confirmation:** S1 and S2 are exploratory with respect to method choice: filters may be added, removed, or reparameterized freely until D-thresholds is frozen at G2. From G2 onward the campaign is confirmatory: the filter stack, thresholds, clustering cuts, and decision table are fixed, and S3 produces a single scoring pass. Any post-G2 change is a numbered deviation that downgrades D-memo to exploratory.
+**Exploration versus confirmation:** Control membership, scaffold-group definition, group assignment, hard-negative provenance, filter candidates, tuning rule, combination rule, statistics, interval method, and decision rule are fixed before any control is scored. Filter selection or tuning may occur only inside each fold's training groups; held-out scores cannot change that fold. If group-held-out evaluation passes, the final stack is fitted once on all controls and frozen in D-thresholds before any campaign design is generated or scored. Any later change is a numbered deviation and makes the design result exploratory.
 
 **Stop, pivot, and no-go rules**
-- Terminal no-go: positive and composition-matched negative controls fail to separate at G2 by the AUROC threshold frozen in D-thresholds. The campaign stops, the memo is written from the control calibration alone, and no design generation is funded. Retuning to manufacture separation is prohibited.
-- Terminal no-go: fewer than 8 positive controls with citable experimental measurements can be assembled, or fewer than 3 of them post-date every model's training cutoff.
+- Terminal no-go: the one-sided 90 percent lower bound of post-cutoff group-held-out AUROC fails the threshold frozen in the decision table. Retuning, regrouping, or reselection after held-out scores are visible is prohibited.
+- Terminal no-go: fewer than 8 citable positives spanning 6 independent scaffold groups can be assembled. A go is additionally prohibited with fewer than 5 cutoff-clean groups under the frozen earliest-public-provenance rule or without defensible topology-matched hard negatives; the decision table maps those cases to revise or no-go.
 - Stop and escalate: a canary fails four times at G1.
-- Revise, not go: a result landing in the decision table's revise cell triggers exactly the bounded additional work that cell names, and nothing beyond it.
-- No-decision, not no-go: if the compute allocation lapses before the campaign design set is completely scored, D-memo records no-decision and states what fraction was scored. A partially scored set is never run through the decision table.
-- Deviation downgrade: any change to a frozen artifact after its gate downgrades D-memo to exploratory and is stated in the memo's first paragraph.
+- Revise, not go: a result in a revise cell triggers exactly the bounded work named by that cell.
+- No-decision: if the compute allocation lapses before the complete campaign set is scored, report the scored fraction and do not apply the decision table.
+- Deviation downgrade: any change to a frozen artifact after its gate makes D-memo exploratory and must appear in its first paragraph.
 
 ## 8. Staged funnel and promotion gates
 
@@ -482,15 +534,16 @@ A successful import or help command is not a canary.
 
 ### S1 — Freeze the target and the environment
 
-- **Purpose:** Pin what is being designed against and what is doing the designing, before anything is generated or scored.
+- **Purpose:** Pin the target, software, compute authority, and raw pipeline interfaces before controls are calibrated or campaign designs exist.
 - **Inputs:** Public structural data; installed software.
 - **Activities:**
   - Retrieve and verify a PD-1:PD-L1 co-crystal structure against RCSB; record accession, chain, method, resolution, interface density gaps, and file digest
   - Define the hotspot residue set in the deposited numbering and record it in D-target
   - Pin every tool identity, version, weight-file digest, container image digest, and licence in D-environment
-  - Run all four canaries (CAN-predict, CAN-energy, CAN-pipeline, CAN-sequence) at production settings and record their manifests
+  - Record APR-compute evidence, allocation scope, available GPU-hours, and exact timezone-aware expiry in D-environment
+  - Run all four G1 canaries at production settings; every canary ends at deterministic versioned raw outputs independent of D-thresholds, and all canary inputs are labelled non-campaign fixtures
 - **Outputs:**
-  - D-target and D-environment, both frozen with digests; four canary manifests.
+  - D-target and D-environment, both frozen with detached SHA-256 manifest entries; four G1 canary manifests.
 - **Owner:** ROLE-comp-lead
 - **Budget:** 50 A100 GPU-hours; approximately one week.
 - **Expected pace:** One week. If S1 is not frozen within two weeks, escalate to ROLE-pi rather than proceeding on an unpinned environment.
@@ -498,20 +551,22 @@ A successful import or help command is not a canary.
 
 ### S2 — Calibrate on controls and freeze the thresholds
 
-- **Purpose:** Establish whether the filter stack can tell known binders from known non-binders, and fix the thresholds and decision table before any campaign design exists.
+- **Purpose:** Estimate held-out control discrimination without scaffold or tuning leakage, then freeze the final thresholds and decision table before any campaign design exists.
 - **Prerequisites:**
   - S1
-- **Inputs:** D-target, D-environment, published binder literature.
+- **Inputs:** D-target, D-environment including the frozen allocation record, G1 raw canary fixtures, and published binder literature.
 - **Activities:**
-  - Select the positive control set from published, experimentally measured PD-L1 binders, citing each measurement and its assay
-  - Construct the negative set with both scrambles and composition-matched unrelated-fold decoys
-  - Score both sets end to end through the production pipeline
-  - Record the score distributions and their overlap, broken out per filter
-  - Fix the threshold values, the clustering distance cut, the two alternative cuts, and the decision table, and freeze D-thresholds with a digest
-  - Record each positive control's deposition or publication date against every model's training cutoff and identify the post-cutoff subset
-  - Check cumulative elapsed calendar against the allocation expiry and scope the S3 design count to what the remaining allocation and calendar can complete
+  - Select at least 8 citable positives spanning at least 6 independent scaffold groups; freeze earliest linked public provenance dates and require at least 5 cutoff-clean groups for go eligibility
+  - Freeze conservative sequence/structure/design-lineage groups and construct each group's topology-matched hard-negative stratum plus secondary scrambles
+  - Freeze leave-one-scaffold-group-out folds, negative provenance, candidate filters, within-fold tuning, combination, statistics, interval method, and decision rule before scoring
+  - Run each group fold once, tuning only on training groups and preserving held-out predictions
+  - Compute pooled all-group and post-cutoff-group held-out statistics and fixed-seed group-bootstrap intervals
+  - If the group-held-out gate passes, fit final thresholds on all controls and freeze D-thresholds with clustering cuts and the total decision table
+  - After D-thresholds is frozen, apply its table to the stored CAN-pipeline, CAN-energy, and CAN-sequence raw fixtures; verify CAN-predict field compatibility; write and freeze the separate D-canary-compat artifact before G2 acceptance
+  - Use the exact allocation expiry and remaining GPU-hours from D-environment to scope S3 to what can complete
 - **Outputs:**
-  - D-thresholds, frozen with a digest, containing the control sets, distributions, thresholds, cuts, and decision table.
+  - D-thresholds, frozen before compatibility testing, containing control results, thresholds, cuts, decision table, and detached digest.
+  - D-canary-compat, frozen after testing, binding the D-thresholds digest and recording every raw-fixture compatibility/application result.
 - **Owner:** ROLE-methods
 - **Budget:** 300 A100 GPU-hours; approximately two weeks.
 - **Expected pace:** Two weeks. Under-spend here is not a saving: an under-powered control set weakens every downstream claim.
@@ -530,7 +585,7 @@ A successful import or help command is not a canary.
   - Apply the frozen thresholds once and record pass/fail per filter per design
   - Cluster survivors at the frozen cut and at both pre-declared alternatives
 - **Outputs:**
-  - The ranked design table with full provenance, cluster assignments at three cuts, and a stage cost record.
+  - D-designs; the immutable D-runtime G3 reconciliation snapshot and event-log prefix digest; the stage cost record. The live event stream remains appendable only for S4/G4.
 - **Owner:** ROLE-comp-lead
 - **Budget:** 1,600 A100 GPU-hours; approximately four weeks.
 - **Expected pace:** Four weeks, with a mid-stage checkpoint at 800 GPU-hours. Reaching the checkpoint with the allocation largely unspent and design branches unexplored is an incomplete stage, and is escalated rather than declared efficient.
@@ -546,9 +601,10 @@ A successful import or help command is not a canary.
   - Read the cell reached from the frozen decision table
   - Record proximity to adjacent cells and the residual uncertainty
   - Write D-memo leading with the least favourable defensible interpretation
-  - Package all frozen artifacts and their digests for handoff
+  - Freeze the candidate D-memo version and detached digest; append the G4 acceptance event naming that path and digest; then close and hash the final event stream and write D-runtime's final reconciliation
+  - Package all frozen artifacts and their detached manifest for handoff
 - **Outputs:**
-  - D-memo and the complete frozen artifact set with digests.
+  - Accepted immutable D-memo version, final D-runtime event log and reconciliation, and the complete detached manifest.
 - **Owner:** ROLE-methods
 - **Budget:** 0 GPU-hours; approximately one week of writing.
 - **Expected pace:** One week.
@@ -560,32 +616,35 @@ A successful import or help command is not a canary.
 
 - **Stage:** S1
 - **Required evidence:**
-  - D-target carrying a verified accession, chain, hotspot residue set, and file digest.
-  - D-environment carrying every tool version, weight digest, image digest, and licence.
-  - All four canary manifests showing their positive, negative, and reproducibility checks passed, and the scorer ingesting canary output end to end.
+  - D-target carrying a verified accession, chain, hotspot residue set, and detached manifest digest.
+  - D-environment carrying every tool version, weight digest, image digest, licence, APR-compute evidence, available GPU-hours, allocation scope, and exact timezone-aware expiry.
+  - All four G1 canary manifests showing positive, negative, schema, and reproducibility checks passed on labelled non-campaign fixtures; every canary ends at versioned raw output independent of D-thresholds.
 - **Owner:** ROLE-methods
 - **On failure:** S2 does not start and no allocation beyond the S1 budget is consumed. A failed canary is fixed and rerun; a structure that cannot be verified against RCSB sends the epitope definition back for reselection.
 - **Criteria:**
-  - The target and environment are frozen and the pipeline demonstrably works end to end at production settings.
+  - The target, environment, and exact compute-allocation record are frozen; all four tool canaries pass deterministic production-setting checks against versioned raw schemas independent of D-thresholds; no threshold table is applied at G1.
 
 ### G2
 
 - **Stage:** S2
 - **Required evidence:**
-  - D-thresholds frozen with a digest, containing both control sets, their per-filter distributions, the overlap against composition-matched negatives, the threshold values, the three clustering cuts, and the complete decision table.
-  - The post-cutoff positive subset with at least 3 members and its separately computed separation figures.
-  - A cumulative calendar check against the allocation expiry date, with the S3 design count scoped to what the remaining allocation and calendar can complete.
+  - D-thresholds with frozen scaffold groups and folds, hard-negative provenance, held-out predictions, all-group and post-cutoff-group statistics and intervals, final thresholds, clustering cuts, complete decision table, exact predecessor digests, and detached manifest entry.
+  - At least 8 citable positives spanning 6 independent groups; frozen earliest linked public provenance per group; at least 5 cutoff-clean groups with defensible topology-matched hard negatives for any go.
+  - D-canary-compat, frozen separately after D-thresholds, binding its exact digest and recording successful CAN-pipeline, CAN-energy, CAN-sequence table applications plus CAN-predict field compatibility without manual editing.
+  - Attestations that grouping and fold definitions preceded control scoring and final thresholds preceded campaign-design generation or scoring.
+  - A capacity calculation consuming the exact D-environment allocation-record digest, remaining GPU-hours, and timezone-aware expiry to bound the S3 design count.
 - **Owner:** ROLE-comp-lead
-- **On failure:** Failure to separate is a terminal no-go. The campaign stops at S2, D-memo is written from the control calibration alone, and no design generation is funded. Retuning thresholds to manufacture separation is prohibited.
+- **On failure:** Failure of the governing group-held-out separation rule is a terminal no-go. Too few independent groups, fewer than 5 cutoff-clean groups under the earliest-public-provenance rule, or missing defensible hard negatives prohibits go. Do not retune, regroup, redate, or reselect controls after held-out scores are visible.
 - **Criteria:**
-  - Thresholds and the decision table are frozen, and the control sets separate against the composition-matched negatives.
+  - The cutoff-clean leave-one-scaffold-group-out procedure passes its governing lower bound; D-thresholds is frozen; and separate D-canary-compat proves the frozen table mechanically consumes every stored raw canary fixture before S3 dispatch.
 
 ### G3
 
 - **Stage:** S3
 - **Required evidence:**
-  - The ranked design table with every threshold column populated and no nulls, cluster assignments at all three cuts, per-design seeds and manifests, the stage cost record, and a digest check showing D-thresholds unchanged since G2.
-  - A reconciliation report showing every batch manifest was appended before its compute was consumed, and that no batch consumed compute without a prior manifest.
+  - D-designs with complete threshold columns, cluster assignments, per-design seeds and manifests, stage cost, and unchanged D-thresholds digest.
+  - D-runtime's immutable `deliverables/runtime-g3-reconciliation.md`, recording the highest sequence, exact byte length, and SHA-256 of the `artifacts/runtime/events.ndjson` prefix through G3.
+  - G3 reconciliation proving every authorized S3 batch has one terminal completion or recorded failure, no output lacks prior authorization, and no completed batch was dispatched twice. The live stream remains open only for S4/G4.
 - **Owner:** ROLE-methods
 - **On failure:** If D-thresholds changed after G2, every affected score is quarantined and rescored under the frozen table, and the change is recorded as a numbered deviation that downgrades the memo to exploratory. If the mid-stage checkpoint shows large under-spend with unexplored branches, escalate to ROLE-pi.
 - **Criteria:**
@@ -595,8 +654,10 @@ A successful import or help command is not a canary.
 
 - **Stage:** S4
 - **Required evidence:**
-  - D-memo stating the cell and the two values that placed it in its first paragraph, proximity to adjacent cells, residual uncertainty, and the least favourable defensible reading.
-  - The complete frozen artifact set with digests, reproducing from stored manifests.
+  - The accepted immutable D-memo version stating the decision cell and its two values in the first paragraph; it references the immutable G3 runtime-snapshot digest, not the later final log.
+  - The G4 event naming the accepted memo path and detached SHA-256 digest.
+  - D-runtime's final reconciliation and the complete event log through G4, both covered by the detached manifest, with the stream closed against further append.
+  - The complete frozen artifact set and detached manifest, reproducing from stored manifests.
 - **Owner:** ROLE-pi
 - **On failure:** A memo whose recommendation does not match the table cell is returned. A PI override is permitted but is recorded as an override with its reason, and never presented as the table's output.
 - **Criteria:**
@@ -605,13 +666,13 @@ A successful import or help command is not a canary.
 ## 9. Resources and fail-closed dispatch
 
 **Budgets**
-- Total compute: 2,000 A100 GPU-hours on the existing institutional allocation, expiring at quarter end.
+- Total compute: at most 2,000 A100 GPU-hours under APR-compute; D-environment records the authoritative remaining hours and exact timezone-aware expiry before G1.
 - S1: 50 GPU-hours. S2: 300 GPU-hours. S3: 1,600 GPU-hours with a checkpoint at 800. S4: 0 GPU-hours.
 - Cash: USD 0. The campaign authorizes no expenditure of any kind.
-- Budget floor: reaching S3's mid-stage checkpoint with substantially unspent allocation and unexplored design branches is an incomplete stage and is escalated to ROLE-pi, not reported as efficiency.
-- Calendar: approximately twelve weeks, bounded by the quarter-end allocation expiry.
-- Calendar ceiling: work-unit calendar ceilings sum to twelve weeks against a hard quarter-end allocation expiry, leaving no slack. ROLE-methods records cumulative elapsed calendar against the expiry date at every gate.
-- Expiry rule: at G2, the S3 design count is scoped to what the remaining allocation and remaining calendar can complete. If the allocation lapses before the design set is completely scored, the campaign reports no-decision rather than running the decision table on a partial set.
+- Budget floor: reaching S3's mid-stage checkpoint with substantially unspent allocation and unexplored design branches is incomplete and escalates to ROLE-pi.
+- Calendar: approximately twelve weeks but never beyond the exact allocation expiry recorded in D-environment.
+- Calendar ceiling: at every gate ROLE-methods computes cumulative elapsed time and remaining capacity against the frozen allocation record.
+- Expiry rule: at G2, scope S3 from the allocation-record digest, remaining hours, and exact expiry. If the complete design set cannot be scored before expiry, report no-decision rather than apply the table to a partial set.
 
 **Access constraints**
 - Compute: existing institutional cluster allocation, already approved, no further authorization needed.
@@ -627,10 +688,10 @@ A successful import or help command is not a canary.
 - No work unit may exceed its resource_ceiling. Reaching the ceiling escalates to ROLE-pi; it does not silently continue.
 - The stage owner is the single source of truth for stage status. A worker's self-report is evidence, not acceptance.
 - External actions are prohibited campaign-wide. There is no dispatch path to a vendor, a purchase, or a wet-lab action.
-- A batch manifest is appended to the event log before any compute is consumed. A batch that consumed compute without a prior manifest is a reconciliation error: the batch is quarantined and rerun, and the gap is recorded.
+- Only the single ROLE-comp-lead dispatcher may append runtime records or authorize batches. It atomically appends an authorized event before compute, and every started batch receives exactly one completed or failed terminal event before G3.
 
 **Approvals**
-- **APR-compute:** Standing institutional GPU allocation, already granted; recorded in ACC-compute.
+- **APR-compute:** Standing institutional GPU allocation, already granted. D-environment must freeze the approval evidence, scope, available GPU-hours, exact timezone-aware expiry, and detached record digest before G1 acceptance.
 - **APR-G1:** G1 acceptance: target and environment frozen, all four canaries passing.
 - **APR-G2:** G2 acceptance: thresholds, clustering cuts, and decision table frozen; controls separate.
 - **APR-G3:** G3 acceptance: design set scored once against unchanged thresholds, with full provenance.
@@ -680,55 +741,61 @@ A successful import or help command is not a canary.
 
 Delegates return artifacts and concise findings, not unbounded narrative. A local brief may narrow scope but may not weaken the constitution.
 
-### WU-freeze — Produce D-target and D-environment, frozen with digests, and pass all four canaries at production settings.
+### WU-freeze — Produce D-target and D-environment with the allocation record, freeze them under detached digests, and pass four threshold-independent G1 raw-schema canaries.
 
 - **Authoritative inputs and hashes:**
-  - The campaign constitution; the RCSB Protein Data Bank; the installed software stack and its licences.
+  - The campaign constitution; RCSB Protein Data Bank; installed software and licences; authoritative APR-compute allocation evidence.
 - **Permitted actions:**
   - Retrieve public structural data and verify it against RCSB
   - Install, pin, and digest software, weights, and container images
-  - Run the four canaries at production settings
-  - Write D-target and D-environment
+  - Record APR-compute evidence, scope, available GPU-hours, and exact timezone-aware expiry
+  - Run all four G1 canaries at production settings and validate only deterministic versioned raw outputs on labelled non-campaign fixtures
+  - Write D-target and D-environment and update the detached manifest
 - **Prohibited actions:**
-  - Generating any campaign design
-  - Scoring anything other than the canary inputs
-  - Setting or implying any filter threshold
+  - Generating or scoring any campaign design
+  - Applying or implying a filter threshold or decision table at G1
+  - Using G1 canary fixtures as scientific controls or campaign results
   - Ordering synthesis, contacting a vendor, or committing any spend
-  - Proceeding on an unverified accession or an unpinned tool version
+  - Proceeding on an unverified accession, unpinned tool version, or unrecorded allocation expiry
 - **Method and tool constraints:** M-target only. Canaries run at exactly the settings S2 and S3 will use; a canary run at reduced settings does not count.
 - **Exact outputs:**
-  - D-target, D-environment, and four canary manifests.
-- **Verification and acceptance:** G1's required evidence is present in full: verified accession and digests, every tool pinned with a licence determination, and three passing canary manifests whose output the scorer ingests end to end.
+  - D-target, D-environment, and four G1 canary manifests including the CAN-pipeline raw fixture table.
+- **Verification and acceptance:** G1 evidence is complete: verified target and detached digests, pinned tools and licences, exact APR-compute scope/hours/expiry, and four passing canary manifests. Every canary proves deterministic raw-schema transport on labelled non-campaign fixtures without consulting or applying D-thresholds.
 - **Resource ceiling:** 50 A100 GPU-hours and two calendar weeks.
 - **Retry and failure classes:** A failed canary may be fixed and rerun without escalation up to three times; the fourth failure escalates to ROLE-pi.
 - **Escalation and handoff:** Escalate to ROLE-pi if no PD-1:PD-L1 structure verifies with adequate interface density, if a required tool's licence forbids the intended use, or if the two-week ceiling is reached.
 
-### WU-calibrate — Select and freeze the control sets, score them, and freeze the threshold values, clustering cuts, and decision table before any campaign design exists.
+### WU-calibrate — Freeze controls, groups, held-out results, thresholds, clustering cuts, and the decision table as D-thresholds; then test that immutable table against stored raw canary fixtures and freeze the separate D-canary-compat artifact before G2.
 
 - **Authoritative inputs and hashes:**
-  - The constitution; frozen D-target and D-environment with their exact digests; peer-reviewed literature reporting experimental PD-L1 binding measurements.
+  - The constitution; frozen D-target and D-environment with exact digests; D-environment's APR-compute allocation record; stored G1 raw canary fixture; peer-reviewed experimental PD-L1 binding literature.
 - **Permitted actions:**
-  - Select positive controls from published experimentally measured binders, citing each measurement and assay
-  - Construct scramble and composition-matched negative controls
-  - Score both control sets end to end at production settings
-  - Fix thresholds, the three clustering cuts, and the decision table, and freeze D-thresholds
-  - Record each positive control's deposition date against every model's training cutoff and compute separation on the post-cutoff subset
-  - Scope the S3 design count to the remaining allocation and calendar
+  - Select citable positive controls, freeze conservative scaffold groups, and construct topology-matched hard-negative strata
+  - Freeze group-fold membership, negative provenance, and the complete fitting/evaluation procedure before scoring
+  - Tune only inside each fold's training groups and score each held-out group once
+  - Compute fixed-seed group-held-out estimates and intervals
+  - After the held-out gate passes, fit final thresholds on all controls and freeze D-thresholds
+  - After D-thresholds freezes, apply it to stored CAN-pipeline, CAN-energy, and CAN-sequence raw fixtures and verify CAN-predict fields; record results only in separate D-canary-compat
+  - Consume the allocation-record digest to scope S3 to the remaining hours and exact expiry
+  - Freeze clustering cuts and a total decision table governed by the post-cutoff-group lower bound
 - **Prohibited actions:**
-  - Generating or scoring any campaign design before D-thresholds is frozen
-  - Authoring a threshold value that does not trace to the control distributions
-  - Leaving any cell of the decision table undefined
-  - Revising control-set membership after freeze
-  - Ordering synthesis or committing any spend
-  - Assembling fewer than 8 positive controls, or fewer than 3 post-cutoff, and proceeding anyway
-  - Constructing composition-matched negatives by hand or outside the recorded automated procedure and its tolerances
+  - Generating or scoring campaign designs before D-thresholds is frozen
+  - Allowing related sequences, structures, design lineages, or parent scaffolds to cross evaluation folds
+  - Using held-out scores to alter that fold's filters, weights, thresholds, groups, or membership
+  - Reporting individual-positive holdout or resubstitution performance as decision evidence
+  - Letting all-group AUROC override the post-cutoff-group governing statistic
+  - Regrouping or reselecting controls after any score is visible
+  - Claiming go without 8 positives spanning 6 groups, 5 cutoff-clean groups under the earliest-public-provenance rule, and defensible topology-matched hard-negative strata
+  - Hand-building matched negatives outside the frozen rule
+  - Ordering synthesis or committing spend
 - **Method and tool constraints:** M-controls only, at the exact settings recorded in D-environment.
 - **Exact outputs:**
-  - D-thresholds, frozen with a digest.
-- **Verification and acceptance:** G2's required evidence is present: both control sets, per-filter distributions, overlap against the composition-matched subset, thresholds traceable to the distributions, three cuts, a total decision table with a bounded revise cell, and the no-designs-yet attestation.
+  - D-thresholds, frozen with a detached digest before compatibility testing.
+  - D-canary-compat, frozen afterward with the consumed D-thresholds digest and all fixture results.
+- **Verification and acceptance:** G2 evidence includes cutoff-clean group-held-out results, governing intervals, immutable D-thresholds, separate immutable D-canary-compat binding that threshold digest, clustering cuts, total decision table, predecessor digests, timing attestations, and an allocation-bound capacity calculation.
 - **Resource ceiling:** 300 A100 GPU-hours and three calendar weeks.
-- **Retry and failure classes:** Scoring may be rerun on infrastructure failure. Control-set membership is selected once; reselection after seeing distributions is prohibited and is an escalation, not a retry.
-- **Escalation and handoff:** Escalate to ROLE-pi if fewer than the pre-declared minimum number of positive controls can be found with citable measurements, or if the sets do not separate — the latter is a terminal no-go, not a retry.
+- **Retry and failure classes:** Infrastructure failures may rerun an identical group fold from its frozen inputs. Control membership, scaffold groups, folds, hard-negative strata, fitting rules, and evaluation rules cannot change after any score is visible.
+- **Escalation and handoff:** Escalate if 8 citable positives spanning 6 independent groups or 5 cutoff-clean groups cannot be found, if linked precursor dates or defensible topology-matched hard negatives cannot be established, if groups cannot be formed without leakage, or if the governing rule fails. Follow the frozen revise/no-go cell; never redate or regroup after scoring.
 - **Depends on work units:**
   - WU-freeze
 
@@ -737,11 +804,13 @@ Delegates return artifacts and concise findings, not unbounded narrative. A loca
 - **Authoritative inputs and hashes:**
   - The constitution; frozen D-target, D-environment, and D-thresholds with their exact digests.
 - **Permitted actions:**
+  - Through the single dispatcher, append an authorized batch event before compute, then started and exactly one completed or failed terminal event
   - Generate backbones and design sequences within the frozen parameters
-  - Predict complexes and compute interface and liability terms at the frozen settings
+  - Predict complexes and compute interface and liability terms at frozen settings
   - Apply the frozen thresholds once and record pass/fail per filter
   - Cluster survivors at all three declared cuts
-  - Record seeds, manifests, and per-design cost
+  - Record seeds, manifests, output digests, timestamps, actor, status, and per-design cost
+  - Generate and digest the immutable G3 reconciliation snapshot while leaving the event stream open only for S4/G4
 - **Prohibited actions:**
   - Changing any value in D-thresholds
   - Rescoring a design under different thresholds to improve its rank
@@ -751,23 +820,25 @@ Delegates return artifacts and concise findings, not unbounded narrative. A loca
   - Consuming compute for a batch whose manifest has not already been appended to the event log
 - **Method and tool constraints:** M-generate and M-score, at exactly the settings the controls were scored under. A settings difference between control scoring and design scoring invalidates the comparison and is a deviation.
 - **Exact outputs:**
-  - D-designs: the ranked design table with cluster assignments at three cuts and full provenance.
-- **Verification and acceptance:** G3's required evidence is present: all filter columns populated with no nulls, the D-thresholds digest unchanged since G2, cluster counts at three cuts, per-design seeds and manifests, and the stage cost record.
+  - D-designs with cluster assignments and full provenance.
+  - D-runtime G3 reconciliation snapshot at `deliverables/runtime-g3-reconciliation.md`, with the exact prefix length and digest for `artifacts/runtime/events.ndjson`.
+- **Verification and acceptance:** G3 evidence includes complete D-designs, unchanged D-thresholds, costs, and an immutable D-runtime G3 reconciliation snapshot that binds the exact event-log prefix and proves authorized-to-terminal batch accounting without duplicate completion.
 - **Resource ceiling:** 1,600 A100 GPU-hours and five calendar weeks.
-- **Retry and failure classes:** Batches may be regenerated on infrastructure failure with the failure recorded. Scoring is applied once per design; a design is never rescored to obtain a better result.
+- **Retry and failure classes:** An infrastructure failure ends with a failed event. A retry receives a new batch ID linked to the failed predecessor and reuses its frozen inputs and seed. A completed batch is never dispatched again, and a design is never rescored to improve its result.
 - **Escalation and handoff:** Escalate to ROLE-pi at the 800 GPU-hour checkpoint if spend is far below pace with design branches unexplored, or if the allocation will expire before the stage completes.
 - **Depends on work units:**
   - WU-calibrate
 
-### WU-decide — Apply the frozen decision table once and write D-memo.
+### WU-decide — Apply the decision table, freeze the candidate D-memo, append its G4 acceptance event, then close and reconcile the final runtime stream without creating a memo/log digest cycle.
 
 - **Authoritative inputs and hashes:**
   - The constitution; frozen D-thresholds and D-designs with their exact digests; the control calibration table.
 - **Permitted actions:**
   - Read the cell reached from the frozen decision table
   - Compute proximity to adjacent cells
-  - Write the memo leading with the cell and the least favourable defensible reading
-  - Package all frozen artifacts and digests for handoff
+  - Write the memo leading with the cell and least favourable defensible reading, referencing only the immutable G3 runtime snapshot
+  - Freeze the memo candidate and its detached digest, then append one G4 acceptance event naming both
+  - Close and hash the complete runtime log, write final reconciliation, and package the detached manifest
 - **Prohibited actions:**
   - Stating a recommendation other than the cell mechanically reached
   - Stating or implying that any design binds PD-L1
@@ -777,10 +848,10 @@ Delegates return artifacts and concise findings, not unbounded narrative. A loca
   - Running the decision table on a partially scored design set; an incomplete set yields a no-decision memo
 - **Method and tool constraints:** M-decide only. The table is applied exactly once.
 - **Exact outputs:**
-  - D-memo and the complete frozen artifact package.
-- **Verification and acceptance:** G4's required evidence is present: the memo's recommendation equals the table cell, the cell and its two values appear in the first paragraph, proximity and residual uncertainty are stated, and the package reproduces from stored manifests.
+  - Accepted immutable D-memo version, D-runtime final reconciliation, complete event log through G4, and detached manifest.
+- **Verification and acceptance:** G4 evidence includes the mechanically reached recommendation, an immutable D-memo version referencing the G3 runtime snapshot, a G4 event naming the memo path and digest, and final reconciliation/digests for the closed event stream.
 - **Resource ceiling:** 0 GPU-hours and two calendar weeks.
-- **Retry and failure classes:** A memo returned at G4 is rewritten. The table cell is not recomputed.
+- **Retry and failure classes:** A memo returned before G4 acceptance may be rewritten. After acceptance, any correction creates a new immutable version that references and retains the accepted predecessor; the table cell is not recomputed.
 - **Escalation and handoff:** Escalate to ROLE-pi if the memo's author believes the table cell is wrong — as an override request on the record, never as a rewritten recommendation.
 - **Depends on work units:**
   - WU-generate
@@ -791,25 +862,25 @@ Delegates return artifacts and concise findings, not unbounded narrative. A loca
 
 **Continuation trigger:** Work resumes from the campaign state directory and the append-only event log, never from chat history. A new session reads the last accepted gate and the frozen artifact digests, and starts the first work unit whose dependencies are accepted and whose outputs are absent.
 
-**State store:** The campaign state directory holds canonical state; the deliverables directory holds frozen artifacts, each carrying its own digest. Frozen artifacts are the durable record; a session's working notes are not.
+**State store:** Canonical campaign state remains in the campaign state directory. Frozen research artifacts live at their declared deliverable paths. Exact-byte SHA-256 digests are stored separately in UTF-8 `artifacts/MANIFEST.sha256`; an artifact never embeds the digest that identifies itself.
 
-**Event log:** Append-only. Every artifact freeze, canary run, scoring batch, gate decision, deviation, and escalation is appended with its timestamp, actor, inputs consumed by digest, and cost. Events are never edited or removed.
+**Event log:** Live path: `artifacts/runtime/events.ndjson`, UTF-8 JSON Lines schema rescamp-runtime-event-v1. Records carry sequence, unique event_id, type, batch_id where applicable, status, timezone-aware timestamp, actor, frozen input digests, terminal output digests, cumulative cost, and predecessor event_id. One ROLE-comp-lead dispatcher owns an exclusive append lock and writes complete lines atomically. At G3, snapshot and hash the exact prefix but keep the stream open only for S4/G4; after the G4 acceptance event, close it and record its final detached digest.
 
-**Checkpoint policy:** Checkpoint at every artifact freeze, at each gate decision, and after each S3 scoring batch. The batch manifest — parameters, seed, and the frozen digests it consumes — is appended to the event log before the batch consumes any compute, so an interrupted batch is always visible to reconciliation. A checkpoint records the manifest and cumulative cost so an interrupted stage resumes at batch granularity rather than restarting.
+**Checkpoint policy:** Checkpoint every artifact freeze, gate decision, and S3 batch transition. Before compute, the single dispatcher appends authorization with batch ID, parameters, seed, and frozen inputs; it then appends started and exactly one terminal event. G3 freezes an immutable prefix reconciliation. S4 freezes D-memo, appends G4 acceptance naming its digest, then closes and hashes the final stream.
 
-**Liveness:** A stage worker records a heartbeat with each batch. A stage with no batch event for more than one working day is treated as stalled and escalated to its stage owner. A chat session ending is not stage completion.
+**Liveness:** The single dispatcher records a timezone-aware heartbeat event for each active batch at least once per working day. A batch without a heartbeat or terminal event for more than one working day is stalled and escalated to its stage owner. A chat session ending is not stage completion.
 
-**Recovery:** On interruption, reconcile the event log against artifacts actually on disk. Because every manifest is appended before its compute runs, a batch with a manifest and no complete score row is an interrupted batch and is rerun from its recorded seed. A batch whose outputs exist with no prior manifest cannot have arisen from a compliant run: it is quarantined, not adopted. Artifacts present but not recorded as frozen are quarantined pending a digest check.
+**Recovery:** Before G3, reconcile batches against the live log. After G3, verify the immutable prefix snapshot before S4 and allow only S4/G4 event types. An authorized or started batch without a terminal event may retry under a linked new ID and identical inputs. Output without authorization, mismatched digests, duplicate terminal events, changes to the G3 prefix, or any append after final G4 reconciliation blocks acceptance.
 
-**Idempotency:** Every batch is keyed by its generation parameters and seed. Rerunning a completed batch reproduces its score rows and appends no duplicate event. Scoring is applied once per design; a rerun that would change a recorded score is a deviation, not a retry.
+**Idempotency:** Unique IDs and the single dispatcher prevent duplicate dispatch. Terminal events bind output digests. A completed batch is never rerun; a failed or interrupted batch retries only under a linked new ID with identical inputs and seed. G3 binds an immutable prefix; G4 is appended once; final reconciliation closes the stream.
 
 A conversational session is not a scheduler.
 
 **Plan continuity and amendments**
 
-Use `campaign.json` at `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195` as the active contract. At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit; verify required inputs before acting.
+Use `campaign.json` at `sha256:cec061c58fca6136d0d70765c7c307fa82692a7020455fdb2ce8691f7230bb2d` as the active contract.
 
-Record material deviations at the next gate. If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them.
+If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them.
 
 ## 12. Ethics, safety, rights, and external actions
 
@@ -841,33 +912,33 @@ Record material deviations at the next gate. If execution reveals a material pla
 
 **Negative/null/failed result policy:** A no-go recommendation is a complete deliverable, not a failure to deliver. The decision memo, ranked design table, control calibration table, and every filter a design failed are retained and reported identically to a go outcome. Designs scoring below the negative control distribution are reported, not dropped.
 
-**Deviation policy:** Any change to the frozen target definition, environment, control sets, or threshold table after freeze is recorded as a numbered deviation carrying the reason, the digest before and after, the approver, and an explicit statement of which conclusions it invalidates. A deviation made after campaign designs were scored downgrades the memo's recommendation to exploratory.
+**Deviation policy:** Any change to a frozen target, environment, control set, threshold table, design table, runtime record, or accepted memo version is recorded as a numbered deviation with the reason, predecessor and successor paths and detached digests, approver, and invalidated conclusions. Accepted artifacts remain immutable; corrections create new versions and retain predecessors. A deviation after campaign designs were scored downgrades the recommendation to exploratory.
 
 Lead with the least favorable defensible interpretation.
 
 **Recorded claims**
 
-### CLM-separation — The frozen filter stack separates published PD-L1 binders from composition-matched decoys by a margin recorded in the control calibration table.
+### CLM-separation — The predeclared leave-one-scaffold-group-out control procedure separates published PD-L1 binders from topology-matched hard negatives by the held-out margin recorded in D-thresholds.
 
 - **Inquiry:** INQ-separation
 - **Support:**
-  - Control score distributions from D-controls, computed through the identical pipeline used for campaign designs.
+  - Held-out scaffold-group control predictions and separation estimates in D-thresholds, computed under predeclared groups and the same production implementation later frozen for campaign designs.
 - **Counterevidence and objections:**
-  - Composition or fold confounding; small positive-control set; published binders being unrepresentative of what this pipeline generates; assay heterogeneity across the papers supplying the positives.
-- **Verification:** Compared against the composition-matched negative subset and reported as a distribution overlap, not a threshold pass rate.
+  - Residual sequence, scaffold, or topology confounding; small numbers of independent positive groups; published binders being unrepresentative of what this pipeline generates; assay heterogeneity across the papers supplying the positives.
+- **Verification:** Recompute pooled leave-one-scaffold-group-out AUROC and its fixed-seed confidence bound from D-thresholds; verify that no sequence/structure scaffold group crosses folds and never substitute in-sample or individual-positive resubstitution performance.
 - **Status:** unevaluated
-- **Uncertainty:** Bounded by control-set size and by the fact that in-silico separation on known binders does not establish prospective accuracy on novel designs.
+- **Uncertainty:** Bounded by small control sets, heterogeneous assays, residual model-training contamination, imperfect hard negatives, and the lack of wet-lab validation. Only groups whose earliest linked public sequence, structure, design lineage, or parent scaffold post-dates every production-model cutoff enter the governing lower bound.
 - **Reporting rule:** Reported whether the margin is large, small, or absent. An absent margin is the campaign's terminal result.
 
 ### CLM-recommendation — The recommendation delivered to the principal investigator is the cell reached on the frozen decision table, together with the evidence that placed it there.
 
 - **Inquiry:** INQ-spend
 - **Support:**
-  - The frozen decision table in D-thresholds, the control calibration table, and the cluster-corrected yield from the ranked design table.
+  - The frozen decision table in D-thresholds, the scaffold-group control calibration table, and the cluster-corrected yield from the ranked design table.
 - **Counterevidence and objections:**
   - That a mechanical table oversimplifies a judgement the PI should make holistically.
   - The table's purpose is to prevent the judgement from being made after seeing which designs look attractive, not to remove the PI's authority; the PI may override it and the memo records the override as such.
-- **Verification:** The cell is derived mechanically from two recorded numbers and is reproducible from the frozen table and the score files.
+- **Verification:** Derive the cell mechanically from the governing cutoff-clean leave-one-scaffold-group-out AUROC lower bound and cluster-corrected yield recorded in the frozen artifacts; verify each qualifying group's earliest linked public provenance date.
 - **Status:** unevaluated
 - **Uncertainty:** The table is a pre-commitment made under uncertainty about what the score distributions would look like; the memo reports proximity to adjacent cells.
 - **Reporting rule:** The memo states the cell first and any narrative second. A PI override is recorded as an override with its reason, never folded into the recommendation.
@@ -889,7 +960,7 @@ Once a ranked or selected deliverable is frozen there is no post-hoc re-ranking,
   - Hotspot residue set in the deposited numbering, with the numbering convention stated
   - Interface density gaps and any unmodelled residues at the interface
   - Known conformational-state caveats recorded as a threat, not resolved
-  - Freeze time and artifact digest
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
 - **Acceptance test:** The accession resolves at RCSB to a PD-1:PD-L1 complex with the recorded chains, method, and resolution; the coordinate digest matches the retrieved file; every hotspot residue exists in the deposited numbering; and the artifact carries a freeze time and digest. An accession that does not verify fails the artifact rather than being footnoted.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
@@ -901,9 +972,10 @@ Once a ranked or selected deliverable is frozen there is no post-hoc re-ranking,
   - Per tool: identity, release tag, weight-file digest, container image digest, licence, and licence-compatibility determination
   - Exact invocation, flags, template and MSA policy, and seed policy for each tool
   - Generation parameters: length range, topology constraints, batch size
-  - Canary manifests for all four canaries with their positive, negative, and reproducibility results
-  - Freeze time and artifact digest
-- **Acceptance test:** Every tool the pipeline invokes appears with a digest-pinned version and a licence determination; every generation parameter S3 uses appears here; all four canary manifests are present and passing; and re-running any canary from this artifact reproduces its recorded scores exactly at the same seed.
+  - APR-compute approval identifier and evidence, allocation scope, available A100 GPU-hours, exact expiry timestamp with timezone, and record retrieval time
+  - Canary manifests for all four G1 canaries with positive, negative, raw-schema, and reproducibility results; fixtures are labelled non-campaign and threshold-independent
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
+- **Acceptance test:** Every tool appears with a pinned version and licence determination; APR-compute scope/hours/expiry are recorded; all four G1 canaries validate deterministic production-setting raw outputs against versioned schemas independent of D-thresholds; and each reproduces from its manifest.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
 
@@ -912,16 +984,18 @@ Once a ranked or selected deliverable is frozen there is no post-hoc re-ranking,
 - **Path:** deliverables/thresholds-and-decision-table.md
 - **Schema:**
   - Exact D-target and D-environment digests consumed
-  - Positive control set of at least 8 members, each with a cited experimental measurement and its assay
-  - Per positive control: deposition or publication date recorded against the training cutoff of every model in the stack, and the resulting post-cutoff subset identified (at least 3 members)
-  - Negative control set, separating scrambles from composition-matched unrelated-fold decoys, with the automated matching procedure, its tolerances, and its random seed recorded
-  - Per-filter score distributions for both sets, and AUROC plus the fraction of matched negatives above the positive median, computed on all positives and again on the post-cutoff subset
-  - Threshold value per filter, with the calibration rule that produced it
-  - Clustering metric, the frozen cut, and both pre-declared alternative cuts
-  - The complete decision table mapping AUROC and cluster-corrected yield to go, revise, or no-go, with the revise cell's bounded scope stated
-  - Attestation that no campaign design had been generated or scored at freeze time
-  - Freeze time and artifact digest
-- **Acceptance test:** The positive set has at least 8 members with citable measurements and at least 3 post-cutoff; every negative is produced by the recorded matching procedure within its stated tolerances; every threshold traces to the control distributions rather than to an authored number; separation is reported by both named statistics on both subsets; the decision table is total over the AUROC-by-yield space with no undefined cells and a bounded revise cell; the attestation is present; and the artifact consumes the exact prior D-target and D-environment digests.
+  - At least 8 positive controls with cited assays spanning at least 6 independent scaffold groups; every production-model cutoff recorded; at least 5 cutoff-clean groups identified
+  - Frozen connected-component grouping evidence and, for each group, the earliest public date across every linked sequence, structure, design lineage, and parent scaffold plus its cutoff-clean classification
+  - Frozen leave-one-scaffold-group-out membership linking each group to topology-matched hard negatives, with provenance and evidential class
+  - Pre-score filter candidates, within-fold tuning rule, combination rule, matching procedure, tolerances, and random seed
+  - Per-group held-out predictions plus pooled all-group and post-cutoff-group AUROC and hard-negative-above-median statistics
+  - Fixed-seed 10,000-resample independent-group bootstrap intervals and the post-cutoff one-sided 90 percent lower bound
+  - Final filter thresholds fitted on all controls only after group-held-out evaluation passes
+  - Clustering metric and the 50, 60, and 70 percent identity cuts
+  - A total decision table using the cutoff-clean-group lower bound and cluster-corrected yield, including bounded revise cells and all sample/provenance minimums
+  - Attestations that grouping and folds preceded control scoring and final thresholds preceded campaign-design generation or scoring
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
+- **Acceptance test:** Every control has citable provenance and a frozen scaffold group; no related group crosses folds; every group records its earliest linked public sequence/structure/lineage/scaffold date and cutoff-clean classification; every hard negative has recorded provenance; held-out statistics reproduce; at least 8 positives span 6 groups and go requires 5 cutoff-clean groups with defensible hard negatives; final thresholds were fitted only after held-out evaluation; the decision table has no undefined cell; all digests are present.
 - **Owner:** ROLE-methods
 - **Immutable after freeze:** yes
 
@@ -935,7 +1009,9 @@ Once a ranked or selected deliverable is frozen there is no post-hoc re-ranking,
   - Pass or fail per filter and overall
   - Cluster assignment at the frozen cut and at both alternative cuts
   - Per-design compute cost
-- **Acceptance test:** Every design has every filter column populated; the D-thresholds digest matches G2; pass/fail is derivable mechanically from the recorded scores and the frozen thresholds; and cluster counts are reported at all three cuts. Designs scoring below the negative control distribution appear in the table rather than being dropped.
+  - References to the corresponding authorized, started, and terminal events in D-runtime
+  - Freeze time and detached SHA-256 entry in `artifacts/MANIFEST.sha256`
+- **Acceptance test:** Every design has every filter column populated; the D-thresholds digest matches G2; pass/fail is derivable mechanically from recorded scores and frozen thresholds; cluster counts are reported at all three cuts; D-runtime reconciles every batch; and D-designs has a detached manifest entry. Designs below the negative-control distribution remain in the table.
 - **Owner:** ROLE-comp-lead
 - **Immutable after freeze:** yes
 
@@ -945,29 +1021,58 @@ Once a ranked or selected deliverable is frozen there is no post-hoc re-ranking,
 - **Schema:**
   - First paragraph: the cell reached on the frozen decision table and the two values that placed it
   - Control separation reported as a distribution comparison with its overlap
-  - Contamination-adjusted separation on the post-cutoff positive subset, stated next to the all-positives figure
+  - Contamination-adjusted separation on the post-cutoff independent-group subset, stated next to the all-group figure
   - Cluster-corrected yield at all three cuts
   - Proximity to adjacent decision cells
   - Residual uncertainty and the least favourable defensible interpretation
   - Any numbered deviations and what they invalidate
   - Any principal-investigator override, recorded as an override with its reason
-  - Consumed artifact digests for D-target, D-environment, D-thresholds, and D-designs
-- **Acceptance test:** The stated recommendation equals the cell mechanically reached on the frozen table; the memo leads with the cell rather than with narrative; no sentence states or implies that any design binds PD-L1; and a no-go memo carries the same completeness as a go, including the full ranked table.
+  - Consumed artifact digests for D-target, D-environment, D-thresholds, D-designs, and the immutable D-runtime G3 reconciliation snapshot
+  - Version identifier, predecessor memo digest if any, acceptance time, and detached SHA-256 entry; the G4 event names this digest before the runtime stream is finalized
+- **Acceptance test:** The accepted immutable memo version states the cell mechanically reached on the frozen table; leads with the cell; never implies that a design binds PD-L1; includes the full ranked table even for no-go; and is referenced by path and detached SHA-256 digest in the accepting G4 event. Corrections create new versions and retain the accepted predecessor.
 - **Owner:** ROLE-methods
-- **Immutable after freeze:** no
+- **Immutable after freeze:** yes
+
+### D-runtime — Runtime event log and reconciliation
+
+- **Path:** artifacts/runtime/events.ndjson; deliverables/runtime-g3-reconciliation.md; deliverables/runtime-final-reconciliation.md
+- **Schema:**
+  - Live UTF-8 JSON Lines event stream at `artifacts/runtime/events.ndjson` using rescamp-runtime-event-v1
+  - Each event records sequence, unique event_id, event_type, batch_id when applicable, status, timezone-aware timestamp, actor, frozen input digests, terminal output digests, cumulative cost, and predecessor event_id
+  - Single-dispatcher exclusive append rule and one complete atomic line per transition
+  - For every batch: authorization before compute, optional heartbeats, and exactly one completed or failed terminal event
+  - Immutable G3 reconciliation snapshot recording highest sequence, exact byte length, SHA-256 of the event-log prefix through G3, batch accounting, and its own detached digest; the live stream remains appendable only for S4/G4
+  - Final G4 reconciliation after the acceptance event, covering the complete event-log digest and proving no later append; detached SHA-256 entries for the final log and both reconciliation artifacts
+- **Acceptance test:** At G3, an immutable reconciliation snapshot validates the log prefix and accounts for every S3 batch while the D-runtime stream remains open only for S4/G4. At G4, the acceptance event names D-memo's digest, final reconciliation validates the complete stream, and D-runtime freezes permanently with detached digests for the final log and both snapshots.
+- **Owner:** ROLE-comp-lead
+- **Immutable after freeze:** yes
+
+### D-canary-compat — Frozen threshold-to-canary compatibility record
+
+- **Path:** deliverables/canary-compatibility.md
+- **Schema:**
+  - Exact D-thresholds digest consumed after D-thresholds was frozen
+  - Exact digests of every stored raw CAN-pipeline, CAN-energy, CAN-sequence, and CAN-predict fixture
+  - For CAN-pipeline, CAN-energy, and CAN-sequence: every table-derived field, value, and pass/fail result produced mechanically without manual edits
+  - For CAN-predict: field-to-table compatibility result and any table field not applicable to its raw schema
+  - Execution time, tool identity, and attestation that D-thresholds remained byte-identical during the checks
+  - Freeze time and detached SHA-256 entry in artifacts/MANIFEST.sha256
+- **Acceptance test:** The artifact binds the frozen D-thresholds digest and all raw-fixture digests; every required table field resolves; mechanical applications reproduce; no source fixture or D-thresholds changes during testing; and the detached digest verifies. Any incompatibility blocks G2 without modifying D-thresholds.
+- **Owner:** ROLE-methods
+- **Immutable after freeze:** yes
 
 ## 15. Independent challenge
 
 Reviewers are read-only and bound to the frozen content and rubric digests.
 
-**Weakest independence rung among required reviews:** 1 — sequential self-critique (no independence)
+**Weakest independence rung among required reviews:** 2 — separate agent context
 
 The weakest rung bounds the challenge, not the strongest: one sequential pass in the set means the set is only as independent as that pass.
 
 Rungs: 1 sequential self-critique < 2 separate agent context < 3 separate agent blinded to conclusions < 4 human domain expert < 5 external adjudicator with its own data. Rungs 1–3 are agent review: they check internal coherence and are **not** external validation. The mode is self-attested — recorded for audit, never proven.
 
-- **methods-evidence:** pass — Pass. All five round-1 methods findings are closed in the campaign itself rather than deferred to the artifact that was going to be written after the distributions were visible. AUROC is named as the primary separation statistic with the matched-negative-above-median fraction as its secondary; the composition-matching procedure is specified with numeric tolerances and a minimum set size; training-set contamination is now a named rival explanation with a discriminating implication, a recorded date check per control, and a post-cutoff subset that separation is recomputed on; the control-set floor is 8 with at least 3 post-cutoff, so the terminal stop rule can now fire; and the clustering metric is stated with its frozen cut and both alternatives. The residual limitation is inherent rather than a defect: 8 positives and 3 post-cutoff positives bound discrimination coarsely, and the campaign says so in its uncertainty boundary and requires the memo to report the post-cutoff figure as an upper bound where the subset is too small. In-silico separation on published binders remains a weaker guarantee than any measurement, which the reporting rules state plainly. (mode: sequential-pass, reviewer: sequential-methods-r2)
-- **operations-reproducibility:** pass — Pass. The canary count is now consistent across G1's required evidence, S1's activities, WU-freeze's outputs and acceptance test, the APR-G1 approval record, and the kickoff backlog, which now names CAN-sequence alongside the other three. This was a counting error, not a control gap: the fourth canary existed and was enforced by the gate's own evidence requirement; the prose simply undercounted it, which would have let an executor present three manifests and believe G1 was satisfiable. Gate ownership, the manifest-before-compute rule, and the calendar-expiry rule are unaffected and remain as accepted at round 2. (mode: sequential-pass, reviewer: sequential-operations-r3)
+- **methods-evidence:** pass — The earliest-linked-public-provenance rule closes the prior finding. A mixed-age group is explicitly not cutoff-clean; eligibility uses the earliest public date across every linked sequence, structure, design lineage, and parent scaffold; the governing AUROC includes only cutoff-clean groups; provenance and classification are frozen before scoring; and fewer than five qualifying groups cannot produce a go. No remaining major or critical execution defect was found in the bounded scope. (mode: independent-subagent, reviewer: subagent-copernicus)
+- **operations-reproducibility:** pass — Pass for the bounded closure review. D-canary-compat now records post-freeze compatibility results separately while binding the immutable D-thresholds digest. D-runtime freezes only its prefix snapshot at G3, remains appendable solely for S4/G4, and freezes permanently after the G4 event and final reconciliation. No remaining major or critical execution defect was found in these lifecycles. (mode: independent-subagent, reviewer: subagent-euclid)
 
 ## 16. Kickoff
 

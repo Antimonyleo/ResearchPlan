@@ -9,7 +9,8 @@ A complete campaign, compiled by ResCamp 0.10.0 and committed here unedited. Eve
 > of human PD-L1 that clear frozen in-silico filters well enough to justify ordering genes
 > for wet-lab testing?
 
-**Result:** `EXECUTION-READY`, `audit --strict` exit 0, 7 interview turns, 3 review rounds.
+**Result:** `EXECUTION-READY`, `audit --strict` exit 0, 7 interview turns, four original
+review rounds, and a current independent maintenance review.
 
 ## What it demonstrates
 
@@ -25,8 +26,9 @@ generating designs, and it cannot order a gene under any outcome.
 
 ## What review actually found
 
-Two rounds, both recorded in `state/campaign.json` and summarised in
-`outputs/REVIEW_REPORT.md`.
+The four original rounds are summarised below. `state/campaign.json` and
+`outputs/REVIEW_REPORT.md` hold only the current digest-bound record for each required role,
+not an append-only review history.
 
 **Round 1 — 7 major, 1 minor.** The methods pass rejected the plan on one theme: the
 evaluation instrument was frozen in name only. The campaign said thresholds would be
@@ -53,15 +55,29 @@ while eight passages still said three: `CAN-sequence` had been added to clear th
 `tool.no_canary` error without propagating the count, so an executor could have presented
 three manifests and believed G1 was satisfiable. Correcting it staled *only* the operations
 review — the methods review stayed current, because nothing in its scope moved. That is
-per-section binding doing its job, and it is why the record below shows
-`sequential-operations-r3` beside `sequential-methods-r2`.
+per-section binding doing its job.
+
+**Round 4 — pass, operations only.** A repository review found one last reference to three
+canaries in WU-freeze's acceptance test. The work unit already required four everywhere
+else, but an executor following that sentence could have accepted an incomplete return.
+The corrected acceptance test and this review share the new campaign digest.
+
+**Current maintenance review — independent subagents.** A fresh methods reviewer first
+found that control scores were partly resubstitution, then that individual-positive folds
+still leaked scaffold families, and finally that a mixed-age scaffold group could be called
+post-cutoff. The repaired plan now uses frozen leave-one-scaffold-group-out evaluation,
+topology-matched hard negatives, and an earliest-public-provenance rule for cutoff-clean
+groups. A separate operations reviewer found circular canary gates, an underspecified event
+log, and incompatible freeze order. The final plan separates G1 raw-schema checks from G2
+threshold compatibility, records compatibility in its own immutable artifact, and uses a G3
+event-log prefix snapshot before final G4 closure. Both current role records pass with no
+open major or critical finding.
 
 ## Honest limitations of this example
 
-- **The reviews are `sequential-pass`, the weakest rung on the independence ladder.** The
-  same session authored the plan and reviewed it. `REVIEW_REPORT.md` carries the engine's
-  own `WARNING review.sequential` saying so, and independence is self-attested throughout.
-  A separate-context or blinded reviewer would be stronger evidence.
+- **The current reviews are `independent-subagent`, but that is self-attested.** They ran in
+  separate agent contexts and include execution evidence; they were not blinded, external,
+  or independent of this repository. The original four rounds were `sequential-pass`.
 - **No pilot was run.** This is `reviewed-static` plan evidence: a document that was read,
   not a campaign that was watched running.
 - **`EXECUTION-READY` means the plan passed its declared gates.** It does not mean the

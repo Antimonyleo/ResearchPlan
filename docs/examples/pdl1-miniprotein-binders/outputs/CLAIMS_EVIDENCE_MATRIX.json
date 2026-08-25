@@ -1,22 +1,22 @@
 {
   "campaign_id": "pdl1-miniprotein-binders",
-  "content_digest": "sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195",
+  "content_digest": "sha256:cec061c58fca6136d0d70765c7c307fa82692a7020455fdb2ce8691f7230bb2d",
   "rows": [
     {
       "counterevidence_or_objections": [
-        "Apparent separation driven by a confound rather than by binding: positive controls sharing a fold, a length range, or an amino-acid composition with each other and not with the negatives.",
-        "The rival explanation is that the stack is detecting 'looks like a designed protein', not 'binds this epitope'.",
-        "Training-set contamination: published binders are frequently deposited structures, and deposited structures are frequently in a structure-prediction model's training data. Their interface confidence would then be partly memorization, inflating separation in a way that does not transfer to novel designs — which is exactly the transfer the go decision assumes."
+        "Apparent separation driven by a confound rather than by binding: positive controls sharing a sequence family, design lineage, scaffold, or topology that the negatives do not share.",
+        "The rival explanation is that the stack is detecting a familiar scaffold or 'looks like a designed protein', not 'binds this epitope'.",
+        "Training-set contamination: published binders are frequently deposited structures, and deposited structures are frequently in a structure-prediction model's training data. Their interface confidence would then be partly memorization, inflating separation in a way that does not transfer to novel designs."
       ],
       "id": "INQ-separation",
       "kind": "inquiry",
-      "reporting_rule": "Report the full distribution comparison and its overlap. Failure to separate is reported as a terminal result, never as a calibration step.",
+      "reporting_rule": "Report group-level held-out results, pooled point estimates, intervals, and all-group versus post-cutoff-group disagreement. Failure of the post-cutoff-group lower bound, independent-group minimum, or hard-negative requirement is a revise or terminal no-go, never a calibration opportunity.",
       "statement": "Under the frozen filter stack, do published PD-L1 binders separate from scrambled and unrelated-fold decoys well enough for the ranking to carry decision weight?",
       "status": "open",
       "support": [
-        "Score distributions for the frozen positive and negative control sets, computed through the identical pipeline, with the overlap between distributions reported and the per-filter contribution broken out."
+        "Predeclared leave-one-scaffold-group-out predictions for positives and topology-matched hard-negative strata, with group provenance, all-group and post-cutoff-group AUROC, fixed-seed interval estimates, and per-filter diagnostics."
       ],
-      "verification": "Separation is judged against the composition-matched negative subset by AUROC, not against scrambles and not by threshold pass rate. It is computed on all positives and again on the post-cutoff subset, and both are reported. Judged once, on the frozen thresholds, before any campaign design is scored."
+      "verification": "Use only pooled held-out scaffold-group predictions. Freeze each group's earliest public date across every linked sequence, structure, design lineage, and parent scaffold; the group is cutoff-clean only if that date is later than every production model's training cutoff. The decision table consumes the one-sided 90 percent lower confidence bound for at least 5 cutoff-clean groups with defensible topology-matched hard negatives. All-group AUROC is descriptive only."
     },
     {
       "counterevidence_or_objections": [
@@ -46,22 +46,22 @@
       "support": [
         "The frozen decision table mapping observed separation and cluster-corrected yield to go, revise, or no-go, applied once, with the memo stating which cell was reached."
       ],
-      "verification": "The decision table is frozen in D-thresholds before any campaign design is scored, and is applied exactly once. Reaching a cell is mechanical; the memo may add context but may not move the cell."
+      "verification": "Freeze the decision table in D-thresholds before campaign designs are generated. Apply it once using the one-sided 90 percent lower bound of post-cutoff out-of-fold AUROC and cluster-corrected yield. All-positive AUROC is descriptive only. The memo may add context but cannot move the mechanically reached cell."
     },
     {
       "counterevidence_or_objections": [
-        "Composition or fold confounding; small positive-control set; published binders being unrepresentative of what this pipeline generates; assay heterogeneity across the papers supplying the positives."
+        "Residual sequence, scaffold, or topology confounding; small numbers of independent positive groups; published binders being unrepresentative of what this pipeline generates; assay heterogeneity across the papers supplying the positives."
       ],
       "id": "CLM-separation",
       "inquiry_id": "INQ-separation",
       "kind": "claim",
       "reporting_rule": "Reported whether the margin is large, small, or absent. An absent margin is the campaign's terminal result.",
-      "statement": "The frozen filter stack separates published PD-L1 binders from composition-matched decoys by a margin recorded in the control calibration table.",
+      "statement": "The predeclared leave-one-scaffold-group-out control procedure separates published PD-L1 binders from topology-matched hard negatives by the held-out margin recorded in D-thresholds.",
       "status": "unevaluated",
       "support": [
-        "Control score distributions from D-controls, computed through the identical pipeline used for campaign designs."
+        "Held-out scaffold-group control predictions and separation estimates in D-thresholds, computed under predeclared groups and the same production implementation later frozen for campaign designs."
       ],
-      "verification": "Compared against the composition-matched negative subset and reported as a distribution overlap, not a threshold pass rate."
+      "verification": "Recompute pooled leave-one-scaffold-group-out AUROC and its fixed-seed confidence bound from D-thresholds; verify that no sequence/structure scaffold group crosses folds and never substitute in-sample or individual-positive resubstitution performance."
     },
     {
       "counterevidence_or_objections": [
@@ -75,9 +75,9 @@
       "statement": "The recommendation delivered to the principal investigator is the cell reached on the frozen decision table, together with the evidence that placed it there.",
       "status": "unevaluated",
       "support": [
-        "The frozen decision table in D-thresholds, the control calibration table, and the cluster-corrected yield from the ranked design table."
+        "The frozen decision table in D-thresholds, the scaffold-group control calibration table, and the cluster-corrected yield from the ranked design table."
       ],
-      "verification": "The cell is derived mechanically from two recorded numbers and is reproducible from the frozen table and the score files."
+      "verification": "Derive the cell mechanically from the governing cutoff-clean leave-one-scaffold-group-out AUROC lower bound and cluster-corrected yield recorded in the frozen artifacts; verify each qualifying group's earliest linked public provenance date."
     }
   ]
 }

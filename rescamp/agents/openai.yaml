@@ -1,5 +1,5 @@
 interface:
-  display_name: ResCamp
-  short_description: Compile vague research goals into reviewed, auditable campaigns.
+  display_name: "ResCamp"
+  short_description: "Compile ideas or active projects into auditable research plans."
 policy:
   allow_implicit_invocation: false

@@ -10,6 +10,9 @@ dist/
 # Benchmark and campaign working directories
 benchmark/runs/
 research-campaigns/
+docs/examples/*/working/
 
 # Host session metadata
 .claude/
+.agents/
+.codex/

@@ -1,6 +1,6 @@
 # ResCamp
 
-Turn an early research idea into a plan a person or an agent team can actually execute.
+Turn a new research idea or an in-progress project into a plan a person or an agent team can actually execute.
 
 Ask an agent a research question and it will usually just answer. But a request like:
 
@@ -11,12 +11,14 @@ burnout is measured, whether the goal is causal or descriptive, what evidence wo
 the conclusion, and what approvals are needed. An agent that starts immediately answers
 those questions on your behalf and hides the assumptions inside polished work.
 
-ResCamp is an explicitly invoked skill for Claude Code and Codex that closes that gap. It
-sketches a first draft, asks only the questions whose answers change the plan, compiles the
-answers into a research contract, has it reviewed by separate agents, repairs what it can,
-and then tells you plainly whether the plan is executable or blocked.
+ResCamp is an explicitly invoked skill for Claude Code and Codex that closes that gap. For a
+new idea, it sketches a first draft. For a project already underway, it first inspects the
+available files, logs, outputs, and decisions; records what is complete, active, uncertain, or
+in need of repair; and starts the prospective plan at the current decision frontier. It then
+asks only the questions whose answers change the plan, compiles a research contract, prepares
+role-scoped review packets, and tells you plainly whether the plan is executable or blocked.
 
-It is not a STEM tool. Eleven research archetypes are supported — experimental,
+It is not limited to STEM. Eleven research archetypes are supported — experimental,
 computational, observational, qualitative-field, humanities-interpretive,
 conceptual-normative, evidence-synthesis, policy-program-evaluation, design-engineering,
 creative-practice, and mixed-methods — and the vocabulary follows: where an experiment has a
@@ -25,9 +27,10 @@ criticism rule.
 
 ## See what it produces
 
-A real campaign, compiled by ResCamp and committed unedited:
+A complete worked campaign plan, compiled by ResCamp and committed unedited:
 [**de novo PD-L1 miniprotein binders**](docs/examples/pdl1-miniprotein-binders/) — 7 interview
-turns, 2 review rounds, `EXECUTION-READY`.
+turns, four original review rounds, a current independent maintenance review, and
+`EXECUTION-READY`.
 
 The first question it asked was not about proteins:
 
@@ -53,8 +56,10 @@ boilerplate:
 > batch manifest to exist *before* the batch runs, so an interrupted batch is invisible and
 > silently dropped — producing a design set that looks complete and is not.
 
-Eight findings, repaired, re-reviewed. The second round caught a defect the first repair
-had introduced. The full plan, both review rounds, and the honest limitations are in the
+Eight first-round findings were repaired; later rounds caught three cross-reference defects,
+including one introduced by the first repair. A fresh maintenance review then found and
+closed additional control-leakage and execution-lifecycle defects. The full plan, review
+history, and honest limitations are in the
 [example](docs/examples/pdl1-miniprotein-binders/).
 
 ## Install
@@ -74,18 +79,29 @@ install, add `--copy` if you would rather have files than symlinks.
 Then invoke it with your idea. Plain invocation means `start`:
 
 ```text
-/rescamp   Does a four-day workweek reduce self-reported burnout in mid-size software firms?
-$rescamp   Does a four-day workweek reduce self-reported burnout in mid-size software firms?
+Claude Code: /rescamp Does a four-day workweek reduce self-reported burnout in mid-size software firms?
+Codex:       $rescamp Does a four-day workweek reduce self-reported burnout in mid-size software firms?
+```
+
+For work already underway, name the current objective and point the agent at the project
+materials. ResCamp will inspect them before asking you to confirm its status baseline:
+
+```text
+Claude Code: /rescamp start Finish the reading-intervention review in this repository without repeating valid completed work.
+Codex:       $rescamp start Finish the reading-intervention review in this repository without repeating valid completed work.
 ```
 
 Campaigns live in `research-campaigns/<name>/` and survive across sessions.
 
 ## How it works
 
-**1. Sketch first, interrogate second.** ResCamp opens with a corrigible *Campaign sketch
-v0* — purpose, scope, inquiries, evidence, methods, risks, outputs — so you have something
-concrete to push back on. No form to fill in before you get value, and no treating the first
-plausible reading as settled.
+**1. Establish the starting point, then sketch.** A new project opens with a corrigible
+*Campaign sketch v0* — purpose, scope, inquiries, evidence, methods, risks, outputs. An
+existing project first gets a *Project baseline v0*: the evidence used to assess status,
+accepted completed work, active work, inherited artifacts and decisions, deviations, recheck
+needs, and the next decision. The sketch then continues from that frontier instead of
+restarting valid work. Prior results retain their original provenance; a new plan cannot
+retroactively call an evaluation preregistered or prospectively frozen.
 
 **2. Ask only what changes the plan.** One question per turn, asked only when the answer can
 move scope, evidence, method, ethics, authority, resources, acceptance criteria, or outputs.
@@ -112,10 +128,10 @@ autonomous campaign needs exact controls.
 **5. Review, repair, and label readiness honestly.** When the interview stops, ResCamp
 freezes the content and runs deterministic checks — missing structure, broken references,
 stage cycles, unsupported external actions, incomplete deliverables. Then it writes
-role-scoped packets for separate reviewer agents, so review is not the author rereading its
-own answer. Reviews bind to the exact sections they inspected: a later edit invalidates only
-what it touched. Agent-fixable defects get repaired; anything needing your authority, an
-external approval, or an accepted risk stays visible.
+role-scoped packets for fresh reviewer contexts when available; sequential review remains
+allowed but is labeled weaker. Reviews bind to the exact sections they inspected: a later
+edit invalidates only what it touched. Agent-fixable defects get repaired; anything needing
+your authority, an external approval, or an accepted risk stays visible.
 
 `finalize` then produces either an `EXECUTION-READY` bundle or a `NOT EXECUTION-READY` draft
 with exact blockers. It fails closed — no reviews, stale reviews, an unapproved external
@@ -144,8 +160,8 @@ scheduler, and neither is a plan.
 
 | Mode | When to use it |
 |---|---|
-| `start <goal>` | Beginning a new idea. Creates the sketch, initializes state, starts the interview. |
-| `resume [campaign]` | Returning later. Continues from the highest-value unresolved branch. |
+| `start <goal>` | Beginning a new idea or adopting an existing project. Assesses supplied project state when present, creates the sketch, and starts the interview. |
+| `resume [campaign]` | Returning to a ResCamp campaign. Continues from the highest-value unresolved branch. |
 | `status [campaign]` | Read-only: decisions, assumptions, blockers, question budget, review freshness, next action. |
 | `draft [campaign]` | Renders the current material as a clearly non-final bundle, missing decisions visible. |
 | `finalize [campaign]` | Runs validation and review, repairs what it can, asks any remaining material question, renders. |
@@ -209,8 +225,8 @@ make skill-check    # skill structure and metadata
 make validate-full  # compiles scripts, validates schemas and scenarios, runs everything
 ```
 
-`scripts/host_acceptance.py` checks that an installed host can invoke ResCamp and produce
-the expected artifacts. It tests transport, not research quality.
+`scripts/host_acceptance.py` checks that an installed host can invoke ResCamp and create or
+update the expected artifacts. It tests transport, not research quality.
 
 </details>
 
@@ -218,9 +234,8 @@ the expected artifacts. It tests transport, not research quality.
 
 ResCamp catches structural omissions, inconsistent references, stale reviews, unsupported
 readiness claims, and modified artifacts. Agent review can surface unclear instructions and
-weak research logic — as it did in the example above, where it was `sequential-pass`, the
-weakest rung on the independence ladder. A separate or blinded reviewer is stronger; neither
-is external validation.
+weak research logic — as it did in the example above. Its current records came from separate
+subagent contexts; that independence is self-attested, not blinded or external validation.
 
 It cannot tell you whether the proposed science is true. It cannot authenticate a real-world
 approval, guarantee that a later agent obeys the prompt, or substitute for data, replication,

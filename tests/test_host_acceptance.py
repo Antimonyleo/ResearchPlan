@@ -62,6 +62,99 @@ class HostAcceptanceTests(unittest.TestCase):
             "codex", "The rescamp skill is disabled; I cannot invoke it."
         ))
         self.assertFalse(host_acceptance.response_ok("codex", "Error: skill not found"))
+        self.assertFalse(host_acceptance.response_ok("codex", "Unknown skill: rescamp"))
+
+    def test_timeout_must_be_positive(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            result = self.run_acceptance(
+                "--host", "codex", "--project", temp_str, "--mode", "help",
+                "--timeout", "0", "--dry-run",
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("positive integer", result.stderr)
+
+    def test_host_timeout_returns_a_failed_receipt_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            fake = root / "slow-host.py"
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys, time\n"
+                "if '--version' in sys.argv:\n"
+                "    print('slow-host 1.0')\n"
+                "else:\n"
+                "    time.sleep(5)\n",
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            project = root / "project"
+            installed = project / ".agents/skills/rescamp/SKILL.md"
+            installed.parent.mkdir(parents=True)
+            installed.write_text("---\nname: rescamp\n---\n", encoding="utf-8")
+            evidence = root / "evidence"
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "help",
+                "--executable", str(fake), "--timeout", "1",
+                "--evidence-dir", str(evidence),
+            )
+            receipt_file_exists = (evidence / "receipt.json").is_file()
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertTrue(receipt["timed_out"])
+        self.assertEqual(receipt["timeout_stage"], "host")
+        self.assertEqual(receipt["returncode"], 124)
+        self.assertFalse(receipt["passed"])
+        self.assertTrue(receipt_file_exists)
+
+    def test_version_timeout_returns_a_failed_receipt_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            fake = root / "slow-version.py"
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import time\n"
+                "time.sleep(5)\n",
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            project = root / "project"
+            installed = project / ".agents/skills/rescamp/SKILL.md"
+            installed.parent.mkdir(parents=True)
+            installed.write_text("---\nname: rescamp\n---\n", encoding="utf-8")
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "help",
+                "--executable", str(fake), "--timeout", "1",
+            )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertTrue(receipt["timed_out"])
+        self.assertEqual(receipt["timeout_stage"], "version")
+        self.assertEqual(receipt["host_version_returncode"], 124)
+        self.assertEqual(receipt["returncode"], 124)
+        self.assertFalse(receipt["passed"])
+
+    def test_missing_executable_returns_a_failed_receipt_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            project = root / "project"
+            installed = project / ".agents/skills/rescamp/SKILL.md"
+            installed.parent.mkdir(parents=True)
+            installed.write_text("---\nname: rescamp\n---\n", encoding="utf-8")
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "help",
+                "--executable", str(root / "does-not-exist"),
+            )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt["failure_stage"], "version")
+        self.assertEqual(receipt["host_version_returncode"], 127)
+        self.assertFalse(receipt["passed"])
 
     def test_non_help_modes_require_an_expected_artifact(self):
         with tempfile.TemporaryDirectory() as temp_str:
@@ -106,7 +199,7 @@ class HostAcceptanceTests(unittest.TestCase):
                     self.assertTrue(receipt["passed"])
                     self.assertEqual(
                         receipt["acceptance_scope"],
-                        "transport-response-and-artifact-presence",
+                        "transport-response-and-artifact-change",
                     )
                     self.assertTrue(receipt["host_version"])
                     self.assertEqual(len(receipt["skill_tree_sha256"]), 64)
@@ -114,6 +207,35 @@ class HostAcceptanceTests(unittest.TestCase):
                     self.assertTrue((evidence / "request.txt").is_file())
                     self.assertTrue((evidence / "response.txt").is_file())
                     self.assertTrue((evidence / "receipt.json").is_file())
+
+    def test_preexisting_artifact_cannot_satisfy_acceptance(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            fake = root / "no-op-host.py"
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('no-op-host 1.0' if '--version' in sys.argv else 'ok')\n",
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            project = root / "project"
+            installed = project / ".agents/skills/rescamp/SKILL.md"
+            installed.parent.mkdir(parents=True)
+            installed.write_text("---\nname: rescamp\n---\n", encoding="utf-8")
+            artifact = project / "already-there.txt"
+            artifact.write_text("old output", encoding="utf-8")
+
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "test",
+                "--campaign", "campaign", "--executable", str(fake),
+                "--expect", "already-there.txt",
+            )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertFalse(receipt["passed"])
+        self.assertEqual(receipt["expected_artifacts"], {"already-there.txt": False})
 
 
 if __name__ == "__main__":

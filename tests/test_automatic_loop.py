@@ -3,6 +3,7 @@ import unittest
 import argparse
 import contextlib
 import io
+import json
 from pathlib import Path
 from common import engine, complete_state
 
@@ -22,6 +23,25 @@ class AutomaticLoopTests(unittest.TestCase):
                 self.assertEqual(packet["content_digest"], digest)
                 self.assertEqual(packet["rubric_digest"], rubric)
                 self.assertTrue(packet["instructions"]["read_only"])
+
+    def test_invalid_design_does_not_offer_stale_review_work(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state(profile="scoped")
+            state["sketch"]["scope"] = ""
+            engine.save_state(campaign_dir, state)
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                engine.cmd_quality_loop(argparse.Namespace(campaign=str(campaign_dir)))
+            payload = json.loads(output.getvalue())
+
+            self.assertEqual(payload["phase"], "awaiting-design-repair")
+            self.assertEqual(payload["review_packets_to_execute"], [])
+            self.assertEqual(payload["roles_requiring_review"], [])
+            self.assertEqual(payload["roles_pending_after_design_repair"], ["skeptical"])
 
     def test_agent_fix_does_not_replace_user_authority(self):
         state = complete_state()
@@ -64,6 +84,118 @@ class AutomaticLoopTests(unittest.TestCase):
             result = engine.validate_state(after, include_reviews=True)
             self.assertFalse(result["execution_ready"])
             self.assertTrue(any(item["code"] == "review.missing" for item in result["errors"]))
+
+    def test_quality_loop_ignores_replaceable_stale_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state(profile="standard")
+            engine.save_state(campaign_dir, state)
+            engine.render_outputs(campaign_dir, state, force_draft=True)
+            state = engine.load_state(campaign_dir)
+            state["campaign"]["mission"]["scope"] = "A refined bounded scope"
+            state["content_version"] += 1
+            engine.save_state(campaign_dir, state)
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                engine.cmd_quality_loop(argparse.Namespace(campaign=str(campaign_dir)))
+            payload = json.loads(output.getvalue())
+
+            self.assertEqual(payload["phase"], "awaiting-review-execution")
+            self.assertFalse(any(item["code"] == "outputs.stale"
+                                 for item in payload["deterministic_validation"]["errors"]))
+
+    def test_replacement_draft_does_not_report_its_old_bundle_as_a_blocker(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state(profile="standard")
+            engine.save_state(campaign_dir, state)
+            engine.render_outputs(campaign_dir, state, force_draft=True)
+            state = engine.load_state(campaign_dir)
+            state["campaign"]["mission"]["scope"] = "A refined bounded scope"
+            state["content_version"] += 1
+            engine.save_state(campaign_dir, state)
+
+            result = engine.render_outputs(campaign_dir, state, force_draft=True)
+            blockers = (campaign_dir / "outputs/BLOCKERS.md").read_text(encoding="utf-8")
+
+            self.assertTrue(result["rendered"])
+            self.assertNotIn("outputs.stale", blockers)
+
+    def test_status_exposes_resume_decisions_assumptions_blockers_and_next_branch(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state(profile="standard")
+            state["assumptions"] = ["The inherited manifest is authoritative"]
+            state["blockers"] = [{
+                "id": "source-access", "severity": "major", "status": "open",
+                "description": "Primary source access is not confirmed", "owner": "lead",
+            }]
+            state["intent_dimensions"].append({
+                "id": "source-boundary", "label": "Source boundary",
+                "status": "unresolved", "value": "", "importance": "critical",
+                "reason": "Awaiting an access decision", "dependencies": ["source-access"],
+            })
+            engine.save_state(campaign_dir, state)
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                engine.cmd_status(argparse.Namespace(campaign=str(campaign_dir)))
+            payload = json.loads(output.getvalue())
+
+            self.assertEqual(payload["interview"]["next_branch"], "source-boundary")
+            self.assertIn("bounded decision", [item["value"] for item in payload["decisions"]])
+            self.assertEqual(payload["assumptions"], state["assumptions"])
+            self.assertEqual(payload["open_blockers"][0]["description"],
+                             "Primary source access is not confirmed")
+
+    def test_status_prioritizes_critical_resume_branch_over_storage_order(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state(profile="standard")
+            for ident, importance in (("minor-detail", "low"), ("critical-scope", "critical")):
+                state["intent_dimensions"].append({
+                    "id": ident, "label": ident, "status": "unresolved", "value": "",
+                    "importance": importance, "reason": "", "dependencies": [],
+                })
+            engine.save_state(campaign_dir, state)
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                engine.cmd_status(argparse.Namespace(campaign=str(campaign_dir)))
+
+            self.assertEqual(json.loads(output.getvalue())["interview"]["next_branch"],
+                             "critical-scope")
+
+    def test_status_separates_stale_outputs_from_design_validity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state(profile="standard")
+            engine.save_state(campaign_dir, state)
+            engine.render_outputs(campaign_dir, state, force_draft=True)
+            state = engine.load_state(campaign_dir)
+            state["campaign"]["mission"]["scope"] = "A refined bounded scope"
+            state["content_version"] += 1
+            engine.save_state(campaign_dir, state)
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                engine.cmd_status(argparse.Namespace(campaign=str(campaign_dir)))
+            payload = json.loads(output.getvalue())
+
+            self.assertTrue(payload["design_valid"])
+            self.assertEqual(payload["design_errors"], 0)
+            self.assertTrue(payload["output_stale"])
 
     def test_review_record_schema_logic(self):
         state = complete_state()

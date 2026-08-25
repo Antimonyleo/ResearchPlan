@@ -12,6 +12,11 @@
       "description": "Uses vendor claims as efficacy evidence",
       "id": "app-marketing",
       "severity": "major"
+    },
+    {
+      "description": "Restarts or trusts prior screening without reconciling its protocol and artifacts",
+      "id": "mid-project-status-ignored",
+      "severity": "major"
     }
   ],
   "domain": "education research",
@@ -20,25 +25,46 @@
       "description": "Do not promise pooling before checking heterogeneity.",
       "id": "meta-analysis-guaranteed",
       "severity": "major"
+    },
+    {
+      "description": "Do not call eligibility or synthesis rules written after screening prospectively frozen.",
+      "id": "retroactive-freeze",
+      "severity": "critical"
     }
   ],
   "hidden_brief": {
-    "answer_policy": "Do not volunteer exact population/outcomes until PICO-like scope is asked.",
+    "answer_policy": "Volunteer the existing search and screening status when asked what has already been done; do not volunteer exact population/outcomes until PICO-like scope is asked.",
     "facts": {
       "comparators": "usual instruction or active digital control",
       "date": "search through July 2026",
+      "existing_artifacts": "ERIC and PsycINFO search exports plus a single-reviewer screening sheet for 900 titles",
+      "existing_status": "database searches and first-pass title screening are complete; full-text screening has not started",
       "intervention": "digital phonics/decoding apps",
       "outcomes": "standardized decoding and comprehension",
-      "population": "grades 6-8 with documented reading difficulty"
+      "population": "grades 6-8 with documented reading difficulty",
+      "protocol_gap": "the prior search was documented, but eligibility criteria and a second-reviewer check were not frozen before title screening"
     },
     "knowledge_limits": [
+      "whether the first-pass screening can be accepted after an audit sample",
       "number of eligible studies",
       "meta-analysis feasibility"
     ]
   },
   "id": "reading-intervention-review",
-  "initial_request": "Review whether phonics apps help struggling middle-school readers.",
+  "initial_request": "We already searched two databases and screened about 900 titles. Help us finish a review of whether phonics apps help struggling middle-school readers without starting over.",
   "material_dimensions": [
+    {
+      "acceptable_resolution": [
+        "explicit user answer",
+        "verified status from supplied artifacts",
+        "explicit blocker"
+      ],
+      "answer_key": "searches and single-reviewer title screening complete; reconcile exports, protocol gap, and an audit sample before accepting the screening",
+      "expected_by_turn": 1,
+      "forces_blocker": false,
+      "id": "existing-project-baseline",
+      "importance": "critical"
+    },
     {
       "acceptable_resolution": [
         "explicit user answer",
@@ -46,7 +72,7 @@
         "explicit blocker"
       ],
       "answer_key": "grades 6-8 with reading difficulty; digital phonics/decoding apps",
-      "expected_by_turn": 1,
+      "expected_by_turn": 2,
       "forces_blocker": false,
       "id": "review-question",
       "importance": "critical"
@@ -58,7 +84,7 @@
         "explicit blocker"
       ],
       "answer_key": "usual/active control; standardized decoding and comprehension",
-      "expected_by_turn": 2,
+      "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "comparators-outcomes",
       "importance": "critical"
@@ -70,7 +96,7 @@
         "explicit blocker"
       ],
       "answer_key": "databases, grey literature, languages, through July 2026",
-      "expected_by_turn": 3,
+      "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "search-boundary",
       "importance": "material"
@@ -82,7 +108,7 @@
         "explicit blocker"
       ],
       "answer_key": "randomized and strong quasi-experimental studies separated",
-      "expected_by_turn": 4,
+      "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "study-designs",
       "importance": "critical"
@@ -94,7 +120,7 @@
         "explicit blocker"
       ],
       "answer_key": "dual screening and structured extraction",
-      "expected_by_turn": 5,
+      "expected_by_turn": 6,
       "forces_blocker": false,
       "id": "screening-extraction",
       "importance": "material"
@@ -106,7 +132,7 @@
         "explicit blocker"
       ],
       "answer_key": "risk-of-bias and certainty appraisal",
-      "expected_by_turn": 6,
+      "expected_by_turn": 7,
       "forces_blocker": false,
       "id": "bias-certainty",
       "importance": "critical"
@@ -118,7 +144,7 @@
         "explicit blocker"
       ],
       "answer_key": "meta-analysis only if sufficiently comparable; otherwise structured synthesis",
-      "expected_by_turn": 7,
+      "expected_by_turn": 8,
       "forces_blocker": false,
       "id": "synthesis-policy",
       "importance": "material"
@@ -149,6 +175,10 @@
     {
       "description": "grey literature and small-study assessment",
       "id": "publication-bias"
+    },
+    {
+      "description": "status baseline, inherited-artifact audit, and a prospective restart boundary that preserves usable prior work",
+      "id": "mid-project-reconciliation"
     }
   ],
   "title": "Systematic review of reading interventions"

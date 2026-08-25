@@ -19,9 +19,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-VERSION = "0.10.0"
-SCHEMA_VERSION = "3.1"
 SKILL_DIR = Path(__file__).resolve().parent.parent
+VERSION = (SKILL_DIR / "VERSION").read_text(encoding="utf-8").strip()
+SCHEMA_VERSION = "3.1"
 STATE_REL = Path("state/campaign.json")
 VALIDATION_REL = Path("working/validation.json")
 REVIEW_DIR_REL = Path("working/review_packets")
@@ -69,6 +69,7 @@ STOP_REASONS = {
     "material-completeness", "low-next-question-value", "user-budget-reached",
     "blocked-by-external-dependency", "user-requested-draft",
 }
+ENTRY_MODES = {"new-project", "existing-project"}
 
 # Single source of truth for campaign object shapes. Drives `add` key checking,
 # `schema` output, and the rendered campaign prompt. `required` mirrors
@@ -214,6 +215,16 @@ OBJECT_SPECS: dict[str, dict[str, Any]] = {
 # whole architecture reference to find them costs ~4k tokens. `required` mirrors
 # validate_state exactly; changing one without the other is a defect.
 SECTION_SPECS: dict[str, dict[str, Any]] = {
+    "campaign.starting_point": {
+        "required": ("entry_mode",),
+        "optional": (
+            "status_as_of", "status_summary", "assessment_basis",
+            "accepted_completed_work", "work_in_progress", "inherited_artifacts",
+            "decisions_in_force", "known_deviations", "requires_recheck", "next_decision",
+        ),
+        "note": ("Use entry_mode 'new-project' or 'existing-project'. Existing projects also "
+                 "require status_as_of, status_summary, assessment_basis, and next_decision."),
+    },
     "campaign.mission": {
         "required": ("decision_or_purpose", "scope", "completion_definition"),
         "optional": ("non_goals", "intended_users"),
@@ -400,7 +411,8 @@ def _title_from_goal(goal: str) -> str:
     return cut.rstrip(" ,;:.") + "…"
 
 
-def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: str) -> dict[str, Any]:
+def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: str,
+                  entry_mode: str = "new-project") -> dict[str, Any]:
     limits = PROFILES[profile]
     return {
         "schema_version": SCHEMA_VERSION,
@@ -434,6 +446,13 @@ def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: s
             "stopping_note": "",
         },
         "campaign": {
+            "starting_point": {
+                "entry_mode": entry_mode,
+                "status_as_of": "", "status_summary": "", "assessment_basis": [],
+                "accepted_completed_work": [], "work_in_progress": [],
+                "inherited_artifacts": [], "decisions_in_force": [],
+                "known_deviations": [], "requires_recheck": [], "next_decision": "",
+            },
             "constitution": {"rules": [], "worker_inheritance": True},
             "mission": {"decision_or_purpose": "", "scope": "", "non_goals": [], "intended_users": [], "completion_definition": ""},
             "dossier": {"objects": [], "context": [], "source_hierarchy": [], "access_rights": [], "alternatives": []},
@@ -560,12 +579,15 @@ def cmd_init(args: argparse.Namespace) -> None:
         archetypes = ["evidence-synthesis"]
     base = Path(args.root).expanduser().resolve()
     campaign_id = args.id or slugify(args.goal)
+    if len(campaign_id) > 56 or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", campaign_id):
+        raise SystemExit("--id must be at most 56 lowercase letters, digits, and hyphens")
     campaign_dir = base / campaign_id
     if campaign_dir.exists() and any(campaign_dir.iterdir()) and not args.force:
         raise SystemExit(f"Campaign directory already exists: {campaign_dir}")
     for rel in ("state", "working", "working/review_packets", "outputs", "artifacts"):
         (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
-    state = default_state(args.goal, args.profile, archetypes, campaign_id)
+    state = default_state(args.goal, args.profile, archetypes, campaign_id,
+                          getattr(args, "entry_mode", "new-project"))
     save_state(campaign_dir, state)
     print(campaign_dir)
 
@@ -597,7 +619,11 @@ def cmd_set(args: argparse.Namespace) -> None:
             )
     # Typing `campaign.evalation.criteria` used to succeed, create a junk key, silently
     # discard the content, and leave the agent staring at "criteria is missing".
-    set_by_path(state, args.path, value, create_missing=args.create_missing)
+    # A legacy campaign may lack a section introduced by a later compatible release.
+    # Let the exact, documented section path create that final key without opening the
+    # broader typo-prone `--create-missing` escape hatch.
+    set_by_path(state, args.path, value,
+                create_missing=args.create_missing or section is not None)
     state["content_version"] += 1
     # Records are not wiped here: staleness is computed from the section digests, so a
     # record whose sections did not move stays valid, and one whose sections did move is
@@ -694,7 +720,8 @@ def cmd_apply(args: argparse.Namespace) -> None:
 
     written: list[str] = []
     for path, value in payload.items():
-        set_by_path(state, path, value, create_missing=args.allow_unknown)
+        set_by_path(state, path, value,
+                    create_missing=args.allow_unknown or path in SECTION_SPECS)
         written.append(path)
     state["content_version"] += 1
     save_state(campaign_dir, state)
@@ -771,7 +798,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
                           "phase": "quality-loop-skipped"}, indent=2))
         return
     state = load_state(campaign_dir)
-    pre = validate_state(state, include_reviews=False)
+    pre = validate_plan_content(state, include_reviews=False)
     write_json(campaign_dir / VALIDATION_REL, pre)
     digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
     state = load_state(campaign_dir)
@@ -789,11 +816,12 @@ def cmd_stop(args: argparse.Namespace) -> None:
         "deterministic_validation": cap_validation_for_stdout(pre),
         "findings_by_action": summarize_findings(classify_validation_findings(pre)),
         "review_packets_are_inputs": True,
-        "review_packets_to_execute": [str(path) for path in paths
-                                      if path.stem in needs_review],
+        "review_packets_to_execute": ([str(path) for path in paths
+                                       if path.stem in needs_review] if pre["valid"] else []),
         "review_packets_all": [str(path) for path in paths],
         "reviews_still_current": still_current,
-        "roles_requiring_review": needs_review,
+        "roles_requiring_review": needs_review if pre["valid"] else [],
+        "roles_pending_after_design_repair": needs_review if not pre["valid"] else [],
         "next_action": "Resolve deterministic findings and ask only material follow-up questions" if not pre["valid"] else _review_next_action(needs_review),
     }
     write_json(campaign_dir / "working/quality_loop.json", payload)
@@ -969,6 +997,7 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
 
     interview = require_object(state, "interview", "interview")
     assurance = require_object(state, "assurance", "assurance")
+    sketch = require_object(state, "sketch", "sketch")
     camp = require_object(state, "campaign", "campaign")
     reviews = require_object(state, "reviews", "reviews")
     require_object(state, "outputs", "outputs")
@@ -984,6 +1013,14 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     for key in ("constitution", "mission", "dossier", "evaluation", "resources_dispatch",
                 "runtime", "ethics_rights_safety", "reporting", "kickoff"):
         require_object(camp, key, f"campaign.{key}")
+    # `starting_point` was introduced after schema 3.1 shipped. Treat its absence in an
+    # older campaign as the previous new-project behavior, while validating it strictly
+    # whenever it is present.
+    starting_point_present = "starting_point" in camp
+    if not starting_point_present:
+        starting_point = {"entry_mode": "new-project"}
+    else:
+        starting_point = require_object(camp, "starting_point", "campaign.starting_point")
 
     archetypes = require_list(state, "archetypes", "archetypes")
     valid_archetypes: list[str] = []
@@ -1000,6 +1037,11 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     require_object_list(state, "contradictions", "contradictions")
     require_object_list(state, "blockers", "blockers")
     require_object_list(interview, "turns", "interview.turns")
+    for key in ("decision_or_purpose", "scope", "success_or_adjudication"):
+        require_string(sketch, key, f"sketch.{key}")
+    for key in ("core_inquiries", "likely_evidence", "rough_methods_stages",
+                "assumptions_risks", "proposed_outputs"):
+        require_string_list(sketch, key, f"sketch.{key}")
     configured_profile = state.get("profile")
     configured_limits = PROFILES.get(configured_profile, PROFILES["standard"]) \
         if isinstance(configured_profile, str) else PROFILES["standard"]
@@ -1022,6 +1064,13 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         require_list(dossier, key, f"campaign.dossier.{key}")
     constitution = camp["constitution"]
     require_list(constitution, "rules", "campaign.constitution.rules")
+    for key in ("entry_mode", "status_as_of", "status_summary", "next_decision"):
+        if key in starting_point:
+            require_string(starting_point, key, f"campaign.starting_point.{key}")
+    for key in ("assessment_basis", "accepted_completed_work", "work_in_progress",
+                "inherited_artifacts", "decisions_in_force", "known_deviations",
+                "requires_recheck"):
+        require_string_list(starting_point, key, f"campaign.starting_point.{key}")
 
     for index, dimension in enumerate(state["intent_dimensions"]):
         for key in ("id", "status", "importance"):
@@ -1098,6 +1147,23 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     if unknown_archetypes:
         issue("error", "archetype.invalid", ", ".join(unknown_archetypes), "archetypes")
 
+    sketch_checks = {
+        "decision_or_purpose": _required_text,
+        "scope": _required_text,
+        "core_inquiries": _required_list,
+        "likely_evidence": _required_list,
+        "rough_methods_stages": _required_list,
+        "success_or_adjudication": _required_text,
+        "assumptions_risks": _required_list,
+        "proposed_outputs": _required_list,
+    }
+    missing_sketch = [key for key, check in sketch_checks.items()
+                      if not check(sketch.get(key))]
+    if missing_sketch:
+        issue("error", "sketch.incomplete",
+              "Campaign sketch v0 is missing: " + ", ".join(missing_sketch),
+              "sketch")
+
     pilot_required = profile == "high-assurance" or assurance.get("pilot_required") is True
     pilot = assurance.get("pilot", {})
     if pilot_required and not isinstance(pilot, dict):
@@ -1165,6 +1231,23 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             issue("error", "dimension.reason", f"Status {dim.get('status')} requires a reason", path)
 
     camp = state.get("campaign", {})
+    entry_mode = (starting_point.get("entry_mode") if starting_point_present
+                  else "new-project")
+    if entry_mode not in ENTRY_MODES:
+        issue("error", "starting_point.mode",
+              f"Unknown entry mode {entry_mode!r}; use new-project or existing-project",
+              "campaign.starting_point.entry_mode")
+    elif entry_mode == "existing-project":
+        missing = [
+            field for field in ("status_as_of", "status_summary", "next_decision")
+            if not _required_text(starting_point.get(field))
+        ]
+        if not _required_list(starting_point.get("assessment_basis")):
+            missing.append("assessment_basis")
+        if missing:
+            issue("error", "starting_point.incomplete",
+                  "Existing-project intake is missing: " + ", ".join(missing),
+                  "campaign.starting_point")
     mission = camp.get("mission", {})
     for field in ("decision_or_purpose", "scope", "completion_definition"):
         if not _required_text(mission.get(field)):
@@ -1243,9 +1326,12 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
 
     evaluation = camp.get("evaluation", {})
     if not evaluation.get("frozen_before_production_asserted"):
+        freeze_scope = ("remaining prospective evidence was inspected"
+                        if entry_mode == "existing-project"
+                        else "production evidence was inspected")
         issue("error", "evaluation.not_frozen",
-              "The campaign does not assert that the evaluation/adjudication instrument was frozen "
-              "before production evidence was inspected. This is an attestation by whoever compiled "
+              "The campaign does not assert that the evaluation/adjudication instrument was frozen before "
+              f"{freeze_scope}. This is an attestation by whoever compiled "
               "the campaign; nothing here can verify when the freeze actually happened.",
               "campaign.evaluation")
     evaluation_checks = {
@@ -1558,6 +1644,18 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     return result
 
 
+def validate_plan_content(state: dict[str, Any], include_reviews: bool) -> dict[str, Any]:
+    """Validate authored content without treating a replaceable rendered bundle as design.
+
+    A content edit makes prior outputs stale. Review preparation and a new render are the
+    remedy, so those operations must not report that derived-cache mismatch as a plan flaw.
+    Explicit `validate`, `status`, and `audit` still expose stale outputs.
+    """
+    candidate = copy.deepcopy(state)
+    candidate["outputs"] = {}
+    return validate_state(candidate, include_reviews=include_reviews)
+
+
 def classify_validation_findings(result: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
     grouped: dict[str, list[dict[str, str]]] = {
         "agent-fix": [], "user-answer": [], "external-approval": [], "accepted-risk": []
@@ -1628,7 +1726,8 @@ def cmd_validate(args: argparse.Namespace) -> None:
 # frozen campaign, so scoping changes what is *shown*, never what is attested against.
 ROLE_SCOPES: dict[str, dict[str, Any]] = {
     "methods-evidence": {
-        "sections": ("mission", "dossier", "inquiries", "methods", "evaluation", "claims"),
+        "sections": ("starting_point", "mission", "dossier", "inquiries", "methods",
+                     "evaluation", "claims"),
         "top_level": ("goal_verbatim", "profile", "archetypes", "sketch", "assumptions",
                       "contradictions", "intent_dimensions"),
         "note": "Methods and evidence logic. Operations sections are omitted by design; do not infer they are absent.",
@@ -1637,15 +1736,15 @@ ROLE_SCOPES: dict[str, dict[str, Any]] = {
         # ethics_rights_safety is here so that the two standard-profile roles between them
         # cover every campaign section. Without it a change to consent, rights, or approval
         # boundaries would invalidate nobody's review at `standard`.
-        "sections": ("constitution", "tools", "canaries", "stages", "gates", "resources_dispatch",
-                     "roles", "runtime", "work_units", "deliverables", "kickoff", "reporting",
-                     "ethics_rights_safety"),
+        "sections": ("starting_point", "constitution", "tools", "canaries", "stages", "gates",
+                     "resources_dispatch", "roles", "runtime", "work_units", "deliverables",
+                     "kickoff", "reporting", "ethics_rights_safety"),
         "top_level": ("goal_verbatim", "profile", "archetypes", "blockers", "assurance"),
         "note": "Operations, reproducibility, and the approval and external-action boundaries. Inquiry and method detail is omitted by design; do not infer it is absent.",
     },
     "ethics-claim-integrity": {
-        "sections": ("mission", "dossier", "ethics_rights_safety", "reporting", "claims",
-                     "inquiries", "deliverables", "resources_dispatch"),
+        "sections": ("starting_point", "mission", "dossier", "ethics_rights_safety",
+                     "reporting", "claims", "inquiries", "deliverables", "resources_dispatch"),
         "top_level": ("goal_verbatim", "profile", "archetypes", "blockers", "contradictions"),
         "note": "Ethics, rights, safety, and claim integrity.",
     },
@@ -1820,7 +1919,7 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
 def cmd_quality_loop(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
-    pre = validate_state(state, include_reviews=False)
+    pre = validate_plan_content(state, include_reviews=False)
     write_json(campaign_dir / VALIDATION_REL, pre)
     digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
     state = load_state(campaign_dir)
@@ -1836,11 +1935,12 @@ def cmd_quality_loop(args: argparse.Namespace) -> None:
         "deterministic_validation": cap_validation_for_stdout(pre),
         "findings_by_action": summarize_findings(classify_validation_findings(pre)),
         "review_packets_are_inputs": True,
-        "review_packets_to_execute": [str(path) for path in paths
-                                      if path.stem in needs_review],
+        "review_packets_to_execute": ([str(path) for path in paths
+                                       if path.stem in needs_review] if pre["valid"] else []),
         "review_packets_all": [str(path) for path in paths],
         "reviews_still_current": still_current,
-        "roles_requiring_review": needs_review,
+        "roles_requiring_review": needs_review if pre["valid"] else [],
+        "roles_pending_after_design_repair": needs_review if not pre["valid"] else [],
         "next_action": "Resolve deterministic errors before review" if not pre["valid"] else _review_next_action(needs_review),
     }
     write_json(campaign_dir / "working/quality_loop.json", payload)
@@ -2037,6 +2137,34 @@ def _section(title: str, body: str) -> str:
     return f"\n## {title}\n\n{body.strip()}\n"
 
 
+def _starting_point_block(state: dict[str, Any]) -> str:
+    campaign = state.get("campaign", {})
+    if "starting_point" not in campaign:
+        return "**Entry mode:** New project — legacy campaign with no starting-point record."
+    point = campaign.get("starting_point", {})
+    if point.get("entry_mode") == "new-project":
+        return "**Entry mode:** New project — no prior project state was supplied."
+    if point.get("entry_mode") != "existing-project":
+        return "**Entry mode:** Not recorded or invalid."
+    lines = [
+        "**Entry mode:** Existing project",
+        f"\n**Status as of:** {point.get('status_as_of') or 'Not recorded'}",
+        f"\n**Status summary:** {point.get('status_summary') or 'Not recorded'}",
+    ]
+    for key, label in (
+        ("assessment_basis", "Assessment basis"),
+        ("accepted_completed_work", "Accepted as completed"),
+        ("work_in_progress", "Work in progress"),
+        ("inherited_artifacts", "Inherited artifacts"),
+        ("decisions_in_force", "Decisions already in force"),
+        ("known_deviations", "Known deviations"),
+        ("requires_recheck", "Requires recheck"),
+    ):
+        lines.extend([f"\n**{label}**", _md_list(point.get(key))])
+    lines.append(f"\n**Decision frontier recorded at adoption:** {point.get('next_decision') or 'Not recorded'}")
+    return "\n".join(lines)
+
+
 def _coverage_note(state: dict[str, Any]) -> str:
     """Deterministic checks verify presence and cross-references, never substance.
     An execution-ready bundle must therefore disclose what it left empty rather than
@@ -2077,17 +2205,25 @@ def _coverage_note(state: dict[str, Any]) -> str:
 def render_campaign_prompt(state: dict[str, Any], status: str) -> str:
     camp = state["campaign"]
     mission = camp["mission"]
-    header = f"# Research Campaign Prompt: {state['title']}\n\n**Status:** {status}\n\n**Campaign ID:** `{state['campaign_id']}`  \n**Content version:** {state['content_version']}  \n**Content digest:** `{content_digest(state)}`  \n**Profile:** {state['profile']}  \n**Archetypes:** {', '.join(state['archetypes'])}\n"
+    header = f"# Research Campaign Prompt: {state['title']}\n\n**Status:** {status}\n\n**Campaign ID:** `{state['campaign_id']}`\n\n**Content version:** {state['content_version']}\n\n**Content digest:** `{content_digest(state)}`\n\n**Profile:** {state['profile']}\n\n**Archetypes:** {', '.join(state['archetypes'])}\n"
     parts = [header, _section("0. Coverage and standing caveats", _coverage_note(state))]
     parts.append(_section("1. Campaign constitution", _md_list(camp["constitution"].get("rules")) + "\n\nEvery worker inherits these rules. Local briefs may narrow scope but may not weaken them."))
-    parts.append(_section("2. Mission, boundaries, and deliverables", f"**Decision or purpose:** {mission.get('decision_or_purpose','')}\n\n**Scope:** {mission.get('scope','')}\n\n**Non-goals**\n{_md_list(mission.get('non_goals'))}\n\n**Intended users**\n{_md_list(mission.get('intended_users'))}\n\n**Completion definition:** {mission.get('completion_definition','')}\n\n**Deliverables**\n\n{_render_objects(camp.get('deliverables'), 'campaign.deliverables')}"))
+    parts.append(_section("2. Starting point, mission, boundaries, and deliverables", f"{_starting_point_block(state)}\n\n**Decision or purpose:** {mission.get('decision_or_purpose','')}\n\n**Scope:** {mission.get('scope','')}\n\n**Non-goals**\n{_md_list(mission.get('non_goals'))}\n\n**Intended users**\n{_md_list(mission.get('intended_users'))}\n\n**Completion definition:** {mission.get('completion_definition','')}\n\n**Deliverables**\n\n{_render_objects(camp.get('deliverables'), 'campaign.deliverables')}"))
     dossier = camp["dossier"]
     parts.append(_section("3. Object and evidence dossier", f"**Objects, cases, corpus, population, or system**\n\n{_render_objects(dossier.get('objects'), 'campaign.dossier.objects')}\n\n**Context**\n\n{_render_objects(dossier.get('context'), 'campaign.dossier.context')}\n\n**Source hierarchy**\n\n{_render_objects(dossier.get('source_hierarchy'), 'campaign.dossier.source_hierarchy')}\n\n**Access and rights**\n\n{_render_objects(dossier.get('access_rights'), 'campaign.dossier.access_rights')}\n\n**Known alternatives**\n\n{_render_objects(dossier.get('alternatives'), 'campaign.dossier.alternatives')}"))
     parts.append(_section("4. Inquiry and evidence logic", "Each inquiry must be evaluated against admissible support and explicit counterevidence, rival explanations/readings, counterexamples, or objections.\n\n" + _render_objects(camp.get("inquiries"), "campaign.inquiries")))
     parts.append(_section("5. Method portfolio", _render_objects(camp.get("methods"), "campaign.methods")))
     parts.append(_section("6. Tools and production-like canaries", f"**Tools**\n\n{_render_objects(camp.get('tools'), 'campaign.tools')}\n\n**Canaries**\n\nA successful import or help command is not a canary.\n\n{_render_objects(camp.get('canaries'), 'campaign.canaries')}"))
     evaluation = camp["evaluation"]
-    parts.append(_section("7. Frozen evaluation or adjudication instrument", f"**Frozen before production (asserted, not verified):** {evaluation.get('frozen_before_production_asserted')}\n\n**Criteria**\n{_md_list(evaluation.get('criteria'))}\n\n**Comparators, controls, cases, or adjudication rules**\n{_md_list(evaluation.get('comparators_or_adjudication'))}\n\n**Missing-evidence policy:** {evaluation.get('missing_evidence_policy','')}\n\n**Exploration versus confirmation:** {evaluation.get('exploration_confirmation_policy','')}\n\n**Stop, pivot, and no-go rules**\n{_md_list(evaluation.get('stop_pivot_no_go_rules'))}"))
+    if camp.get("starting_point", {}).get("entry_mode") == "existing-project":
+        freeze_statement = ("**Frozen before prospective production under this plan (asserted, not verified):** "
+                            f"{evaluation.get('frozen_before_production_asserted')}\n\n"
+                            "This assertion is not retroactive. Inherited artifacts and observed results keep "
+                            "the evidentiary status established by their original protocol and provenance.")
+    else:
+        freeze_statement = ("**Frozen before production (asserted, not verified):** "
+                            f"{evaluation.get('frozen_before_production_asserted')}")
+    parts.append(_section("7. Frozen evaluation or adjudication instrument", f"{freeze_statement}\n\n**Criteria**\n{_md_list(evaluation.get('criteria'))}\n\n**Comparators, controls, cases, or adjudication rules**\n{_md_list(evaluation.get('comparators_or_adjudication'))}\n\n**Missing-evidence policy:** {evaluation.get('missing_evidence_policy','')}\n\n**Exploration versus confirmation:** {evaluation.get('exploration_confirmation_policy','')}\n\n**Stop, pivot, and no-go rules**\n{_md_list(evaluation.get('stop_pivot_no_go_rules'))}"))
     parts.append(_section("8. Staged funnel and promotion gates", f"**Stages**\n\n{_render_objects(camp.get('stages'), 'campaign.stages')}\n\n**Gates**\n\n{_render_objects(camp.get('gates'), 'campaign.gates')}"))
     resources = camp["resources_dispatch"]
     parts.append(_section("9. Resources and fail-closed dispatch", f"**Budgets**\n{_md_list(resources.get('budgets'))}\n\n**Access constraints**\n{_md_list(resources.get('access_constraints'))}\n\n**Concurrency:** {resources.get('concurrency','')}\n\n**Dispatch rules**\n{_md_list(resources.get('dispatch_rules'))}\n\n**Approvals**\n{_md_list(resources.get('approvals'))}"))
@@ -2136,7 +2272,13 @@ def render_campaign_prompt(state: dict[str, Any], status: str) -> str:
 def render_roadmap(state: dict[str, Any], status: str) -> str:
     camp = state["campaign"]
     gate_by_id = {gate.get("id"): gate for gate in camp.get("gates", []) if isinstance(gate, dict)}
-    lines = [f"# Roadmap: {state['title']}", "", f"**Status:** {status}", "", f"**Purpose:** {camp['mission'].get('decision_or_purpose','')}", "", "## Stages", ""]
+    lines = [f"# Roadmap: {state['title']}", "", f"**Status:** {status}", "",
+             f"**Purpose:** {camp['mission'].get('decision_or_purpose','')}", ""]
+    if camp.get("starting_point", {}).get("entry_mode") == "existing-project":
+        point = camp["starting_point"]
+        lines.extend(["## Project state at adoption", "", point.get("status_summary") or "*Not recorded.*", "",
+                      f"**Decision frontier recorded at adoption:** {point.get('next_decision') or 'Not recorded'}", ""])
+    lines.extend(["## Stages", ""])
     if not camp.get("stages"):
         lines.extend(["*No stages recorded.*", ""])
     for stage in camp.get("stages", []):
@@ -2207,6 +2349,10 @@ def render_kickoff(state: dict[str, Any], status: str) -> str:
     gate = next((item for item in camp.get("gates", []) if item.get("id") == kickoff.get("first_gate_id")), None)
     lines = [f"# Kickoff: {state['title']}", "", f"**Status:** {status}", "",
              f"**Campaign contract:** `campaign.json` @ `{content_digest(state)}`", ""]
+    if camp.get("starting_point", {}).get("entry_mode") == "existing-project":
+        point = camp["starting_point"]
+        lines.extend([f"**Adopted project status:** {point.get('status_summary') or 'Not recorded'}", "",
+                      f"**Decision frontier recorded at adoption:** {point.get('next_decision') or 'Not recorded'}", ""])
     lines.extend(["## Start here", "", kickoff.get("command") or "*No kickoff command recorded.*", ""])
     lines.extend(["## First gate", ""])
     if gate:
@@ -2293,18 +2439,18 @@ def _blank_task_brief() -> str:
 def plan_continuity_protocol(state: dict[str, Any]) -> str:
     """A small runtime contract shared by the prompt and operator runbook."""
     digest = content_digest(state)
-    opening = f"""Use `campaign.json` at `{digest}` as the active contract. At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit; verify required inputs before acting."""
-    checkpoint_reviews = [
-        gate.get("checkpoint_review")
+    contract = f"Use `campaign.json` at `{digest}` as the active contract."
+    has_checkpoint_reviews = any(
+        _nonempty(gate.get("checkpoint_review"))
         for gate in state.get("campaign", {}).get("gates", [])
-        if isinstance(gate, dict) and _nonempty(gate.get("checkpoint_review"))
-    ]
-    if not checkpoint_reviews:
-        return opening + """
+        if isinstance(gate, dict)
+    )
+    if not has_checkpoint_reviews:
+        return contract + """
 
-Record material deviations at the next gate. If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them."""
+If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them."""
 
-    return opening + """
+    return contract + """ At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit; verify required inputs before acting.
 
 At each major promotion gate, freeze the stage artifacts and a checkpoint receipt containing the plan digest, work completed, evidence, gate result, deviations, remaining budget, and next action. When the gate declares an independent checkpoint review, give a fresh read-only reviewer only those frozen artifacts, the relevant contract sections, and the rubric. The reviewer returns `pass`, `revise`, or `block` and presents at most three material findings, highest priority first. The cap bounds cost, not disclosure: if more material findings exist, the reviewer returns `block`, states how many it found and the highest severity among them, and presents only the top three. A capped review is never reported as a clean result. Repair once and recheck only the affected scope; after two review rounds, escalate any remaining blocker to the gate owner rather than continuing. Minor or stylistic suggestions go to the backlog.
 
@@ -2343,7 +2489,7 @@ def render_refusal(validation: dict[str, Any]) -> dict[str, Any]:
 
 
 def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool = False) -> dict[str, Any]:
-    validation = validate_state(state, include_reviews=True)
+    validation = validate_plan_content(state, include_reviews=True)
     if render_blocking_errors(validation):
         return render_refusal(validation)
     if force_draft:
@@ -2423,17 +2569,11 @@ def cmd_render(args: argparse.Namespace) -> None:
 def cmd_finalize(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
-    pre = validate_state(state, include_reviews=False)
+    pre = validate_plan_content(state, include_reviews=False)
     if render_blocking_errors(pre):
         write_json(campaign_dir / VALIDATION_REL, pre)
         print(json.dumps(render_refusal(pre), indent=2, ensure_ascii=False))
         raise SystemExit(2)
-    rendered = state.get("outputs", {}).get("last_rendered_digest")
-    if rendered and rendered != content_digest(state):
-        # Finalize is about to replace the bundle. Do not turn that replaceable cache
-        # mismatch into a design defect or an unnecessary review round.
-        state["outputs"] = {"last_rendered_digest": "", "manifest": {}}
-        pre = validate_state(state, include_reviews=False)
     write_json(campaign_dir / VALIDATION_REL, pre)
     if not pre["valid"]:
         digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
@@ -2453,7 +2593,7 @@ def cmd_finalize(args: argparse.Namespace) -> None:
             result["review_packets"] = [str(path) for path in paths if path.stem in needs_review]
             print(json.dumps(result, indent=2, ensure_ascii=False))
             raise SystemExit(3)
-    final_validation = validate_state(state, include_reviews=True)
+    final_validation = validate_plan_content(state, include_reviews=True)
     if not final_validation["valid"]:
         result = render_outputs(campaign_dir, state, force_draft=True)
         result["next_action"] = "Resolve or re-review current findings, then rerun finalize"
@@ -2466,23 +2606,70 @@ def cmd_finalize(args: argparse.Namespace) -> None:
 def cmd_status(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
-    pre = validate_state(state, include_reviews=False)
+    pre = validate_plan_content(state, include_reviews=False)
+    reviewed_plan = validate_plan_content(state, include_reviews=True)
     full = validate_state(state, include_reviews=True)
-    unresolved = [item for item in state.get("intent_dimensions", []) if item.get("status") not in COMPLETE_DIMENSION_STATUSES]
+    dimensions = [item for item in state.get("intent_dimensions", [])
+                  if isinstance(item, dict)] \
+        if isinstance(state.get("intent_dimensions"), list) else []
+    unresolved = [item for item in dimensions
+                  if item.get("status") not in COMPLETE_DIMENSION_STATUSES]
+    priority = {"critical": 0, "material": 1, "low": 2}
+    next_dimension = min(
+        enumerate(unresolved),
+        key=lambda pair: (priority.get(pair[1].get("importance"), 3), pair[0]),
+        default=(0, None),
+    )[1]
+    blockers = [item for item in state.get("blockers", []) if isinstance(item, dict)] \
+        if isinstance(state.get("blockers"), list) else []
+    contradictions = [item for item in state.get("contradictions", [])
+                      if isinstance(item, dict)] \
+        if isinstance(state.get("contradictions"), list) else []
+    open_blockers = [item for item in blockers
+                     if item.get("status", "open") == "open"]
+    campaign = state.get("campaign") if isinstance(state.get("campaign"), dict) else {}
+    point = campaign.get("starting_point") \
+        if isinstance(campaign.get("starting_point"), dict) else {}
+    interview = state.get("interview") if isinstance(state.get("interview"), dict) else {}
+    outputs = state.get("outputs") if isinstance(state.get("outputs"), dict) else {}
+    output_stale = any(item.get("code") == "outputs.stale" for item in full.get("errors", []))
     payload = {
         "campaign_id": state["campaign_id"], "title": state["title"],
         "status": state["status"], "profile": state["profile"], "archetypes": state["archetypes"],
         "content_version": state["content_version"], "content_digest": content_digest(state),
-        "interview": {
-            "turns": len(state["interview"].get("turns", [])),
-            "soft_limit": state["interview"]["soft_limit"], "hard_limit": state["interview"]["hard_limit"],
-            "stopping_reason": state["interview"].get("stopping_reason", ""),
-            "unresolved_dimensions": [item.get("id") for item in unresolved],
+        "starting_point": {
+            "entry_mode": (point.get("entry_mode") if "starting_point" in campaign
+                           else "new-project"),
+            "status_summary": point.get("status_summary", ""),
+            "decisions_in_force": point.get("decisions_in_force", []),
+            "requires_recheck": point.get("requires_recheck", []),
+            "decision_frontier_at_adoption": point.get("next_decision", ""),
         },
+        "interview": {
+            "turns": len(interview.get("turns", [])) if isinstance(interview.get("turns"), list) else 0,
+            "soft_limit": interview.get("soft_limit"), "hard_limit": interview.get("hard_limit"),
+            "stopping_reason": interview.get("stopping_reason", ""),
+            "unresolved_dimensions": [item.get("id") for item in unresolved],
+            "next_branch": next_dimension.get("id") if next_dimension else None,
+        },
+        "decisions": [
+            {key: item.get(key, "") for key in
+             ("id", "label", "status", "value", "importance", "reason", "dependencies")}
+            for item in dimensions
+        ],
+        "assumptions": state.get("assumptions", []),
+        "open_contradictions": [item for item in contradictions
+                                if item.get("status", "open") == "open"],
+        "open_blockers": [
+            {key: item.get(key, "") for key in ("id", "severity", "description", "owner", "unblocks")}
+            for item in open_blockers
+        ],
         "design_valid": pre["valid"], "execution_ready": full["execution_ready"],
-        "design_errors": len(pre["errors"]), "review_errors": len(full["errors"]) - len(pre["errors"]),
-        "review": full["review"],
-        "output_status": state.get("outputs", {}).get("status", "not rendered"),
+        "design_errors": len(pre["errors"]),
+        "review_errors": len(reviewed_plan["errors"]) - len(pre["errors"]),
+        "review": reviewed_plan["review"],
+        "output_status": outputs.get("status", "not rendered"),
+        "output_stale": output_stale,
     }
     print(json.dumps(payload, indent=2, ensure_ascii=False))
 
@@ -2631,6 +2818,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--id")
     p.add_argument("--profile", choices=sorted(PROFILES), default="standard")
     p.add_argument("--archetypes", default="evidence-synthesis")
+    p.add_argument("--entry-mode", choices=sorted(ENTRY_MODES), default="new-project",
+                   help="start from a new idea or adopt an existing project")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_init)
 

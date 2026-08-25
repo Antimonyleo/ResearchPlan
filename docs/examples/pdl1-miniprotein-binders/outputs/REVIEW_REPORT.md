@@ -1,6 +1,6 @@
 # Review report
 
-**Content digest:** `sha256:1e86dcba1b89b17fe606eae042009dc1590f18e0e4d2e8aa1cfb9de225c9a195`
+**Content digest:** `sha256:cec061c58fca6136d0d70765c7c307fa82692a7020455fdb2ce8691f7230bb2d`
 
 **Rubric digest:** `sha256:ec51920cf40375c68cedf1b95bb6dc25306b0304d242805d3f4695330e3afd06`
 
@@ -8,7 +8,7 @@
 
 ## Deterministic findings
 
-- **WARNING review.sequential:** Standard review used sequential passes; disclose limited independence (`reviews.records`)
+- No deterministic findings.
 
 ## Reviewer records
 
@@ -21,15 +21,19 @@ and is not external validation.
 
 ### methods-evidence — pass
 
-Reviewer: `sequential-methods-r2`; attested mode: `sequential-pass`
+Reviewer: `subagent-copernicus`; attested mode: `independent-subagent`
 
-Pass. All five round-1 methods findings are closed in the campaign itself rather than deferred to the artifact that was going to be written after the distributions were visible. AUROC is named as the primary separation statistic with the matched-negative-above-median fraction as its secondary; the composition-matching procedure is specified with numeric tolerances and a minimum set size; training-set contamination is now a named rival explanation with a discriminating implication, a recorded date check per control, and a post-cutoff subset that separation is recomputed on; the control-set floor is 8 with at least 3 post-cutoff, so the terminal stop rule can now fire; and the clustering metric is stated with its frozen cut and both alternatives. The residual limitation is inherent rather than a defect: 8 positives and 3 post-cutoff positives bound discrimination coarsely, and the campaign says so in its uncertainty boundary and requires the memo to report the post-cutoff figure as an upper bound where the subset is too small. In-silico separation on published binders remains a weaker guarantee than any measurement, which the reporting rules state plainly.
+Attested executor: `copernicus-review-20260825-r4` (2026-08-24T18:35:13-07:00 → 2026-08-24T18:35:22-07:00)
+
+The earliest-linked-public-provenance rule closes the prior finding. A mixed-age group is explicitly not cutoff-clean; eligibility uses the earliest public date across every linked sequence, structure, design lineage, and parent scaffold; the governing AUROC includes only cutoff-clean groups; provenance and classification are frozen before scoring; and fewer than five qualifying groups cannot produce a go. No remaining major or critical execution defect was found in the bounded scope.
 
 
 ### operations-reproducibility — pass
 
-Reviewer: `sequential-operations-r3`; attested mode: `sequential-pass`
+Reviewer: `subagent-euclid`; attested mode: `independent-subagent`
 
-Pass. The canary count is now consistent across G1's required evidence, S1's activities, WU-freeze's outputs and acceptance test, the APR-G1 approval record, and the kickoff backlog, which now names CAN-sequence alongside the other three. This was a counting error, not a control gap: the fourth canary existed and was enforced by the gate's own evidence requirement; the prose simply undercounted it, which would have let an executor present three manifests and believe G1 was satisfiable. Gate ownership, the manifest-before-compute rule, and the calendar-expiry rule are unaffected and remain as accepted at round 2.
+Attested executor: `euclid-review-20260825-r4` (2026-08-24T18:38:58-07:00 → 2026-08-24T18:39:18-07:00)
+
+Pass for the bounded closure review. D-canary-compat now records post-freeze compatibility results separately while binding the immutable D-thresholds digest. D-runtime freezes only its prefix snapshot at G3, remains appendable solely for S4/G4, and freezes permanently after the G4 event and final reconciliation. No remaining major or critical execution defect was found in these lifecycles.
 
 

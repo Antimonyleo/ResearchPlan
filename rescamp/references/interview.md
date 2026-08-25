@@ -4,6 +4,7 @@
 
 Map the vague goal into only the dimensions that can change the campaign:
 
+- starting point for an existing project: assessed status, accepted completed work, active work, inherited artifacts and decisions, deviations, recheck needs, and the next decision frontier;
 - decision or purpose;
 - audience and use;
 - scope and exclusions;
@@ -22,13 +23,19 @@ Map the vague goal into only the dimensions that can change the campaign:
 
 Do not turn this list into a form. Many dimensions will be inferable, safely defaultable, not applicable, or discoverable from public sources.
 
+## Existing-project intake
+
+Inspect supplied artifacts before asking for status. Separate inspected evidence from user-reported status and inference. Accept prior work as complete only when its artifact, provenance, and relevant acceptance basis are available; otherwise place it under `requires_recheck` rather than silently discarding or trusting it.
+
+Plan from the current frontier. Preserve valid completed work, identify the smallest reconciliation or repair step, and omit stages that would merely repeat accepted work. Evidence observed before the new plan remains retrospective or exploratory unless it was governed by a genuinely prior protocol. Freeze evaluation rules only for future evidence and keep any new confirmatory stage separate.
+
 ## Selecting the next question
 
 Estimate for each unresolved dimension:
 
 `priority = decision impact × uncertainty × answer utility ÷ burden`
 
-Ask only the highest-priority question. Favor questions that resolve several downstream dependencies without becoming compound. Ask the user about preferences, tacit constraints, authority, private access, and irreversible tradeoffs. Research public facts yourself.
+Ask only the highest-priority question. Favor questions that resolve several downstream dependencies without becoming compound. Ask the user about preferences, tacit constraints, undocumented project decisions, authority, private access, and irreversible tradeoffs. Research public facts and inspect supplied project facts yourself.
 
 A question is low value when every plausible answer produces the same stage, method, evidence rule, approval boundary, or deliverable.
 

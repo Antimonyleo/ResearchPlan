@@ -1,3 +1,6 @@
+import argparse
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -6,6 +9,82 @@ from common import engine, complete_state, add_passing_reviews
 
 
 class EngineTests(unittest.TestCase):
+    def test_init_records_existing_project_entry_mode(self):
+        with tempfile.TemporaryDirectory() as temp:
+            args = argparse.Namespace(
+                profile="standard", archetypes="evidence-synthesis", root=temp,
+                id="existing-case", goal="Finish an existing review", force=False,
+                entry_mode="existing-project",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                engine.cmd_init(args)
+            state = engine.load_state(Path(temp) / "existing-case")
+            self.assertEqual(
+                state["campaign"]["starting_point"]["entry_mode"], "existing-project"
+            )
+
+    def test_existing_project_requires_an_evidence_based_starting_point(self):
+        state = complete_state()
+        state["campaign"]["starting_point"]["entry_mode"] = "existing-project"
+        result = engine.validate_state(state, include_reviews=False)
+        finding = next(item for item in result["errors"]
+                       if item["code"] == "starting_point.incomplete")
+        self.assertIn("assessment_basis", finding["message"])
+        self.assertIn("next_decision", finding["message"])
+
+    def test_explicit_empty_starting_point_is_not_treated_as_new_project(self):
+        state = complete_state()
+        state["campaign"]["starting_point"] = {}
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(item["code"] == "starting_point.mode"
+                            for item in result["errors"]), result["errors"])
+        self.assertIn("Not recorded or invalid", engine._starting_point_block(state))
+
+    def test_campaign_sketch_is_required_before_release(self):
+        state = complete_state()
+        state["sketch"] = engine.default_state(
+            "goal", "standard", ["evidence-synthesis"], "empty-sketch"
+        )["sketch"]
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(any(item["code"] == "sketch.incomplete"
+                            for item in result["errors"]), result["errors"])
+
+    def test_complete_existing_project_can_continue_from_its_frontier(self):
+        state = complete_state()
+        state["campaign"]["starting_point"].update({
+            "entry_mode": "existing-project",
+            "status_as_of": "2026-08-24",
+            "status_summary": "Collection is complete; analysis has not started.",
+            "assessment_basis": ["inspected: data/manifest.json and collection.log"],
+            "accepted_completed_work": ["Collection manifest passes its checksum check"],
+            "work_in_progress": [],
+            "inherited_artifacts": ["data/manifest.json @ sha256:example"],
+            "decisions_in_force": ["The bounded corpus is fixed"],
+            "known_deviations": [],
+            "requires_recheck": ["Audit a sample of extraction records"],
+            "next_decision": "Decide whether extraction quality supports analysis",
+        })
+        result = engine.validate_state(state, include_reviews=False)
+        self.assertTrue(result["valid"], result["errors"])
+
+    def test_legacy_new_project_without_starting_point_keeps_current_reviews(self):
+        state = complete_state()
+        del state["campaign"]["starting_point"]
+        state = add_passing_reviews(state)
+        result = engine.validate_state(state, include_reviews=True)
+        self.assertTrue(result["execution_ready"], result["errors"])
+
+    def test_init_rejects_a_campaign_id_that_escapes_the_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "campaigns"
+            args = argparse.Namespace(
+                profile="standard", archetypes="evidence-synthesis", root=str(root),
+                id="../escaped", goal="test goal", force=False,
+            )
+            with self.assertRaisesRegex(SystemExit, "--id must"):
+                engine.cmd_init(args)
+            self.assertFalse((Path(temp) / "escaped").exists())
+
     def test_complete_standard_campaign_validates(self):
         state = add_passing_reviews(complete_state())
         result = engine.validate_state(state, include_reviews=True)
@@ -134,6 +213,28 @@ class EngineTests(unittest.TestCase):
             with self.subTest(profile=profile):
                 problems = [item.message for item in validator.iter_errors(complete_state(profile=profile))]
                 self.assertEqual(problems, [])
+
+    def test_existing_project_intake_and_draft_are_structurally_schema_valid(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is not installed")
+        schema = json.loads((engine.SKILL_DIR / "assets/campaign.schema.json").read_text(encoding="utf-8"))
+        validator = jsonschema.Draft202012Validator(schema)
+        state = engine.default_state(
+            "Continue an existing project", "standard", ["evidence-synthesis"],
+            "existing-intake", "existing-project",
+        )
+        self.assertEqual([item.message for item in validator.iter_errors(state)], [])
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "existing-intake"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            engine.save_state(campaign_dir, state)
+            rendered = engine.render_outputs(campaign_dir, state, force_draft=True)
+            self.assertTrue(rendered["rendered"])
+            snapshot = json.loads((campaign_dir / "outputs/campaign.json").read_text())
+            self.assertEqual([item.message for item in validator.iter_errors(snapshot)], [])
 
     def test_legacy_schema_cannot_silently_release(self):
         state = add_passing_reviews(complete_state())

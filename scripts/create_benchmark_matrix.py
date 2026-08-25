@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 
@@ -14,6 +15,10 @@ def parse_condition(value: str) -> tuple[str, str]:
     ident, command = ident.strip(), command.strip()
     if not ident or not command:
         raise argparse.ArgumentTypeError("condition ID and command must be non-empty")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", ident):
+        raise argparse.ArgumentTypeError(
+            "condition ID must contain lowercase letters, digits, dots, and hyphens"
+        )
     return ident, command
 
 
@@ -44,6 +49,9 @@ def main() -> int:
             "evaluator_adapter": args.evaluator_adapter,
             "model_id": args.model_id,
             "host_version": args.host_version,
+            # Replace this with the exact 40-character commit, or `none` only when
+            # the condition genuinely has no skill. The harness otherwise downgrades
+            # the run to unmatched evidence even if every control is marked true.
             "skill_commit": "record-exact-commit-or-none",
             "capabilities": capabilities,
         })

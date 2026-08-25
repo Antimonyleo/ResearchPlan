@@ -141,6 +141,31 @@ class BenchmarkTests(unittest.TestCase):
                 ))
         score = json.loads(output.getvalue())
         self.assertEqual(score["evidence_class"], bench.UNSPECIFIED_EVIDENCE_CLASS)
+    def test_manual_score_rejects_malformed_input_without_a_traceback(self):
+        scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
+        with tempfile.TemporaryDirectory() as temp:
+            for index, (value, message) in enumerate((([], "must be a JSON object"),
+                                                       ({}, "Invalid evaluation"))):
+                with self.subTest(value=value):
+                    evaluation_path = Path(temp) / f"evaluation-{index}.json"
+                    evaluation_path.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaisesRegex(SystemExit, message):
+                        bench.cmd_score(argparse.Namespace(
+                            scenario=scenario["_source"], evaluation=str(evaluation_path), output=None,
+                        ))
+
+    def test_manual_score_rejects_unreadable_or_invalid_json(self):
+        scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
+        with tempfile.TemporaryDirectory() as temp:
+            invalid = Path(temp) / "invalid.json"
+            invalid.write_text("{not json", encoding="utf-8")
+            for path in (invalid, Path(temp) / "missing.json"):
+                with self.subTest(path=path), self.assertRaisesRegex(
+                    SystemExit, "Could not read score input"
+                ):
+                    bench.cmd_score(argparse.Namespace(
+                        scenario=scenario["_source"], evaluation=str(path), output=None,
+                    ))
 
 
     def test_rescamp_fixture_is_conservative_without_false_readiness_cap(self):
@@ -301,6 +326,7 @@ class BenchmarkTests(unittest.TestCase):
             "adapter": "external-command", "command": "team-s", "user_adapter": "team-u",
             "evaluator_adapter": "team-e", "model_id": "exact-model", "host_version": "exact-host",
             "capabilities": ["campaign-compilation", "elicitation"],
+            "skill_commit": "a" * 40,
         }
         config = {
             "matched_controls": {
@@ -342,7 +368,26 @@ class BenchmarkTests(unittest.TestCase):
             self.assertTrue(raw["matched_controls"])
             self.assertTrue(all(value is False for value in raw["matched_controls"].values()))
             loaded = bench.load_config(output)
+            for key in raw["matched_controls"]:
+                raw["matched_controls"][key] = True
+            output.write_text(json.dumps(raw), encoding="utf-8")
+            placeholder_loaded = bench.load_config(output)
         self.assertFalse(any(item["_matched_controls"] for item in loaded["conditions"]))
+        self.assertFalse(any(item["_matched_controls"]
+                             for item in placeholder_loaded["conditions"]))
+
+    def test_matrix_generator_rejects_an_invalid_condition_id(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "live.json"
+            result = subprocess.run([
+                sys.executable, str(ROOT / "scripts/create_benchmark_matrix.py"),
+                "--condition", "../escaped=run-rescamp",
+                "--user-adapter", "team-u", "--evaluator-adapter", "team-e",
+                "--model-id", "model", "--host-version", "host", "--output", str(output),
+            ], cwd=ROOT, capture_output=True, text=True, check=False)
+            self.assertFalse(output.exists())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("condition ID must", result.stderr)
 
     def test_team_e_receives_only_relevant_archetype_overlays_and_their_digest(self):
         scenario = copy.deepcopy(bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0])
@@ -549,6 +594,29 @@ class BenchmarkTests(unittest.TestCase):
                     path.write_text(json.dumps(value), encoding="utf-8")
                     with self.assertRaisesRegex(SystemExit, "Invalid score input"):
                         bench.cmd_compare(argparse.Namespace(inputs=[str(path)], output=None))
+
+    def test_manual_compare_rejects_unreadable_or_invalid_json(self):
+        with tempfile.TemporaryDirectory() as temp:
+            invalid = Path(temp) / "invalid.json"
+            invalid.write_text("[not json", encoding="utf-8")
+            for path in (invalid, Path(temp) / "missing.json"):
+                with self.subTest(path=path), self.assertRaisesRegex(
+                    SystemExit, "Could not read score input"
+                ):
+                    bench.cmd_compare(argparse.Namespace(inputs=[str(path)], output=None))
+
+    def test_manual_compare_rejects_duplicate_run_ids_cleanly(self):
+        score = {
+            "run_id": "duplicate", "scenario_id": "scenario", "condition": "manual",
+            "replicate": 1, "score": 50.0,
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 100.0},
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "score.json"
+            path.write_text(json.dumps(score), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "duplicate run identity"):
+                bench.cmd_compare(argparse.Namespace(inputs=[str(path), str(path)], output=None))
 
 
 if __name__ == "__main__":

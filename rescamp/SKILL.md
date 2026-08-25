@@ -1,6 +1,6 @@
 ---
 name: rescamp
-description: Explicitly invoked research-campaign compiler. Turns a vague inquiry in any discipline into a proportionate, reviewed, auditable research plan and agent-execution prompt through a strategic interview.
+description: Explicitly invoked research-campaign compiler. Turns an early idea or an in-progress project in any discipline into a proportionate, reviewed, auditable research plan and agent-execution prompt through project-state assessment and a strategic interview.
 license: MIT
 compatibility: Requires a coding agent with filesystem access; Python 3.9+ enables durable state, validation, review packets, rendering, and benchmarks.
 disable-model-invocation: true
@@ -11,14 +11,14 @@ metadata:
 
 # ResCamp
 
-Compile a vague research goal into a concrete, proportionate, auditable campaign that people and agents can execute. Work interactively with the user; do not silently launch the research campaign.
+Compile an early research goal or an existing project into a concrete, proportionate, auditable campaign that people and agents can execute. Work interactively with the user; do not silently launch the research campaign.
 
 ## Invocation and modes
 
 Treat plain invocation text as `start <goal>`.
 
-- `start <goal>` — sketch and interview.
-- `resume [campaign]` — continue from durable state.
+- `start <goal>` — begin a new idea or assess and adopt an existing project, then sketch and interview.
+- `resume [campaign]` — continue a ResCamp campaign from its durable state.
 - `status [campaign]` — show decisions, assumptions, blockers, question budget, and next branch.
 - `draft [campaign]` — render a clearly marked non-final draft.
 - `finalize [campaign]` — run the automatic quality loop, ask any remaining material questions, and render the final campaign bundle.
@@ -44,20 +44,27 @@ Modes are what the user types; they are not all subcommands. The crosswalk:
 | `benchmark` | `scripts/benchmark.py` |
 | `help` | `--help` on any subcommand |
 
-## Start with value, not a questionnaire
+## Establish the starting point, then sketch
 
 After reading the goal and supplied materials:
 
-1. Preserve the verbatim goal and choose a provisional assurance profile: `scoped`, `standard`, or `high-assurance`.
-2. Infer one or more research archetypes. These are the exact accepted values: `experimental`, `computational`, `observational`, `qualitative-field`, `humanities-interpretive`, `conceptual-normative`, `evidence-synthesis`, `policy-program-evaluation`, `design-engineering`, `creative-practice`, `mixed-methods`.
-3. Present **Campaign sketch v0**: decision or purpose, scope, core inquiries, likely evidence, rough methods/stages, success or adjudication criteria, major assumptions/risks, and proposed outputs.
-4. State that the sketch is corrigible, save it, and ask the single highest-value unresolved question.
+1. Choose `new-project` unless the request or supplied materials show that material work already exists. For an existing project, inspect the relevant files, logs, tests, outputs, decisions, and user-supplied status before planning. Initialize with `--entry-mode existing-project`.
+2. For an existing project, present **Project baseline v0**: status as of now, assessment basis, accepted completed work, work in progress, inherited artifacts, decisions in force, deviations, items requiring recheck, and the decision frontier at adoption. Label each basis as inspected, user-reported, or inferred. Never infer completion from a filename or polished summary. Later `status` calls derive the live next branch from unresolved intent dimensions; the baseline remains historical provenance.
+3. Preserve valid completed work and begin prospective stages at the current frontier. Recheck work only when its evidence, provenance, assumptions, or acceptance criteria are missing or no longer fit the goal. Keep prior artifacts under their original provenance.
+4. Preserve the verbatim goal and choose a provisional assurance profile: `scoped`, `standard`, or `high-assurance`.
+5. Infer one or more research archetypes. These are the exact accepted values: `experimental`, `computational`, `observational`, `qualitative-field`, `humanities-interpretive`, `conceptual-normative`, `evidence-synthesis`, `policy-program-evaluation`, `design-engineering`, `creative-practice`, `mixed-methods`.
+6. Present **Campaign sketch v0**: decision or purpose, scope, core inquiries, likely evidence, rough methods/stages, success or adjudication criteria, major assumptions/risks, and proposed outputs. For an existing project, show how the sketch continues, repairs, or supersedes the baseline.
+7. State that the baseline and sketch are corrigible, save them, and ask the single highest-value unresolved question.
+
+Evidence already observed before adoption is retrospective or exploratory unless a genuinely prior protocol governs it. Never relabel a newly written evaluation rule as preregistered or frozen before those results. Freeze rules prospectively for the remaining work and separate any new confirmatory stage from inherited results.
 
 Do not force experimental vocabulary onto non-experimental work. “Hypothesis,” “control,” “metric,” and “falsifier” may instead be an interpretive claim, rival reading, comparison case, counterexample, source criticism rule, normative objection, or adjudication criterion.
 
 ## Minimum-sufficient interview
 
 Ask one question per turn; ask two only when their answers are inseparable. Ask only when the answer can materially change scope, evidence, method, ethics/safety, authority, resources, acceptance criteria, or outputs.
+
+For an existing project, ask first about undocumented decisions, disputed status, missing provenance, and whether the objective has changed. Do not ask the user to restate facts that can be verified from supplied artifacts.
 
 For every answer:
 
@@ -98,7 +105,7 @@ When the host offers a structured question control, use it and put the recommend
 The final plan and execution prompt must preserve the governing architecture of the Anthropic protein-design campaign while translating it to the user’s field:
 
 1. **Campaign constitution** — authority, non-negotiable verification, provenance, safety, and reporting rules inherited by every worker.
-2. **Mission and deliverables** — decision/purpose, exact outputs, boundaries, non-goals, and completion definition.
+2. **Starting point, mission, and deliverables** — assessed project status, accepted prior work, current decision frontier, decision/purpose, exact outputs, boundaries, non-goals, and completion definition.
 3. **Object and evidence dossier** — exact system, population, corpus, case, construct, historical frame, stakeholders, source hierarchy, and known alternatives.
 4. **Inquiry logic** — questions, claims or hypotheses, discriminating predictions or interpretive implications, rival explanations/readings, counterevidence, and uncertainty.
 5. **Method portfolio** — complementary methods, diversity rules, dependencies, limitations, and why each method can change the decision.
@@ -146,7 +153,7 @@ Place a fresh read-only review at each major execution stage that produces a dec
 When Python and filesystem access exist, use `scripts/rescamp.py` for state, validation, review packets, rendering, and audit. The working sequence is:
 
 ```text
-init --goal … --profile … --archetypes … [--id <slug>]
+init --goal … --profile … --archetypes … [--entry-mode existing-project] [--id <slug>]
 turn / dimension                                          # one per interview exchange
 apply <c> --json @campaign.json                           # many sections at once, fields checked
 add <c> <list-path> --json @section.json                  # one list section, fields checked
