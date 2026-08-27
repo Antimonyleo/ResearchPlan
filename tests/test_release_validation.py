@@ -223,6 +223,19 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unexpected skill file: stale.txt", result.stdout)
 
+    def test_shipped_schemas_declare_every_key_once(self):
+        def reject_duplicates(pairs):
+            names = [name for name, _ in pairs]
+            duplicates = sorted({name for name in names if names.count(name) > 1})
+            if duplicates:
+                raise ValueError("duplicate keys: " + ", ".join(duplicates))
+            return dict(pairs)
+
+        for name in ("campaign.schema.json", "review.schema.json", "scenario.schema.json"):
+            with self.subTest(schema=name):
+                text = (ROOT / "rescamp/assets" / name).read_text(encoding="utf-8")
+                json.loads(text, object_pairs_hook=reject_duplicates)
+
     def test_rendered_campaign_json_is_checked_against_the_structural_schema(self):
         validator = load_validator()
         with tempfile.TemporaryDirectory() as temp:

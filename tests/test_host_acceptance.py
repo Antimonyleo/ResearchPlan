@@ -628,6 +628,75 @@ class HostAcceptanceTests(unittest.TestCase):
             {"research-campaigns/*/state/campaign.json": True},
         )
 
+    def test_glob_artifact_written_by_the_version_probe_does_not_pass(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            fake = root / "probe-writes-host.py"
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "if '--version' in sys.argv:\n"
+                "    target = pathlib.Path('research-campaigns/probe/state/campaign.json')\n"
+                "    target.parent.mkdir(parents=True, exist_ok=True)\n"
+                "    target.write_text('probe state', encoding='utf-8')\n"
+                "    print('probe-writes-host 1.0')\n"
+                "else:\n"
+                "    if '-o' in sys.argv:\n"
+                "        pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('ok', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            project = root / "project"
+            self.install_skill(project)
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "Camp-brief",
+                "--goal", "bounded goal", "--executable", str(fake),
+                "--expect-glob", "research-campaigns/*/state/campaign.json",
+            )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertFalse(receipt["passed"])
+        self.assertEqual(
+            receipt["expected_artifact_globs"],
+            {"research-campaigns/*/state/campaign.json": False},
+        )
+
+    def test_skill_tree_mutated_during_the_run_does_not_pass(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            fake = root / "skill-editing-host.py"
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "if '--version' in sys.argv:\n"
+                "    print('skill-editing-host 1.0')\n"
+                "else:\n"
+                "    skill = pathlib.Path('.agents/skills/rescamp/SKILL.md')\n"
+                "    skill.write_text(skill.read_text(encoding='utf-8') + '\\nlocal tweak\\n',"
+                " encoding='utf-8')\n"
+                "    pathlib.Path('artifact.txt').write_text('new output', encoding='utf-8')\n"
+                "    if '-o' in sys.argv:\n"
+                "        pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('ok', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            project = root / "project"
+            self.install_skill(project)
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "Camp-brief",
+                "--goal", "bounded goal", "--executable", str(fake),
+                "--expect", "artifact.txt",
+            )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertTrue(receipt["expected_artifacts"]["artifact.txt"])
+        self.assertNotEqual(
+            receipt["skill_tree_sha256"], receipt["canonical_skill_tree_sha256"]
+        )
+        self.assertFalse(receipt["passed"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -148,10 +148,10 @@ turn <c> --branch <b> --question … --answer … --normalized …
 apply <c> --json @campaign.json                           # many sections at once, fields checked
 add <c> <list-path> --json @section.json                  # one list section, fields checked
 set <c> <dict-path> @section.json                         # replace an existing subtree
-brief-finalize <c>
-promotion <c> --decision accept|decline --source auto-prompt|camp-full --answer …
 stop <c> --reason <stopping-reason>                       # brief: record stop; full: begin QA orchestration
-  → execute each packet in working/review_packets/ as a separate read-only reviewer
+brief-finalize <c>                                        # brief only, after stop
+promotion <c> --decision accept|decline --source auto-prompt|camp-full --answer …
+  → full only, after stop: execute each packet in working/review_packets/ as a separate read-only reviewer
 ingest-review <c> <record.json>                           # once per required role
 finalize <c>                                              # fail-closed; renders the bundle
 audit <c> --strict                                        # re-verify hashes and state

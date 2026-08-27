@@ -925,7 +925,7 @@ class BenchmarkTests(unittest.TestCase):
             score = bench.run_one(scenario, condition, 1, root, 20, 20)
             self.assertTrue((root / score["run_id"] / "score.json").is_file())
 
-    def test_fixture_scores_only_required_features_and_exact_blocker_prose(self):
+    def test_fixture_scores_feature_breadth_and_exact_blocker_prose(self):
         scenario = copy.deepcopy(next(
             item for item in bench.load_scenarios(ROOT / "benchmark/scenarios/public")
             if any(dim.get("forces_blocker") for dim in item["material_dimensions"])
@@ -948,13 +948,70 @@ class BenchmarkTests(unittest.TestCase):
         evaluation = bench.fixture_team_e(
             scenario, transcript, final, "rescamp-current-fixture"
         )
+        broad = bench.fixture_team_e(
+            scenario, transcript,
+            dict(final, declared_features=[
+                "mission-scope", "inquiry-evidence", "frozen-evaluation",
+                "stages-gates", "claims-traceability", "rights-approvals",
+            ]),
+            "rescamp-current-fixture",
+        )
 
-        self.assertEqual(evaluation["ratings"]["operations"], 1.0)
+        self.assertLess(evaluation["ratings"]["operations"], broad["ratings"]["operations"])
+        self.assertEqual(evaluation["required_feature_ids_present"], [])
         self.assertEqual(evaluation["explicit_blocker_ids"], [])
         self.assertTrue(any(
             item["id"] == "missing-explicit-blocker"
             for item in evaluation["critical_defects"]
         ))
+
+    def test_operations_rating_separates_the_skilled_and_bare_fixtures(self):
+        scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
+        conditions = {
+            condition["id"]: condition
+            for condition in bench.load_config(ROOT / "benchmark/conditions/fixture.json")["conditions"]
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            skilled = bench.run_one(scenario, conditions["rescamp-current-fixture"], 1, root, 20, 20)
+            bare = bench.run_one(scenario, conditions["no-skill-fixture"], 1, root, 20, 20)
+
+        self.assertGreater(
+            skilled["rubric_scores"]["operations"], bare["rubric_scores"]["operations"]
+        )
+
+    def test_scoring_failure_removes_the_partial_run_directory(self):
+        scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
+        condition = bench.load_config(ROOT / "benchmark/conditions/fixture.json")["conditions"][0]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(bench, "score_evaluation",
+                                   side_effect=RuntimeError("unusable evaluation")):
+                with self.assertRaisesRegex(RuntimeError, "unusable evaluation"):
+                    bench.run_one(scenario, condition, 1, root, 20, 20)
+            self.assertFalse((root / f"{scenario['id']}--{condition['id']}--r1").exists())
+
+            score = bench.run_one(scenario, condition, 1, root, 20, 20)
+            self.assertTrue((root / score["run_id"] / "score.json").is_file())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "PID identity is read from /proc")
+    def test_recycled_descendant_pid_is_not_killed(self):
+        survivor = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True,
+        )
+        self.addCleanup(survivor.wait)
+        self.addCleanup(survivor.kill)
+        proc = mock.Mock(pid=survivor.pid)
+
+        with mock.patch.object(bench.os, "killpg"):
+            bench._terminate_adapter_tree(proc, {survivor.pid: "0"})
+        self.assertIsNone(survivor.poll())
+
+        with mock.patch.object(bench.os, "killpg"):
+            bench._terminate_adapter_tree(
+                proc, {survivor.pid: bench._process_start_token(survivor.pid)}
+            )
+        self.assertIsNotNone(survivor.wait(timeout=5))
 
     def test_aggregate_suppresses_pairwise_effect_when_any_sample_failed(self):
         base = {

@@ -29,7 +29,7 @@ import threading
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 VERSION = (SKILL_DIR / "VERSION").read_text(encoding="utf-8").strip()
@@ -489,12 +489,35 @@ def _linux_descendants(root_pid: int) -> list[int]:
     return found
 
 
+def _process_start_token(pid: int) -> str:
+    """The kernel's start time for a PID, empty when it cannot be read.
+
+    A PID alone does not identify a process: the tracker below accumulates PIDs over the
+    whole adapter call, most of which have exited by kill time, and Linux recycles PID
+    numbers. Pairing each PID with its start time makes a recycled number distinguishable
+    from the process actually observed.
+    """
+    if not sys.platform.startswith("linux"):
+        return ""
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
+    except OSError:
+        return ""
+    tail = raw.rpartition(")")[2].split()
+    # /proc/<pid>/stat fields after the comm field: state is index 0, starttime is index 19.
+    return tail[19] if len(tail) > 19 else ""
+
+
+def _identify_descendants(pids: Iterable[int]) -> dict[int, str]:
+    return {pid: _process_start_token(pid) for pid in pids}
+
+
 class _LinuxDescendantTracker:
     """Best-effort PID tracker for Linux children that escape the process group."""
 
     def __init__(self, root_pid: int):
         self.root_pid = root_pid
-        self.pids: set[int] = set()
+        self.pids: dict[int, str] = {}
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -504,25 +527,30 @@ class _LinuxDescendantTracker:
         self._thread = threading.Thread(target=self._track, daemon=True)
         self._thread.start()
 
+    def _observe(self) -> None:
+        for pid in _linux_descendants(self.root_pid):
+            self.pids.setdefault(pid, _process_start_token(pid))
+
     def _track(self) -> None:
         while not self._stop.is_set():
-            self.pids.update(_linux_descendants(self.root_pid))
+            self._observe()
             self._stop.wait(0.01)
-        self.pids.update(_linux_descendants(self.root_pid))
+        self._observe()
 
-    def stop(self) -> list[int]:
+    def stop(self) -> dict[int, str]:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=ADAPTER_DRAIN_TIMEOUT_SECONDS)
-        self.pids.update(_linux_descendants(self.root_pid))
-        return list(self.pids)
+        self._observe()
+        return dict(self.pids)
 
 
-def _terminate_adapter_tree(proc: subprocess.Popen[Any], descendants: list[int] | None = None) -> None:
+def _terminate_adapter_tree(proc: subprocess.Popen[Any],
+                            descendants: dict[int, str] | None = None) -> None:
     """Terminate the adapter and its descendants without assuming a live PID."""
     if os.name == "posix":
         if descendants is None:
-            descendants = _linux_descendants(proc.pid)
+            descendants = _identify_descendants(_linux_descendants(proc.pid))
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -532,7 +560,9 @@ def _terminate_adapter_tree(proc: subprocess.Popen[Any], descendants: list[int] 
                 proc.kill()
             except (OSError, ProcessLookupError):
                 pass
-        for pid in reversed(descendants):
+        for pid in reversed(list(descendants)):
+            if _process_start_token(pid) != descendants[pid]:
+                continue
             try:
                 os.kill(pid, signal.SIGKILL)
             except (OSError, ProcessLookupError):
@@ -553,7 +583,7 @@ def _terminate_adapter_tree(proc: subprocess.Popen[Any], descendants: list[int] 
 
 
 def _drain_timed_out_adapter(proc: subprocess.Popen[Any], timeout_error: subprocess.TimeoutExpired,
-                             descendants: list[int] | None = None) -> tuple[str, str]:
+                             descendants: dict[int, str] | None = None) -> tuple[str, str]:
     """Collect what is immediately available, then force-close inherited pipes."""
     stdout = _output_text(timeout_error.output)
     stderr = _output_text(timeout_error.stderr)
@@ -759,8 +789,10 @@ def fixture_team_e(scenario: dict[str, Any], transcript: list[dict[str, Any]], f
     # Fixture Team E, not Team S, maps private answer annotations to scenario IDs.
     resolved = sorted(set(asked_turns) | (set(final.get("declared_resolutions", [])) & known_ids))
     features = set(final.get("declared_features", []))
-    required_features = {item["id"] for item in scenario.get("required_campaign_features", [])}
-    generic_feature_fraction = len(features & required_features) / max(1, len(required_features))
+    # `declared_features` is the fixture's generic campaign vocabulary, which is disjoint
+    # from the scenario-specific `required_campaign_features` ids reported separately below.
+    required_count = len(scenario.get("required_campaign_features", []))
+    generic_feature_fraction = min(1.0, len(features) / max(1, min(required_count, 6)))
     complete_fraction = len(set(resolved)) / max(1, len(scenario["material_dimensions"]))
     if condition not in FIXTURE_RATING_TABLE:
         raise SystemExit(
@@ -1012,16 +1044,16 @@ def _run_one_with_workspace(scenario: dict[str, Any], condition: dict[str, Any],
             "usage_by_role": usage_by_role,
         },
     })
-    score = score_evaluation(scenario, evaluation)
-    manifest: dict[str, Any] = {
-        "benchmark_version": VERSION, "run_id": run_id, "blinded_label": blinded_label,
-        "scenario_digest": sha256_json({k: v for k, v in scenario.items() if k != "_source"}),
-        "condition_digest": sha256_json(condition), "public_transcript_digest": sha256_json(public_transcript),
-        "evaluator_transcript_digest": sha256_json(evaluator_transcript),
-        "evaluation_digest": sha256_json(evaluation), "score_digest": sha256_json(score),
-        "evaluator_artifacts": artifact_records,
-    }
     try:
+        score = score_evaluation(scenario, evaluation)
+        manifest: dict[str, Any] = {
+            "benchmark_version": VERSION, "run_id": run_id, "blinded_label": blinded_label,
+            "scenario_digest": sha256_json({k: v for k, v in scenario.items() if k != "_source"}),
+            "condition_digest": sha256_json(condition), "public_transcript_digest": sha256_json(public_transcript),
+            "evaluator_transcript_digest": sha256_json(evaluator_transcript),
+            "evaluation_digest": sha256_json(evaluation), "score_digest": sha256_json(score),
+            "evaluator_artifacts": artifact_records,
+        }
         write_run_json(run_dir, output_dir, "public_scenario.json", public_scenario(scenario))
         write_run_json(run_dir, output_dir, "transcript.json", public_transcript)
         write_run_json(run_dir, output_dir, "evaluator_transcript.json", evaluator_transcript)

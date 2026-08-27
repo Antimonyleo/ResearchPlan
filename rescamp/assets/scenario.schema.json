@@ -41,8 +41,7 @@
           "expected_by_turn": {"type": "integer", "minimum": 0},
           "acceptable_resolution": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
           "answer_key": {},
-          "forces_blocker": {"type": "boolean"},
-          "branch": {"type": "string", "minLength": 1}
+          "forces_blocker": {"type": "boolean"}
         }
       }
     },

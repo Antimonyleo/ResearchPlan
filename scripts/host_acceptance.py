@@ -415,10 +415,6 @@ def main() -> int:
                 if project not in resolved.parents and resolved != project:
                     raise SystemExit(f"--expect must stay inside the project: {relative}")
                 expected_paths[relative] = candidate
-            expected_glob_before = {
-                pattern: glob_fingerprints(project, pattern)
-                for pattern in args.expect_glob
-            }
             started = time.monotonic()
             timeout_stage = ""
             failure_stage = ""
@@ -438,6 +434,10 @@ def main() -> int:
             expected_before = {
                 relative: project_fingerprint(project, candidate)
                 for relative, candidate in expected_paths.items()
+            }
+            expected_glob_before = {
+                pattern: glob_fingerprints(project, pattern)
+                for pattern in args.expect_glob
             }
             if (timeout_stage or failure_stage or version_result.returncode != 0
                     or version_encoding_error):
@@ -487,12 +487,16 @@ def main() -> int:
                     fingerprint != before.get(path)
                     for path, fingerprint in after.items()
                 )
+            # Recomputed after the run: the pre-run check cannot see a host that rewrites
+            # its own installed skill tree while answering the accepted prompt.
+            installed_digest = digest_tree(skill_root)
+            canonical_digest = digest_tree(CANONICAL_SKILL_ROOT.resolve())
             receipt.update({
                 "returncode": result.returncode,
                 "host_version": host_version,
                 "host_version_returncode": version_result.returncode,
-                "skill_tree_sha256": digest_tree(skill_root),
-                "canonical_skill_tree_sha256": digest_tree(CANONICAL_SKILL_ROOT.resolve()),
+                "skill_tree_sha256": installed_digest,
+                "canonical_skill_tree_sha256": canonical_digest,
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "timed_out": bool(timeout_stage),
                 "timeout_stage": timeout_stage or None,
@@ -514,7 +518,8 @@ def main() -> int:
                 and not version_encoding_error and not response_encoding_error
                 and not bool(getattr(result, "encoding_error", False))
                 and response_ok(args.host, response) and all(expected.values())
-                and all(expected_globs.values()),
+                and all(expected_globs.values())
+                and installed_digest == canonical_digest,
             })
         text = json.dumps(receipt, indent=2, ensure_ascii=True, sort_keys=True) + "\n"
         if args.evidence_dir and not args.dry_run:

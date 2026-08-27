@@ -5,6 +5,7 @@ Keep one canonical `rescamp/SKILL.md`. Do not add host-specific instruction fork
 Before a pull request:
 
 ```bash
+pip install jsonschema   # development and release checks only; the skill runtime is stdlib-only
 python3 scripts/validate_release.py --root .
 ```
 

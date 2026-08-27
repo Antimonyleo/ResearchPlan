@@ -2381,7 +2381,7 @@ ROLE_SCOPES: dict[str, dict[str, Any]] = {
                      "resources_dispatch", "roles", "runtime", "work_units", "deliverables",
                      "kickoff", "reporting", "ethics_rights_safety"),
         "top_level": ("goal_verbatim", "profile", "archetypes", "blockers", "assurance"),
-        "note": "Operations, reproducibility, and the approval and external-action boundaries. Inquiry and method detail is omitted by design; do not infer it is absent.",
+        "note": "Operations, reproducibility, and the approval and external-action boundaries. Inquiries and methods are included only because stages, gates, and work units reference them; read them as context and leave their design to the methods reviewer.",
     },
     "ethics-claim-integrity": {
         "sections": ("starting_point", "mission", "dossier", "ethics_rights_safety",
