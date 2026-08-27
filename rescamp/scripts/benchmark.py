@@ -35,6 +35,13 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 VERSION = (SKILL_DIR / "VERSION").read_text(encoding="utf-8").strip()
 RUBRIC_PATH = SKILL_DIR / "assets" / "universal_rubric.json"
 OVERLAY_PATH = SKILL_DIR / "assets" / "archetype_overlays.json"
+# The interview branches `branch_questions` actually asks. A scenario dimension whose
+# `branch` is outside this vocabulary can never be matched by the hidden user, so it
+# would silently drop out of every recall metric instead of failing loudly.
+BRANCH_IDS = (
+    "decision-purpose", "scope-object", "success-evaluation", "evidence-access",
+    "methods-comparison", "ethics-authority", "resources", "outputs-operations",
+)
 IMPORTANCE_WEIGHT = {"low": 1.0, "material": 2.0, "critical": 4.0}
 SEVERITY_PENALTY = {"minor": 4.0, "major": 14.0, "critical": 40.0}
 RATING_IDS = [item["id"] for item in json.loads(RUBRIC_PATH.read_text(encoding="utf-8"))["dimensions"]]
@@ -380,8 +387,14 @@ def scenario_errors(data: Any) -> list[str]:
             errors.append(f"dimension {ident} invalid acceptable_resolution")
         if "forces_blocker" in dim and not isinstance(dim["forces_blocker"], bool):
             errors.append(f"dimension {ident} invalid forces_blocker")
-        if not isinstance(dim.get("branch"), str) or not dim.get("branch", "").strip():
+        branch = dim.get("branch")
+        if not isinstance(branch, str) or not branch.strip():
             errors.append(f"dimension {ident} invalid branch")
+        elif branch not in BRANCH_IDS:
+            errors.append(
+                f"dimension {ident} branch {branch!r} is not an interview branch; "
+                f"use one of {', '.join(BRANCH_IDS)}"
+            )
 
     for field in ("forbidden_assumptions", "required_campaign_features", "critical_defects"):
         items = data.get(field)

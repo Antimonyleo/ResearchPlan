@@ -527,6 +527,7 @@ def brief_payload(state: dict[str, Any]) -> dict[str, Any]:
         "goal_verbatim": state.get("goal_verbatim", ""),
         "profile": state.get("profile", ""),
         "archetypes": state.get("archetypes", []),
+        "title": state.get("title", ""),
         "starting_point": campaign.get("starting_point", {"entry_mode": "new-project"}),
         "sketch": state.get("sketch", {}),
         "intent_dimensions": state.get("intent_dimensions", []),
@@ -546,20 +547,27 @@ def brief_digest(state: dict[str, Any]) -> str:
 
 
 def mark_content_changed(state: dict[str, Any]) -> None:
-    """Invalidate derived readiness after authored content changes."""
+    """Invalidate derived readiness after authored content changes.
+
+    The recorded promotion answer is deliberately left alone. It is keyed to the brief
+    digest it answered, and `cmd_brief_finalize` re-arms the offer only when the digest
+    of the finished brief actually differs, so an edit that is reverted before
+    finalization does not discard the user's answer or ask the question twice.
+    """
     workflow = workflow_state(state)
-    if workflow.get("artifact_level") == "brief":
-        state["status"] = "brief-draft"
-        promotion = workflow.get("promotion")
-        if isinstance(promotion, dict) and workflow.get("requested_mode") == "auto" \
-                and promotion.get("status") in {"offered", "declined"} \
-                and promotion.get("brief_digest") != brief_digest(state):
-            promotion.update({
-                "status": "pending", "brief_digest": "", "answer_verbatim": "",
-                "source": "", "offered_at": "", "accepted_brief": {}, "decided_at": "",
-            })
-    else:
-        state["status"] = "full-draft"
+    state["status"] = "brief-draft" if workflow.get("artifact_level") == "brief" else "full-draft"
+
+
+def promotion_offer_is_stale(state: dict[str, Any]) -> bool:
+    """True when a Camp-auto answer was recorded against a different brief."""
+    workflow = workflow_state(state)
+    promotion = workflow.get("promotion")
+    return (
+        isinstance(promotion, dict)
+        and workflow.get("requested_mode") == "auto"
+        and promotion.get("status") in {"offered", "declined"}
+        and promotion.get("brief_digest") != brief_digest(state)
+    )
 
 
 def rubric_payload(profile: str) -> dict[str, Any]:
@@ -1098,7 +1106,11 @@ def cmd_stop(args: argparse.Namespace) -> None:
             "completed_by_this_command": ["brief-stopping-reason-recorded"],
             "not_run_by_this_command": ["full-campaign-quality-loop"],
             "phase": "ready-for-brief-finalize",
-            "next_action": "Run brief-finalize; Camp-auto will then ask the promotion question",
+            "next_action": (
+                "Run brief-finalize; Camp-auto will then ask the promotion question"
+                if workflow_state(state).get("requested_mode") == "auto"
+                else "Run brief-finalize; Camp-brief stops there and makes no promotion offer"
+            ),
         }, indent=2))
         return
     state["status"] = "candidate"
@@ -3197,6 +3209,13 @@ def cmd_brief_finalize(args: argparse.Namespace) -> None:
     if workflow.get("artifact_level") != "brief":
         raise SystemExit("This state is already Camp-full; use the full render/finalize path")
 
+    promotion = workflow["promotion"]
+    if promotion_offer_is_stale(state):
+        promotion.update({
+            "status": "pending", "brief_digest": "", "answer_verbatim": "",
+            "source": "", "offered_at": "", "accepted_brief": {}, "decided_at": "",
+        })
+
     pre = validate_brief_content(state)
     if not pre["valid"]:
         out_dir = campaign_dir / OUTPUT_DIR_REL
@@ -3212,7 +3231,6 @@ def cmd_brief_finalize(args: argparse.Namespace) -> None:
         }, indent=2, ensure_ascii=False))
         raise SystemExit(2)
 
-    promotion = workflow["promotion"]
     promotion_offered_now = False
     if workflow.get("requested_mode") == "auto" and promotion.get("status") == "pending":
         promotion.update({

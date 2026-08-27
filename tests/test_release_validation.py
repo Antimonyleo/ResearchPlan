@@ -286,6 +286,37 @@ class ReleaseValidationTests(unittest.TestCase):
             for directory in ("working", "artifacts", "private", "transient"):
                 self.assertFalse((target / directory).exists())
 
+    def test_example_audit_copy_keeps_nested_unrecorded_output(self):
+        validator = load_validator()
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            source = root / "docs/examples/example"
+            (source / "state").mkdir(parents=True)
+            (source / "state/campaign.json").write_text("{}\n", encoding="utf-8")
+            (source / "outputs").mkdir()
+            (source / "outputs/published.md").write_text("published\n", encoding="utf-8")
+            (source / "outputs/artifacts").mkdir()
+            (source / "outputs/artifacts/leak.md").write_text("leak\n", encoding="utf-8")
+            (source / "state/working").mkdir()
+            (source / "state/working/stray.json").write_text("{}\n", encoding="utf-8")
+            (source / "working").mkdir()
+            (source / "working/scratch.json").write_text("{}\n", encoding="utf-8")
+
+            calls = []
+
+            def fake_run(command, cwd, timeout=180, env=None):
+                calls.append((command, cwd))
+                return {"returncode": 0}
+
+            with mock.patch.object(validator, "run", side_effect=fake_run):
+                validator.audit_examples(root, Path(temp) / "audit")
+
+            target = Path(calls[0][0][3])
+            self.assertFalse((target / "working").exists())
+            self.assertTrue((target / "outputs/artifacts/leak.md").is_file())
+            self.assertTrue((target / "state/working/stray.json").is_file())
+
     def test_benchmark_smoke_preserves_failure_and_cleans_temp_directory(self):
         with tempfile.TemporaryDirectory() as temp:
             temp_root = Path(temp)

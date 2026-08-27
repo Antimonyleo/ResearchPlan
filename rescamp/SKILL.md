@@ -109,7 +109,7 @@ When the host offers a structured question control, use it and put the recommend
 
 ## Artifact-level stopping rules
 
-A valid brief records the decision or purpose, scope and non-goals, core inquiries, likely evidence and rough method, assumptions and material unknowns, blockers, proposed outputs, and next action. It is `brief-ready`, not execution-ready, and authorizes no research execution. In `Camp-auto` or `Camp-brief`, stop when those fields are resolved, safely defaulted, defensibly deferred, or exposed as blockers, then run `brief-finalize`.
+A valid brief records the decision or purpose, scope and non-goals, core inquiries, likely evidence and rough method, assumptions and material unknowns, blockers, proposed outputs, and next action. It is `brief-ready`, not execution-ready, and authorizes no research execution. In `Camp-auto` or `Camp-brief`, once those fields are resolved, safely defaulted, defensibly deferred, or exposed as blockers, record the stopping reason with `stop`, then run `brief-finalize`; `brief-finalize` fails closed while the stopping reason is missing.
 
 `brief-finalize` writes `outputs/RESEARCH_BRIEF.md` and its small hash manifest. It does not
 write the full campaign bundle.
@@ -149,9 +149,10 @@ apply <c> --json @campaign.json                           # many sections at onc
 add <c> <list-path> --json @section.json                  # one list section, fields checked
 set <c> <dict-path> @section.json                         # replace an existing subtree
 stop <c> --reason <stopping-reason>                       # brief: record stop; full: begin QA orchestration
+  → full only: execute each packet in working/review_packets/ as a separate read-only reviewer
 brief-finalize <c>                                        # brief only, after stop
 promotion <c> --decision accept|decline --source auto-prompt|camp-full --answer …
-  → full only, after stop: execute each packet in working/review_packets/ as a separate read-only reviewer
+                                                          # brief only; Camp-full is already promoted
 ingest-review <c> <record.json>                           # once per required role
 finalize <c>                                              # fail-closed; renders the bundle
 audit <c> --strict                                        # re-verify hashes and state

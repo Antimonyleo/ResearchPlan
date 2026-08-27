@@ -965,6 +965,40 @@ class BenchmarkTests(unittest.TestCase):
             for item in evaluation["critical_defects"]
         ))
 
+    def test_scenario_branch_outside_the_interview_vocabulary_is_rejected(self):
+        scenario = copy.deepcopy(next(
+            item for item in bench.load_scenarios(ROOT / "benchmark/scenarios/public")
+            if item["id"] == "ai-procurement-legal"
+        ))
+        target = next(dim for dim in scenario["material_dimensions"]
+                      if dim["branch"] == "scope-object")
+        matched_before = bench.fixture_team_u(
+            scenario, {"branch": "scope-object"}, [],
+        )["answered_dimension_ids"]
+        target["branch"] = "scope-objct"
+
+        errors = bench.scenario_errors(scenario)
+
+        self.assertIn(target["id"], matched_before)
+        self.assertNotIn(
+            target["id"],
+            bench.fixture_team_u(scenario, {"branch": "scope-object"}, [])["answered_dimension_ids"],
+        )
+        self.assertTrue(
+            any("scope-objct" in error for error in errors), errors,
+        )
+
+    def test_every_asked_branch_is_in_the_scenario_branch_vocabulary(self):
+        asked = {
+            branch
+            for profile in ("scoped", "standard", "high-assurance")
+            for archetypes in ([], ["humanities-interpretive"])
+            for branch, _ in bench.branch_questions(profile, archetypes)
+        }
+
+        self.assertTrue(asked)
+        self.assertEqual(asked - set(bench.BRANCH_IDS), set())
+
     def test_operations_rating_separates_the_skilled_and_bare_fixtures(self):
         scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
         conditions = {

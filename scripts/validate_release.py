@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 
 EXCLUDED_TOP_LEVEL = frozenset({
@@ -216,14 +216,26 @@ def validate_json(root: Path) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-def ignore_example_transients(_directory: str, names: list[str]) -> list[str]:
-    """Keep copied examples limited to release inputs and published outputs."""
-    return [
-        name for name in names
-        if name in EXCLUDED_EXAMPLE_DIRS
-        or name == "__pycache__"
-        or name.endswith(".cover")
-    ]
+def example_transient_ignore(source: Path) -> Callable[[str, list[str]], list[str]]:
+    """Ignore a campaign's own transient trees without hiding nested output.
+
+    `EXCLUDED_EXAMPLE_DIRS` names the campaign-root working directories that are not
+    release inputs. Matching them at every depth would also strip an unrecorded
+    `outputs/artifacts/` or `state/working/` from the copy, which is exactly what
+    `audit --strict` has to see.
+    """
+    root = source.resolve()
+
+    def ignore(directory: str, names: list[str]) -> list[str]:
+        at_root = Path(directory).resolve() == root
+        return [
+            name for name in names
+            if (at_root and name in EXCLUDED_EXAMPLE_DIRS)
+            or name == "__pycache__"
+            or name.endswith(".cover")
+        ]
+
+    return ignore
 
 
 def audit_examples(root: Path, temp: Path) -> dict[str, dict[str, Any]]:
@@ -232,7 +244,7 @@ def audit_examples(root: Path, temp: Path) -> dict[str, dict[str, Any]]:
     for state_path in sorted((root / "docs/examples").glob("*/state/campaign.json")):
         source = state_path.parent.parent
         target = temp / "examples" / source.name
-        shutil.copytree(source, target, ignore=ignore_example_transients)
+        shutil.copytree(source, target, ignore=example_transient_ignore(source))
         results[source.name] = run([
             sys.executable, "rescamp/scripts/rescamp.py", "audit", str(target), "--strict",
         ], root)

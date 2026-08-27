@@ -284,11 +284,9 @@ class PlanningModeContractTests(unittest.TestCase):
             "--note", "A revised stopping rationale",
         )
 
-        pending = self.load_state(campaign_dir)["workflow"]["promotion"]
-        self.assertEqual(pending["status"], "pending")
-        self.assertEqual(pending["brief_digest"], "")
-        self.run_cli("brief-finalize", campaign_dir)
+        payload = json.loads(self.run_cli("brief-finalize", campaign_dir).stdout)
         second = self.load_state(campaign_dir)["workflow"]["promotion"]
+        self.assertIsNotNone(payload["promotion_prompt"])
         self.assertEqual(second["status"], "offered")
         self.assertNotEqual(second["brief_digest"], first["brief_digest"])
 
@@ -595,10 +593,74 @@ class PlanningModeContractTests(unittest.TestCase):
         changed["scope"] = "A changed but still bounded evidence review"
 
         self.run_cli("set", campaign_dir, "sketch", json.dumps(changed))
+        payload = json.loads(self.run_cli("brief-finalize", campaign_dir).stdout)
 
         promotion = self.load_state(campaign_dir)["workflow"]["promotion"]
-        self.assertEqual(promotion["status"], "pending")
-        self.assertEqual(promotion["brief_digest"], "")
+        self.assertIsNotNone(payload["promotion_prompt"])
+        self.assertEqual(promotion["status"], "offered")
+
+    def test_edit_then_revert_keeps_the_declined_answer_and_asks_no_second_time(self):
+        campaign_dir = self.finalize_brief("reverted-after-decline", "auto")
+        answer = "No, keep the brief."
+        self.run_cli(
+            "promotion", campaign_dir, "--decision", "decline",
+            "--source", "auto-prompt", "--answer", answer,
+        )
+        declined = self.load_state(campaign_dir)["workflow"]["promotion"]
+
+        self.run_cli(
+            "set", campaign_dir, "sketch.next_action", json.dumps("Run the pilot in two weeks"),
+        )
+        self.run_cli(
+            "set", campaign_dir, "sketch.next_action", json.dumps(BRIEF_SKETCH["next_action"]),
+        )
+        payload = json.loads(self.run_cli("brief-finalize", campaign_dir).stdout)
+
+        self.assertIsNone(payload["promotion_prompt"])
+        self.assertEqual(
+            self.load_state(campaign_dir)["workflow"]["promotion"], declined,
+        )
+
+    def test_camp_brief_stop_does_not_promise_a_promotion_question(self):
+        for mode, promises_prompt in (("brief", False), ("auto", True)):
+            with self.subTest(mode=mode):
+                campaign_dir = self.prepare_brief(f"stop-next-action-{mode}", mode)
+                stopped = json.loads(
+                    self.run_cli(
+                        "stop", campaign_dir, "--reason", "material-completeness",
+                        "--note", "Enough for the decision", "--no-auto-quality",
+                    ).stdout
+                )
+                finalized = json.loads(
+                    self.run_cli("brief-finalize", campaign_dir).stdout
+                )
+
+                self.assertEqual(
+                    "will then ask" in stopped["next_action"], promises_prompt,
+                    stopped["next_action"],
+                )
+                self.assertEqual(
+                    finalized["promotion_prompt"] is not None, promises_prompt,
+                )
+
+    def test_title_change_makes_the_rendered_brief_stale(self):
+        campaign_dir = self.finalize_brief("stale-title", "brief")
+        rendered = (campaign_dir / "outputs/RESEARCH_BRIEF.md").read_text(encoding="utf-8")
+
+        self.run_cli("set", campaign_dir, "title", json.dumps("COMPLETELY DIFFERENT TITLE"))
+        payload = json.loads(self.run_cli("validate", campaign_dir).stdout)
+        audit = self.run_cli("audit", campaign_dir, "--strict", check=False)
+
+        self.assertEqual(
+            rendered,
+            (campaign_dir / "outputs/RESEARCH_BRIEF.md").read_text(encoding="utf-8"),
+        )
+        self.assertFalse(payload["valid"])
+        self.assertTrue(
+            any(item["code"] == "outputs.stale" for item in payload["errors"]),
+            payload["errors"],
+        )
+        self.assertNotEqual(audit.returncode, 0)
 
     def test_full_validation_detects_tampered_accepted_brief_payload(self):
         campaign_dir = self.finalize_brief("tampered-accepted-brief", "auto")
