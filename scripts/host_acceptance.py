@@ -8,6 +8,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -15,6 +16,8 @@ from typing import NamedTuple
 
 
 CANONICAL_MODES = ("Camp-auto", "Camp-brief", "Camp-full")
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+CANONICAL_SKILL_ROOT = REPOSITORY_ROOT / "rescamp"
 REQUIRED_SKILL_FILES = (
     "SKILL.md",
     "VERSION",
@@ -38,25 +41,23 @@ REQUIRED_SKILL_FILES = (
 )
 
 
-def has_symlink_component(root: Path, path: Path) -> bool:
-    current = root
-    for part in path.relative_to(root).parts:
-        current /= part
-        if current.is_symlink():
-            return True
-    return False
-
-
-def required_skill_errors(project: Path, skill_root: Path) -> list[str]:
+def required_skill_errors(skill_root: Path) -> list[str]:
+    if not skill_root.is_dir():
+        return ["skill root is missing"]
     errors: list[str] = []
-    if not skill_root.is_dir() or has_symlink_component(project, skill_root):
-        return ["skill root is missing or uses symlinks"]
-    for relative in REQUIRED_SKILL_FILES:
-        path = skill_root / relative
-        if has_symlink_component(skill_root, path):
-            errors.append(f"required path uses a symlink: {relative}")
-        elif not path.is_file():
-            errors.append(f"missing: {relative}")
+    actual: set[str] = set()
+    for path in sorted(skill_root.rglob("*")):
+        relative = path.relative_to(skill_root)
+        if "__pycache__" in relative.parts:
+            continue
+        name = relative.as_posix()
+        if path.is_symlink():
+            errors.append(f"path uses a symlink: {name}")
+        elif path.is_file():
+            actual.add(name)
+    required = set(REQUIRED_SKILL_FILES)
+    errors.extend(f"missing: {name}" for name in sorted(required - actual))
+    errors.extend(f"unexpected file: {name}" for name in sorted(actual - required))
     return errors
 
 
@@ -136,6 +137,27 @@ def digest_tree(root: Path) -> str:
     return digest.hexdigest()
 
 
+def skill_installation_errors(
+    skill_root: Path, canonical_root: Path = CANONICAL_SKILL_ROOT,
+) -> list[str]:
+    """Check the installed tree's shape and bytes against this repository's skill."""
+    skill_root = skill_root.resolve()
+    errors = required_skill_errors(skill_root)
+    canonical_root = canonical_root.resolve()
+    if not canonical_root.is_dir():
+        return errors + [f"repository canonical skill is missing: {canonical_root}"]
+    if errors:
+        return errors
+    installed_digest = digest_tree(skill_root)
+    canonical_digest = digest_tree(canonical_root)
+    if installed_digest != canonical_digest:
+        errors.append(
+            "installed skill tree digest does not match repository canonical skill "
+            f"({installed_digest} != {canonical_digest})"
+        )
+    return errors
+
+
 def _process_group_kwargs() -> dict[str, object]:
     if os.name == "posix":
         return {"start_new_session": True}
@@ -144,28 +166,107 @@ def _process_group_kwargs() -> dict[str, object]:
     return {}
 
 
+def _linux_descendants(root_pid: int) -> list[int]:
+    """Snapshot descendants before group termination, including children that called setsid."""
+    if not sys.platform.startswith("linux"):
+        return []
+    found: list[int] = []
+    pending = [root_pid]
+    while pending:
+        parent = pending.pop()
+        try:
+            raw = Path(f"/proc/{parent}/task/{parent}/children").read_text(encoding="ascii")
+        except OSError:
+            continue
+        children = [int(value) for value in raw.split() if value.isdigit()]
+        found.extend(children)
+        pending.extend(children)
+    return found
+
+
+WINDOWS_TASKKILL_TIMEOUT = 5
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
     """Kill a timed-out host and descendants, tolerating exit races."""
     if os.name == "posix":
+        descendants = _linux_descendants(process.pid)
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        for pid in reversed(descendants):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         return
     if os.name == "nt":
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(process.pid)],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL, check=False,
+                timeout=WINDOWS_TASKKILL_TIMEOUT,
             )
-            return
-        except OSError:
+            if result.returncode == 0:
+                return
+        except (OSError, subprocess.TimeoutExpired):
             pass
     try:
         process.kill()
-    except ProcessLookupError:
+    except OSError:
         pass
+
+
+def _decode_text(value: object) -> tuple[str, bool]:
+    if value is None:
+        return "", True
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8"), True
+        except UnicodeDecodeError:
+            return value.decode("utf-8", errors="replace"), False
+    return str(value), True
+
+
+class DecodedCapture(NamedTuple):
+    stdout: str
+    stderr: str
+    valid_utf8: bool
+
+
+def decode_capture(stdout: object, stderr: object) -> DecodedCapture:
+    stdout_text, stdout_valid = _decode_text(stdout)
+    stderr_text, stderr_valid = _decode_text(stderr)
+    return DecodedCapture(stdout_text, stderr_text, stdout_valid and stderr_valid)
+
+
+def _completed_process(
+    command: list[str], returncode: int | None, capture: DecodedCapture,
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.CompletedProcess(command, returncode, capture.stdout, capture.stderr)
+    result.encoding_error = not capture.valid_utf8  # type: ignore[attr-defined]
+    return result
+
+
+def _drain_after_timeout(process: subprocess.Popen[bytes], seconds: float = 1.0) -> DecodedCapture:
+    """Collect bounded diagnostics without trusting every descendant to close its pipes."""
+    try:
+        stdout, stderr = process.communicate(timeout=seconds)
+        return decode_capture(stdout, stderr)
+    except subprocess.TimeoutExpired as exc:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+        try:
+            process.wait(timeout=0.2)
+        except (subprocess.TimeoutExpired, ProcessLookupError):
+            pass
+        return decode_capture(exc.stdout, exc.stderr)
 
 
 def artifact_fingerprint(path: Path) -> dict[str, object] | None:
@@ -231,18 +332,21 @@ def run_process(command: list[str], project: Path, timeout: int,
     try:
         process = subprocess.Popen(
             command, cwd=project, stdin=subprocess.PIPE if input_text is not None else None,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             **_process_group_kwargs(),
         )
     except OSError as exc:
-        return subprocess.CompletedProcess(command, 127, "", str(exc)), False
+        return _completed_process(command, 127, decode_capture("", str(exc))), False
     try:
-        stdout, stderr = process.communicate(input_text, timeout=timeout)
-        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr), False
+        input_bytes = input_text.encode("utf-8") if input_text is not None else None
+        stdout, stderr = process.communicate(input_bytes, timeout=timeout)
+        return _completed_process(
+            command, process.returncode, decode_capture(stdout, stderr),
+        ), False
     except subprocess.TimeoutExpired:
         _terminate_process_group(process)
-        stdout, stderr = process.communicate()
-        return subprocess.CompletedProcess(command, 124, stdout, stderr), True
+        capture = _drain_after_timeout(process)
+        return _completed_process(command, 124, capture), True
 
 
 def main() -> int:
@@ -291,11 +395,12 @@ def main() -> int:
         if args.dry_run:
             receipt["prompt"] = prompt
         else:
-            skill_path = project / adapter.skill_path
-            if not skill_path.is_file() or skill_path.is_symlink():
+            configured_skill_root = (project / adapter.skill_path).parent
+            skill_root = configured_skill_root.resolve()
+            skill_path = configured_skill_root / "SKILL.md"
+            if not skill_path.is_file() or skill_path.resolve() != skill_root / "SKILL.md":
                 raise SystemExit(f"ResCamp is not installed for {args.host} at {skill_path}")
-            skill_root = skill_path.parent
-            skill_errors = required_skill_errors(project, skill_root)
+            skill_errors = skill_installation_errors(skill_root)
             if skill_errors:
                 raise SystemExit(
                     "ResCamp installation is incomplete; "
@@ -325,24 +430,43 @@ def main() -> int:
             elif version_result.returncode == 127:
                 failure_stage = "version"
             host_version = (version_result.stdout or version_result.stderr).strip()
+            version_encoding_error = bool(
+                getattr(version_result, "encoding_error", False)
+            )
             # The version probe is not the accepted workflow. Snapshot only after it so
             # an ill-behaved executable cannot satisfy the artifact check from --version.
             expected_before = {
                 relative: project_fingerprint(project, candidate)
                 for relative, candidate in expected_paths.items()
             }
-            if timeout_stage or failure_stage or version_result.returncode != 0:
+            if (timeout_stage or failure_stage or version_result.returncode != 0
+                    or version_encoding_error):
                 failure_stage = failure_stage or ("" if timeout_stage else "version")
                 result = subprocess.CompletedProcess(
                     command, version_result.returncode, "", "host version check failed",
                 )
+                result.encoding_error = version_encoding_error  # type: ignore[attr-defined]
             else:
                 result, host_timed_out = run_process(command, project, args.timeout, prompt)
                 if host_timed_out:
                     timeout_stage = "host"
                 elif result.returncode == 127:
                     failure_stage = "host"
-            response = response_path.read_text(encoding="utf-8") if response_path.exists() else result.stdout
+            response_encoding_error = False
+            response_read_error = ""
+            if response_path.exists():
+                try:
+                    response, response_valid = _decode_text(response_path.read_bytes())
+                    response_encoding_error = not response_valid
+                except OSError as exc:
+                    response = ""
+                    response_encoding_error = True
+                    response_read_error = str(exc)
+            else:
+                response = result.stdout
+                response_encoding_error = bool(
+                    getattr(result, "encoding_error", False)
+                )
             expected: dict[str, bool] = {}
             expected_after: dict[str, dict[str, object] | None] = {}
             artifact_errors: dict[str, str] = {}
@@ -368,6 +492,7 @@ def main() -> int:
                 "host_version": host_version,
                 "host_version_returncode": version_result.returncode,
                 "skill_tree_sha256": digest_tree(skill_root),
+                "canonical_skill_tree_sha256": digest_tree(CANONICAL_SKILL_ROOT.resolve()),
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "timed_out": bool(timeout_stage),
                 "timeout_stage": timeout_stage or None,
@@ -375,6 +500,9 @@ def main() -> int:
                 "response_sha256": hashlib.sha256(response.encode("utf-8")).hexdigest(),
                 "stderr_sha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
                 "response_nonempty": bool(response.strip()),
+                "response_utf8": not response_encoding_error,
+                "output_utf8": not bool(getattr(result, "encoding_error", False)),
+                "response_read_error": response_read_error or None,
                 "expected_artifacts": expected,
                 "expected_artifact_before": expected_before,
                 "expected_artifact_after": expected_after,
@@ -383,10 +511,12 @@ def main() -> int:
                 "expected_artifact_glob_after": expected_glob_after,
                 "artifact_errors": artifact_errors,
                 "passed": result.returncode == 0 and version_result.returncode == 0
+                and not version_encoding_error and not response_encoding_error
+                and not bool(getattr(result, "encoding_error", False))
                 and response_ok(args.host, response) and all(expected.values())
                 and all(expected_globs.values()),
             })
-        text = json.dumps(receipt, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+        text = json.dumps(receipt, indent=2, ensure_ascii=True, sort_keys=True) + "\n"
         if args.evidence_dir and not args.dry_run:
             evidence = Path(args.evidence_dir).resolve()
             evidence.mkdir(parents=True, exist_ok=True)

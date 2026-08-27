@@ -19,6 +19,12 @@ SPEC = importlib.util.spec_from_file_location("rescamp_host_acceptance", SCRIPT)
 host_acceptance = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(host_acceptance)
+VALIDATOR_SPEC = importlib.util.spec_from_file_location(
+    "rescamp_validate_skill_manifest", ROOT / "rescamp/scripts/validate_skill.py"
+)
+skill_validator = importlib.util.module_from_spec(VALIDATOR_SPEC)
+assert VALIDATOR_SPEC.loader
+VALIDATOR_SPEC.loader.exec_module(skill_validator)
 
 
 class HostAcceptanceTests(unittest.TestCase):
@@ -276,6 +282,10 @@ class HostAcceptanceTests(unittest.TestCase):
                         receipt["skill_tree_sha256"],
                         host_acceptance.digest_tree(installed.parent),
                     )
+                    self.assertEqual(
+                        receipt["skill_tree_sha256"],
+                        receipt["canonical_skill_tree_sha256"],
+                    )
                     self.assertEqual(receipt["expected_artifacts"], {"acceptance.done": True})
                     self.assertEqual(
                         (project / "acceptance.done").read_text(encoding="utf-8"),
@@ -314,6 +324,53 @@ class HostAcceptanceTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("assets/review.schema.json", result.stderr)
 
+    def test_modified_installed_file_is_rejected_against_repository_bytes(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            project = Path(temp_str) / "project"
+            installed = self.install_skill(project)
+            installed.write_bytes(installed.read_bytes() + b"\nlocal modification\n")
+
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "help",
+                "--executable", sys.executable,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match repository canonical skill", result.stderr)
+
+    def test_host_and_skill_validators_share_the_same_canonical_manifest(self):
+        self.assertEqual(
+            host_acceptance.REQUIRED_SKILL_FILES, skill_validator.REQUIRED_FILES
+        )
+
+    def test_installation_rejects_unexpected_files_and_nested_symlinks(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            skill_root = Path(temp_str) / "rescamp"
+            shutil.copytree(ROOT / "rescamp", skill_root)
+            (skill_root / "stale.txt").write_text("stale\n", encoding="utf-8")
+            outside = Path(temp_str) / "outside.txt"
+            outside.write_text("outside\n", encoding="utf-8")
+            (skill_root / "assets/external.json").symlink_to(outside)
+
+            errors = host_acceptance.required_skill_errors(skill_root)
+
+        self.assertIn("unexpected file: stale.txt", errors)
+        self.assertIn("path uses a symlink: assets/external.json", errors)
+
+    def test_whole_canonical_tree_symlink_is_a_valid_installation(self):
+        for host, adapter in host_acceptance.HOST_ADAPTERS.items():
+            with self.subTest(host=host), tempfile.TemporaryDirectory() as temp_str:
+                project = Path(temp_str)
+                configured_root = (project / adapter.skill_path).parent
+                configured_root.parent.mkdir(parents=True)
+                configured_root.symlink_to(ROOT / "rescamp", target_is_directory=True)
+
+                resolved_root = configured_root.resolve()
+                self.assertEqual(
+                    (configured_root / "SKILL.md").resolve(), resolved_root / "SKILL.md"
+                )
+                self.assertEqual(host_acceptance.skill_installation_errors(resolved_root), [])
+
     @unittest.skipUnless(hasattr(os, "killpg"), "process-group termination requires POSIX")
     def test_timeout_cleanup_tolerates_process_exit_race(self):
         process = mock.Mock(pid=123, returncode=-9)
@@ -332,6 +389,95 @@ class HostAcceptanceTests(unittest.TestCase):
         self.assertTrue(timed_out)
         self.assertEqual(result.returncode, 124)
         process.communicate.assert_called()
+
+    def test_post_kill_drain_is_bounded_when_an_escaped_child_keeps_pipes_open(self):
+        process = mock.Mock(pid=123, returncode=-9)
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired(["fake"], 0.01),
+            subprocess.TimeoutExpired(["fake"], 1.0, output=b"partial"),
+        ]
+        process.wait.return_value = -9
+
+        with mock.patch.object(host_acceptance.subprocess, "Popen", return_value=process), \
+                mock.patch.object(host_acceptance, "_terminate_process_group"):
+            result, timed_out = host_acceptance.run_process(
+                ["fake"], Path.cwd(), timeout=0.01,
+            )
+
+        self.assertTrue(timed_out)
+        self.assertEqual(result.returncode, 124)
+        self.assertEqual(result.stdout, "partial")
+        process.stdout.close.assert_called_once()
+        process.stderr.close.assert_called_once()
+
+    def test_windows_taskkill_is_bounded_and_falls_back_to_process_kill(self):
+        process = mock.Mock(pid=321)
+        with mock.patch.object(host_acceptance.os, "name", "nt"), \
+                mock.patch.object(
+                    host_acceptance.subprocess, "run",
+                    side_effect=subprocess.TimeoutExpired(["taskkill"], 5),
+                ) as taskkill:
+            host_acceptance._terminate_process_group(process)
+
+        self.assertEqual(taskkill.call_args.kwargs["timeout"], 5)
+        process.kill.assert_called_once_with()
+
+    def test_invalid_utf8_host_output_returns_a_structured_failure(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            fake = root / "invalid-output-host.py"
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "if '--version' in sys.argv:\n"
+                "    sys.stdout.buffer.write(b'fake-host \\xff\\n')\n"
+                "else:\n"
+                "    print('ok')\n",
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            project = root / "project"
+            self.install_skill(project)
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "help",
+                "--executable", str(fake),
+            )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertFalse(receipt["output_utf8"])
+        self.assertFalse(receipt["passed"])
+
+    def test_invalid_utf8_response_file_returns_a_structured_failure(self):
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            fake = root / "invalid-response-host.py"
+            fake.write_text(
+                "#!/usr/bin/env python3\n"
+                "import pathlib, sys\n"
+                "if '--version' in sys.argv:\n"
+                "    print('fake-host 1.0')\n"
+                "else:\n"
+                "    pathlib.Path('acceptance.done').write_text('done', encoding='utf-8')\n"
+                "    response = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
+                "    response.write_bytes(b'\\xffok')\n",
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            project = root / "project"
+            self.install_skill(project)
+            result = self.run_acceptance(
+                "--host", "codex", "--project", str(project), "--mode", "Camp-brief",
+                "--goal", "bounded goal", "--executable", str(fake),
+                "--expect", "acceptance.done",
+            )
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertFalse(receipt["response_utf8"])
+        self.assertFalse(receipt["passed"])
 
     def test_preexisting_artifact_cannot_satisfy_any_non_help_mode(self):
         cases = (
@@ -403,7 +549,7 @@ class HostAcceptanceTests(unittest.TestCase):
                 "if '--version' in sys.argv:\n"
                 "    print('descendant-host 1.0')\n"
                 "else:\n"
-                f"    subprocess.Popen([sys.executable, '-c', \"import time; from pathlib import Path; time.sleep(2); Path({str(late)!r}).write_text('late')\"])\n"
+                f"    subprocess.Popen([sys.executable, '-c', \"import time; from pathlib import Path; time.sleep(2); Path({str(late)!r}).write_text('late')\"], start_new_session=True)\n"
                 "    time.sleep(10)\n",
                 encoding="utf-8",
             )

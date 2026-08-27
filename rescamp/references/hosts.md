@@ -43,10 +43,17 @@ at least one expected artifact, and each expected artifact must be created or ch
 the host chooses the campaign slug, use `--expect-glob
 'research-campaigns/*/state/campaign.json'` instead of guessing that identifier.
 
-The receipt records the host version, skill-tree digest, response hashes, elapsed time, and
-before/after fingerprints for expected artifacts. A pre-existing unchanged file cannot pass.
+The receipt records the host version, the installed skill-tree digest and its comparison with
+the repository's canonical `rescamp/` bytes, response hashes, elapsed time, and before/after
+fingerprints for expected artifacts. A pre-existing unchanged file cannot pass.
+The completeness check accepts the installer's whole-tree symlink as well as a copied tree,
+but rejects missing or unexpected files and symlinks nested inside the canonical tree.
 This proves only that invocation completed and created or changed the named files; it does not
 judge the research plan or prove reviewer independence.
+
+`rescamp/scripts/validate_skill.py` is intentionally local: it validates the tree supplied to
+it and has no external canonical source. Repository host acceptance is the check that compares
+an installed tree with this repository's `rescamp/` bytes.
 
 Run live acceptance only in a trusted project: the selected coding host can execute project
 instructions with the permissions granted to that host.

@@ -20,6 +20,7 @@ EXCLUDED_TOP_LEVEL = frozenset({
     ".venv", "dist", "node_modules", "research-campaigns", "venv",
 })
 EXCLUDED_EXAMPLE_DIRS = frozenset({"artifacts", "private", "transient", "working"})
+WINDOWS_TASKKILL_TIMEOUT = 5
 
 
 def repository_files(root: Path, pattern: str) -> Iterator[Path]:
@@ -55,28 +56,73 @@ def _process_group_kwargs() -> dict[str, Any]:
     return {}
 
 
+def _linux_descendants(root_pid: int) -> list[int]:
+    """Snapshot descendants before group termination, including children that called setsid."""
+    if not sys.platform.startswith("linux"):
+        return []
+    found: list[int] = []
+    pending = [root_pid]
+    while pending:
+        parent = pending.pop()
+        try:
+            raw = Path(f"/proc/{parent}/task/{parent}/children").read_text(encoding="ascii")
+        except OSError:
+            continue
+        children = [int(value) for value in raw.split() if value.isdigit()]
+        found.extend(children)
+        pending.extend(children)
+    return found
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> None:
     """Kill a timed-out process and descendants, tolerating exit races."""
     if os.name == "posix":
+        descendants = _linux_descendants(process.pid)
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        for pid in reversed(descendants):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         return
     if os.name == "nt":
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(process.pid)],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL, check=False,
+                timeout=WINDOWS_TASKKILL_TIMEOUT,
             )
-            return
-        except (OSError, ProcessLookupError):
+            if result.returncode == 0:
+                return
+        except (OSError, subprocess.TimeoutExpired):
             pass
     try:
         process.kill()
-    except ProcessLookupError:
+    except OSError:
         pass
+
+
+def _drain_after_timeout(process: subprocess.Popen[str], seconds: float = 1.0) -> tuple[str, str]:
+    """Collect bounded diagnostics without trusting every descendant to close its pipes."""
+    try:
+        stdout, stderr = process.communicate(timeout=seconds)
+        return _captured_text(stdout), _captured_text(stderr)
+    except subprocess.TimeoutExpired as exc:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+        try:
+            process.wait(timeout=0.2)
+        except (subprocess.TimeoutExpired, ProcessLookupError):
+            pass
+        return _captured_text(exc.stdout), _captured_text(exc.stderr)
 
 
 def run(command: list[str], cwd: Path, timeout: int = 180, env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -84,14 +130,14 @@ def run(command: list[str], cwd: Path, timeout: int = 180, env: dict[str, str] |
     child_env = dict(os.environ if env is None else env)
     child_env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
     proc = subprocess.Popen(
-        command, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         env=child_env, **_process_group_kwargs(),
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         _terminate_process_group(proc)
-        stdout, stderr = proc.communicate()
+        stdout, stderr = _drain_after_timeout(proc)
         timeout_message = f"command timed out after {timeout} seconds"
         captured_stderr = _captured_text(stderr or exc.stderr)
         if captured_stderr:
@@ -152,16 +198,16 @@ def validate_json(root: Path) -> tuple[list[str], list[str]]:
             data = json.loads(path.read_text(encoding="utf-8"))
             for problem in validator.iter_errors(data):
                 errors.append(f"{path.relative_to(root)} schema: {problem.message}")
-        # `campaign.schema.json` ships as the contract for the published `campaign.json`.
-        # Checking only that it is well-formed left it free to drift from the engine, so
-        # validate it against real committed state.
+        # The schema is the structural envelope for both canonical state and the published
+        # campaign.json snapshot. The engine's validate/audit path owns deeper semantics.
         campaign_schema = json.loads((root / "rescamp/assets/campaign.schema.json").read_text(encoding="utf-8"))
         campaign_validator = jsonschema.Draft202012Validator(campaign_schema)
-        states = sorted((root / "docs/examples").glob("*/state/campaign.json"))
-        if not states:
-            warnings.append("no committed example campaign state; campaign.schema.json "
+        campaigns = sorted((root / "docs/examples").glob("*/state/campaign.json"))
+        campaigns.extend(sorted((root / "docs/examples").glob("*/outputs/campaign.json")))
+        if not campaigns:
+            warnings.append("no committed example campaign state or output; campaign.schema.json "
                             "was checked for well-formedness only")
-        for path in states:
+        for path in campaigns:
             data = json.loads(path.read_text(encoding="utf-8"))
             for problem in campaign_validator.iter_errors(data):
                 errors.append(f"{path.relative_to(root)} schema: {problem.message}")
@@ -286,7 +332,7 @@ def main() -> int:
         "warnings": warnings,
         "checks": checks,
     }
-    text = json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    text = json.dumps(result, indent=2, ensure_ascii=True, sort_keys=True) + "\n"
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
     print(text, end="")

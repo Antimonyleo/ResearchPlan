@@ -1,5 +1,6 @@
 import builtins
 import importlib.util
+import json
 import os
 import shlex
 import shutil
@@ -41,6 +42,51 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertTrue(any("jsonschema is not installed" in error for error in errors))
         self.assertEqual(warnings, [])
 
+    def test_review_schema_requires_execution_evidence_for_independence_claims(self):
+        try:
+            import jsonschema
+        except ImportError:
+            self.skipTest("jsonschema is not installed")
+
+        schema = json.loads(
+            (ROOT / "rescamp/assets/review.schema.json").read_text(encoding="utf-8")
+        )
+        validator = jsonschema.Draft202012Validator(schema)
+        digest = "sha256:" + "a" * 64
+        base = {
+            "role": "methods-evidence",
+            "reviewer_id": "reviewer-1",
+            "verdict": "pass",
+            "content_digest": digest,
+            "rubric_digest": digest,
+            "packet_digest": digest,
+            "summary": "reviewed",
+            "findings": [],
+        }
+        for mode in ("independent-subagent", "separate-session", "external-human"):
+            with self.subTest(mode=mode):
+                errors = list(validator.iter_errors({**base, "mode": mode}))
+                self.assertTrue(
+                    any("execution_evidence" in error.message for error in errors),
+                    errors,
+                )
+
+        sequential_errors = list(
+            validator.iter_errors({**base, "mode": "sequential-pass"})
+        )
+        self.assertEqual(sequential_errors, [])
+
+        valid_independent = {
+            **base,
+            "mode": "independent-subagent",
+            "execution_evidence": {
+                "executor_id": "session-1",
+                "started_at": "2026-08-26T00:00:00Z",
+                "completed_at": "2026-08-26T00:01:00Z",
+            },
+        }
+        self.assertEqual(list(validator.iter_errors(valid_independent)), [])
+
     def test_subprocess_timeout_is_reported_as_structured_failure(self):
         validator = load_validator()
 
@@ -53,6 +99,25 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertNotEqual(result["returncode"], 0)
         self.assertTrue(result["timed_out"])
         self.assertIn("timed out", result["stderr"])
+        self.assertNotIn("Traceback", result["stderr"])
+
+    def test_invalid_utf8_subprocess_output_is_a_structured_result(self):
+        validator = load_validator()
+
+        with tempfile.TemporaryDirectory() as temp:
+            result = validator.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; sys.stdout.buffer.write(b'out\\xff'); "
+                    "sys.stderr.buffer.write(b'err\\xfe')",
+                ],
+                Path(temp),
+            )
+
+        self.assertEqual(result["returncode"], 0)
+        self.assertIn("\ufffd", result["stdout"])
+        self.assertIn("\ufffd", result["stderr"])
         self.assertNotIn("Traceback", result["stderr"])
 
     @unittest.skipUnless(hasattr(os, "killpg"), "process-group termination requires POSIX")
@@ -70,7 +135,7 @@ class ReleaseValidationTests(unittest.TestCase):
                 sys.executable,
                 "-c",
                 "import subprocess, sys, time; "
-                f"subprocess.Popen([sys.executable, '-c', {child!r}]); "
+                f"subprocess.Popen([sys.executable, '-c', {child!r}], start_new_session=True); "
                 "time.sleep(10)",
             ]
             started = time.monotonic()
@@ -101,6 +166,37 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertEqual(result["returncode"], 124)
         process.communicate.assert_called()
 
+    def test_post_kill_drain_is_bounded_when_an_escaped_child_keeps_pipes_open(self):
+        validator = load_validator()
+        process = mock.Mock(pid=123, returncode=-9)
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired(["fake"], 0.01),
+            subprocess.TimeoutExpired(["fake"], 1.0, output=b"partial"),
+        ]
+        process.wait.return_value = -9
+
+        with mock.patch.object(validator.subprocess, "Popen", return_value=process), \
+                mock.patch.object(validator, "_terminate_process_group"):
+            result = validator.run(["fake"], Path.cwd(), timeout=0.01)
+
+        self.assertTrue(result["timed_out"])
+        self.assertEqual(result["stdout"], "partial")
+        process.stdout.close.assert_called_once()
+        process.stderr.close.assert_called_once()
+
+    def test_windows_taskkill_is_bounded_and_falls_back_to_process_kill(self):
+        validator = load_validator()
+        process = mock.Mock(pid=321)
+        with mock.patch.object(validator.os, "name", "nt"), \
+                mock.patch.object(
+                    validator.subprocess, "run",
+                    side_effect=subprocess.TimeoutExpired(["taskkill"], 5),
+                ) as taskkill:
+            validator._terminate_process_group(process)
+
+        self.assertEqual(taskkill.call_args.kwargs["timeout"], 5)
+        process.kill.assert_called_once_with()
+
     def test_skill_validation_requires_the_complete_canonical_tree(self):
         with tempfile.TemporaryDirectory() as temp:
             skill_root = Path(temp) / "rescamp"
@@ -113,6 +209,38 @@ class ReleaseValidationTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing required file: assets/review.schema.json", result.stdout)
+
+    def test_skill_validation_rejects_unexpected_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            skill_root = Path(temp) / "rescamp"
+            shutil.copytree(ROOT / "rescamp", skill_root)
+            (skill_root / "stale.txt").write_text("stale\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(SKILL_VALIDATE_PATH), str(skill_root)],
+                capture_output=True, text=True, check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unexpected skill file: stale.txt", result.stdout)
+
+    def test_rendered_campaign_json_is_checked_against_the_structural_schema(self):
+        validator = load_validator()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            assets = root / "rescamp/assets"
+            assets.mkdir(parents=True)
+            for name in ("campaign.schema.json", "review.schema.json", "scenario.schema.json"):
+                shutil.copy2(ROOT / "rescamp/assets" / name, assets / name)
+            output = root / "docs/examples/example/outputs/campaign.json"
+            output.parent.mkdir(parents=True)
+            output.write_text("{}\n", encoding="utf-8")
+
+            errors, _ = validator.validate_json(root)
+
+        self.assertTrue(any(
+            "docs/examples/example/outputs/campaign.json schema" in error
+            for error in errors
+        ), errors)
 
     def test_example_audit_copy_excludes_transient_private_trees(self):
         validator = load_validator()

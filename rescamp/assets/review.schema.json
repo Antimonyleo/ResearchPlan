@@ -4,7 +4,7 @@
   "title": "ResCamp review record",
   "type": "object",
   "additionalProperties": true,
-  "required": ["role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest", "summary", "findings"],
+  "required": ["role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest", "packet_digest", "summary", "findings"],
   "properties": {
     "role": {"type": "string", "minLength": 1},
     "reviewer_id": {"type": "string", "minLength": 1},
@@ -12,6 +12,11 @@
     "verdict": {"enum": ["pass", "revise", "block"]},
     "content_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "rubric_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "packet_digest": {
+      "description": "Copy verbatim from the current role packet. Ingestion verifies this digest against the packet bytes and freeze metadata.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
     "summary": {"type": "string", "minLength": 1},
     "evidence_inspected": {"type": "array", "items": {"type": "string"}},
     "reviewed_sections": {
@@ -44,5 +49,20 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["mode"],
+        "properties": {
+          "mode": {
+            "enum": ["independent-subagent", "separate-session", "external-human"]
+          }
+        }
+      },
+      "then": {
+        "required": ["execution_evidence"]
+      }
+    }
+  ]
 }

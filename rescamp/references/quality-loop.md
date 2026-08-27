@@ -44,7 +44,9 @@ A host without independent subagents may perform labeled sequential challenge fo
 
 Every reviewer here sits on an internal rung of the independence ladder in `architecture.md`, section 15. None of them is external validation. Record which rung each review reached and carry it into the release decision unchanged.
 
-Reviewer output contains verdict (`pass`, `revise`, `block`), findings, affected object IDs, evidence inspected, severity, recommended remedy, reviewer identity, execution mode, and both digests.
+Reviewer output contains verdict (`pass`, `revise`, `block`), findings, affected object IDs, evidence inspected, severity, recommended remedy, reviewer identity, execution mode, both content/rubric digests, and the packet's `packet_digest` and `reviewed_sections` copied verbatim. Ingestion rejects a record that is not bound to the current role packet.
+Records using `independent-subagent`, `separate-session`, or `external-human` must also
+include `execution_evidence`; a `sequential-pass` record cannot imply independence.
 
 ## Phase D — repair and re-interview
 
