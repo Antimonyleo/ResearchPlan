@@ -2489,6 +2489,16 @@ def record_is_current(record: dict[str, Any], state: dict[str, Any], leaves: dic
             return False
         if metadata.get("reviewed_sections") != record.get("reviewed_sections"):
             return False
+        contract_digest = metadata.get("contract_digest")
+        if (not isinstance(contract_digest, str)
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", contract_digest)):
+            return False
+        current_packets = reviews.get("current_packets") if isinstance(reviews, dict) else None
+        current_packet = current_packets.get(record.get("role")) if isinstance(current_packets, dict) else None
+        current_metadata = metadata_map.get(current_packet) if isinstance(current_packet, str) else None
+        if (not isinstance(current_metadata, dict)
+                or current_metadata.get("contract_digest") != contract_digest):
+            return False
     reviewed = record.get("reviewed_sections")
     if not isinstance(reviewed, dict):
         return record.get("content_digest") == content_digest(state)
@@ -2531,6 +2541,24 @@ def packet_identity(packet: dict[str, Any]) -> dict[str, Any]:
         "rubric", "rubric_digest", "instructions", "scoped_sections", "reviewed_sections",
         "campaign",
     )}
+
+
+def packet_contract_identity(packet: dict[str, Any]) -> dict[str, Any]:
+    """Review rules independent of the campaign content they are applied to.
+
+    Per-section binding intentionally preserves a review when an unrelated campaign
+    section changes. It must not preserve one when the packet instructions, embedded
+    schema, rubric, or role scope changes.
+    """
+    return {
+        "packet_version": packet["packet_version"],
+        "role": packet["role"],
+        "rubric": packet["rubric"],
+        "rubric_digest": packet["rubric_digest"],
+        "instructions": packet["instructions"],
+        "scoped_sections": packet["scoped_sections"],
+        "reviewed_section_names": sorted(packet["reviewed_sections"]),
+    }
 
 
 def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, str, list[Path]]:
@@ -2591,6 +2619,26 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
                 "read_only": True,
                 "evaluate_least_favorable_defensible_interpretation": True,
                 "do_not_edit_canonical_state": True,
+                "review_object": (
+                    "Review the prospective campaign contract and the truthfulness of its current-state "
+                    "claims; do not review it as though the planned execution has already occurred."
+                ),
+                "future_evidence_rule": (
+                    "Do not report a missing future artifact as a defect when the starting point says the "
+                    "campaign is unstarted and the contract makes that artifact a prerequisite. Do report "
+                    "a missing or ambiguous prerequisite, an unsupported present-tense claim, or authority "
+                    "granted before the prerequisite is verified."
+                ),
+                "scope_boundary_rule": (
+                    "Assess only the sections and concerns assigned by this packet's scope note. Do not "
+                    "report a section or operational detail assigned to another reviewer as missing merely "
+                    "because it is intentionally omitted from this packet."
+                ),
+                "finding_policy": (
+                    "Identify every material finding. Return at most the three highest-priority findings; "
+                    "if more exist, use verdict block and state the total count and highest severity in the "
+                    "summary. The cap limits returned detail, not disclosure."
+                ),
                 "required_output_schema": read_json(SKILL_DIR / "assets/review.schema.json"),
                 "scope_note": ROLE_SCOPES.get(role, {}).get("note", "Full campaign."),
             },
@@ -2604,9 +2652,11 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
             "campaign": scoped,
         }
         packet["packet_digest"] = sha256_json(packet_identity(packet))
+        contract_digest = sha256_json(packet_contract_identity(packet))
         packet_metadata[packet["packet_digest"]] = {
             "role": role,
             "packet_digest": packet["packet_digest"],
+            "contract_digest": contract_digest,
             "content_digest": digest,
             "rubric_digest": r_digest,
             "reviewed_sections": copy.deepcopy(packet["reviewed_sections"]),
@@ -2616,6 +2666,22 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
         path = staged / name
         write_json(path, packet)
         names.append(name)
+    # The first filter above handles campaign-section changes against the previous
+    # freeze. Recheck after rebuilding packets so a review produced under an older
+    # instruction/schema/scope contract cannot survive merely because its sections
+    # stayed byte-identical.
+    reviews["records"] = [
+        item for item in reviews["records"]
+        if record_is_current(item, state, leaves)
+    ]
+    retained_digests = set(current_packets.values()) | {
+        item.get("packet_digest") for item in reviews["records"]
+        if isinstance(item, dict) and isinstance(item.get("packet_digest"), str)
+    }
+    reviews["packet_metadata"] = {
+        packet_digest: metadata for packet_digest, metadata in packet_metadata.items()
+        if packet_digest in retained_digests
+    }
     commit_state_and_directory(campaign_dir, state, staged, packet_dir)
     paths = [packet_dir / name for name in names]
     return digest, r_digest, paths
@@ -2691,6 +2757,11 @@ def review_record_errors(record: Any) -> list[str]:
         or not re.fullmatch(r"sha256:[0-9a-f]{64}", record.get("packet_digest", ""))
     ):
         errors.append("invalid packet_digest")
+    inspected = record.get("evidence_inspected")
+    if ("evidence_inspected" in record
+            and (not isinstance(inspected, list)
+                 or any(not isinstance(item, str) or not item.strip() for item in inspected))):
+        errors.append("evidence_inspected must be a list of non-empty strings")
     reviewed = record.get("reviewed_sections")
     if reviewed is not None:
         if not isinstance(reviewed, dict) or not reviewed:
@@ -2708,31 +2779,39 @@ def review_record_errors(record: Any) -> list[str]:
         errors.append("missing findings")
     if not isinstance(record.get("mode"), str) or record.get("mode") not in REVIEW_MODES:
         errors.append("invalid mode")
+    evidence_present = "execution_evidence" in record
     evidence = record.get("execution_evidence")
-    if "execution_evidence" in record and not isinstance(evidence, dict):
+    if evidence_present and not isinstance(evidence, dict):
         errors.append("execution_evidence must be an object")
-    elif isinstance(record.get("mode"), str) and record["mode"] in INDEPENDENCE_CLAIMING_MODES:
-        if not isinstance(evidence, dict):
-            errors.append(f"mode {record['mode']} requires execution_evidence (self-attested; recorded for audit)")
-        else:
-            executor_id = evidence.get("executor_id")
-            if "executor_id" not in evidence or executor_id is None \
-                    or (isinstance(executor_id, str) and not executor_id.strip()):
-                errors.append("execution_evidence missing executor_id")
-            elif not isinstance(executor_id, str):
-                errors.append("execution_evidence invalid executor_id")
-            for field in ("started_at", "completed_at"):
-                value = evidence.get(field)
-                if field not in evidence or value is None or (isinstance(value, str) and not value.strip()):
-                    errors.append(f"execution_evidence missing {field}")
-                elif not _is_iso_timestamp(value):
-                    errors.append(f"execution_evidence invalid {field}")
+    if (isinstance(record.get("mode"), str)
+            and record["mode"] in INDEPENDENCE_CLAIMING_MODES
+            and not isinstance(evidence, dict)):
+        errors.append(f"mode {record['mode']} requires execution_evidence (self-attested; recorded for audit)")
+    if isinstance(evidence, dict):
+        executor_id = evidence.get("executor_id")
+        if "executor_id" not in evidence or executor_id is None \
+                or (isinstance(executor_id, str) and not executor_id.strip()):
+            errors.append("execution_evidence missing executor_id")
+        elif not isinstance(executor_id, str):
+            errors.append("execution_evidence invalid executor_id")
+        for field in ("started_at", "completed_at"):
+            value = evidence.get(field)
+            if field not in evidence or value is None or (isinstance(value, str) and not value.strip()):
+                errors.append(f"execution_evidence missing {field}")
+            elif not _is_iso_timestamp(value):
+                errors.append(f"execution_evidence invalid {field}")
+        if ("host" in evidence
+                and (not isinstance(evidence["host"], str)
+                     or not evidence["host"].strip())):
+            errors.append("execution_evidence invalid host")
     if (not isinstance(record.get("verdict"), str)
             or record.get("verdict") not in REVIEW_VERDICTS):
         errors.append("invalid verdict")
     if not isinstance(record.get("findings"), list):
         errors.append("findings must be a list")
     else:
+        if len(record["findings"]) > 3:
+            errors.append("findings must contain at most three highest-priority items")
         for index, finding in enumerate(record["findings"]):
             if not isinstance(finding, dict):
                 errors.append(f"finding {index} must be an object")
@@ -2745,6 +2824,16 @@ def review_record_errors(record: Any) -> list[str]:
                 errors.append(f"finding {index} invalid action")
             if not isinstance(finding.get("description"), str) or not finding.get("description", "").strip():
                 errors.append(f"finding {index} description must be a non-empty string")
+            affected = finding.get("affected_ids")
+            if ("affected_ids" in finding
+                    and (not isinstance(affected, list)
+                         or any(not isinstance(item, str) or not item.strip()
+                                for item in affected))):
+                errors.append(f"finding {index} affected_ids must be a list of non-empty strings")
+            remedy = finding.get("recommended_remedy")
+            if ("recommended_remedy" in finding
+                    and (not isinstance(remedy, str) or not remedy.strip())):
+                errors.append(f"finding {index} recommended_remedy must be a non-empty string")
     return errors
 
 

@@ -44,6 +44,16 @@ A host without independent subagents may perform labeled sequential challenge fo
 
 Every reviewer here sits on an internal rung of the independence ladder in `architecture.md`, section 15. None of them is external validation. Record which rung each review reached and carry it into the release decision unchanged.
 
+Review the prospective campaign contract and its current-state claims, not an imagined
+completed execution. A future artifact is not missing evidence when the campaign is candidly
+unstarted and makes that artifact a prerequisite. It is a finding when the prerequisite itself
+is missing or ambiguous, a current claim is unsupported, or authority is granted before the
+future evidence is verified. Return at most the three highest-priority findings. If more exist,
+return `block` and disclose the total count and highest severity in the summary; the cap limits
+detail, not disclosure. Review only the concerns assigned by the packet's scope note; a section
+or operational detail assigned to another reviewer is not missing merely because that packet
+intentionally omits it.
+
 Reviewer output contains verdict (`pass`, `revise`, `block`), findings, affected object IDs, evidence inspected, severity, recommended remedy, reviewer identity, execution mode, both content/rubric digests, and the packet's `packet_digest` and `reviewed_sections` copied verbatim. Ingestion rejects a record that is not bound to the current role packet.
 Records using `independent-subagent`, `separate-session`, or `external-human` must also
 include `execution_evidence`; a `sequential-pass` record cannot imply independence.

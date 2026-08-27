@@ -73,3 +73,5 @@ The harness replaces Team S paths with read-only copies under a random candidate
 ## Isolation requirements
 
 Use fresh sessions or processes. Pin model and host versions. Hold tools, network, context, retries, time, and token budgets constant. The harness randomizes job order and blinded labels, records request digests and raw adapter stdout/stderr in `adapter_calls.json`, and hashes persisted artifacts. Keep private raw requests separately only when permissions allow. A sequential role simulation is a smoke test, not independent evidence.
+
+Adapter timeouts use a bounded pipe-drain window. On Linux, the harness tracks `/proc` descendants while the adapter is running so a child that calls `setsid()` can still be terminated if the adapter root exits first. This tracking is best effort. On non-Linux POSIX systems, cleanup can terminate only the adapter's process group; an escaped `setsid()` descendant may survive, so use an external account, container, or equivalent process boundary for live runs.

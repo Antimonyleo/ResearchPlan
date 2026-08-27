@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 
+CONDITION_ID_PATTERN = r"[a-z0-9]+(?:[.-][a-z0-9]+)*"
+
 
 def parse_condition(value: str) -> tuple[str, str]:
     if "=" not in value:
@@ -15,9 +17,9 @@ def parse_condition(value: str) -> tuple[str, str]:
     ident, command = ident.strip(), command.strip()
     if not ident or not command:
         raise argparse.ArgumentTypeError("condition ID and command must be non-empty")
-    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", ident):
+    if not re.fullmatch(CONDITION_ID_PATTERN, ident):
         raise argparse.ArgumentTypeError(
-            "condition ID must contain lowercase letters, digits, dots, and hyphens"
+            "condition ID must use lowercase alphanumeric segments separated by single dots or hyphens"
         )
     return ident, command
 

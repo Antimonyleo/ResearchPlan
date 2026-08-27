@@ -37,6 +37,8 @@
     },
     "findings": {
       "type": "array",
+      "maxItems": 3,
+      "description": "Return at most the three highest-priority findings. If more material findings exist, use verdict block and disclose their total count and highest severity in summary.",
       "items": {
         "type": "object",
         "required": ["severity", "action", "description"],

@@ -93,7 +93,8 @@ For work already underway, name the current objective and point the agent at the
 materials. ResCamp will inspect them before asking you to confirm its status baseline:
 
 ```text
-Camp-full Finish the reading-intervention review in this repository without repeating valid completed work.
+Claude Code: /rescamp Camp-full Finish the reading-intervention review without repeating valid completed work.
+Codex:       /rescamp Camp-full Finish the reading-intervention review without repeating valid completed work.
 ```
 
 Campaigns live in `research-campaigns/<name>/` and survive across sessions.
@@ -216,7 +217,7 @@ rather than editing rendered outputs — canonical state is what review and audi
 | `CAMPAIGN_PROMPT.md` | The execution prompt. Hand it to a lead agent or use it as a team's shared constitution. |
 | `KICKOFF.md` | The first authorized action and its gate, so execution starts without reinterpreting the plan. |
 | `ROADMAP.md` | Human-facing summary for collaborators and decision owners. |
-| `campaign.json` | The machine-readable contract, for continuation or integration. |
+| `campaign.json` | The machine-readable contract. Its JSON Schema checks the structural envelope; `validate` and `audit` enforce semantics and cross-references. |
 | `TASK_BRIEF_TEMPLATE.md` | Bounded worker instructions derived from the declared work units. |
 | `REVIEW_REPORT.md` | Reviewer modes, verdicts, and findings. |
 | `CLAIMS_EVIDENCE_MATRIX.json` | Claims linked to support, counterevidence, verification, and reporting rules. |

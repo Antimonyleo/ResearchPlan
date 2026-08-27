@@ -43,6 +43,33 @@
 
 Review pass over code, files, and writing:
 
+- Review ingestion now requires a current frozen role packet and verifies its byte-derived
+  packet digest, content/rubric digests, and exact reviewed-section map. Packet metadata is
+  pruned when no surviving review needs it, and review-free validation can no longer claim
+  execution readiness.
+- Review status now rejects duplicate current roles and malformed optional evidence fields,
+  aggregates every blocking verdict, and offers the automatic-mode promotion question only
+  on the first transition to a completed brief.
+- Review packets now state that they assess a prospective contract rather than imagined
+  execution results, and ingestion enforces the three-finding detail cap. The worked example
+  was re-reviewed and its threshold, gate, retry, lease, resource-ledger, G3, and handoff
+  contracts were repaired before fresh digest-bound review.
+- Review freshness now binds the packet's instruction, schema, rubric, and role-scope contract,
+  so an unchanged campaign cannot reuse a review produced under obsolete review rules. Optional
+  execution evidence is type-checked in every review mode, not only independence-claiming modes.
+- Campaign initialization is exclusive, derived writes reject symlinked working trees, 3.1
+  migration backfills the brief sketch or reports repair-required, and malformed public CLI
+  inputs fail cleanly without partial state changes.
+- Benchmark comparison now consumes scores with their run summary so failed attempts cannot
+  disappear. Timed-out adapters, host probes, and release checks use bounded pipe draining and
+  terminate descendants that escape their original process group on Linux.
+- Benchmark Team S runs now use isolated temporary workspaces, only declared evaluator-verified
+  artifacts are retained, atomic JSON writes use unpredictable temporary files, and fail-fast
+  summaries preserve both attempted and unstarted samples.
+- Host and release validation now enforce the complete canonical skill tree, reject nested or
+  unexpected files, accept a whole-tree installer symlink, and schema-check rendered
+  `campaign.json` as well as committed state. The JSON Schema is explicitly the structural
+  envelope; the engine and strict audit remain the semantic readiness contract.
 - State and artifact writes now fail closed under concurrent edits, render complete bundles
   through staging directories, reject symlinked audit inputs, and bind review, pilot, and
   accepted-risk evidence into rendered-output freshness rather than only plan content.

@@ -23,6 +23,7 @@ import shlex
 import shutil
 import statistics
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -42,6 +43,8 @@ ARCHETYPES = {
     "humanities-interpretive", "conceptual-normative", "evidence-synthesis",
     "policy-program-evaluation", "design-engineering", "creative-practice", "mixed-methods",
 }
+SCENARIO_ID_PATTERN = r"[a-z0-9]+(?:-[a-z0-9]+)*"
+CONDITION_ID_PATTERN = r"[a-z0-9]+(?:[.-][a-z0-9]+)*"
 
 # Hardcoded ratings for the built-in fixture conditions only. These are constants
 # that exercise the harness, not measurements. Any condition absent from this table
@@ -76,6 +79,11 @@ EVIDENCE_NOTE = {
     ),
 }
 
+# A timed-out adapter is untrusted code.  After the process group/tree is
+# terminated, give inherited pipes a small, bounded drain window so an escaped
+# descendant cannot hold the benchmark forever.
+ADAPTER_DRAIN_TIMEOUT_SECONDS = 0.5
+
 
 def canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -89,27 +97,68 @@ def sha256_file(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def stage_evaluator_artifacts(final: dict[str, Any], run_dir: Path, output_dir: Path,
-                              candidate_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def require_real_dir(path: Path, label: str) -> Path:
+    """Require a non-symlink directory for an untrusted adapter workspace."""
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    if absolute.is_symlink():
+        raise RuntimeError(f"{label} must not be a symlink")
+    if not absolute.is_dir():
+        raise RuntimeError(f"{label} must be a real directory")
+    return absolute
+
+
+def require_real_contained_dir(path: Path, root: Path, label: str) -> Path:
+    """Require *path* to be a real directory inside *root*.
+
+    Team S receives a run directory and can modify it before returning.  Do not
+    resolve a replacement symlink and then trust the resolved location: check
+    both lexical and physical containment immediately before any harness write.
+    """
+    lexical_root = Path(os.path.abspath(os.fspath(root)))
+    lexical_path = Path(os.path.abspath(os.fspath(path)))
+    try:
+        lexical_path.relative_to(lexical_root)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} is outside the output directory") from exc
+    if lexical_path.is_symlink():
+        raise RuntimeError(f"{label} must not be a symlink")
+    if not lexical_path.is_dir():
+        raise RuntimeError(f"{label} must be a real directory")
+    try:
+        physical_root = lexical_root.resolve(strict=True)
+        physical_path = lexical_path.resolve(strict=True)
+        physical_path.relative_to(physical_root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError(f"{label} is not physically contained by the output directory") from exc
+    return lexical_path
+
+
+def stage_evaluator_artifacts(final: dict[str, Any], team_s_dir: Path,
+                              evaluator_dir: Path, candidate_id: str
+                              ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    run_root = require_real_dir(team_s_dir, "Team S workspace")
     values = final.get("artifacts", [])
     if not isinstance(values, list) or any(not isinstance(value, str) or not value for value in values):
         raise RuntimeError("Team S artifacts must be a list of nonempty paths")
-    output_root = output_dir.resolve()
-    staging_root = output_root / "evaluator-candidates"
+    evaluator_root = Path(os.path.abspath(os.fspath(evaluator_dir)))
+    if evaluator_root.is_symlink() or not evaluator_root.is_dir():
+        raise RuntimeError("evaluator temporary directory must be a real directory")
+    staging_root = evaluator_root / "evaluator-candidates"
+    if staging_root.is_symlink():
+        raise RuntimeError("evaluator artifact directory must not be a symlink")
     staging_root.mkdir(parents=True, exist_ok=True)
-    try:
-        staging_root.resolve().relative_to(output_root)
-    except ValueError as exc:
-        raise RuntimeError("evaluator artifact directory is outside the output directory") from exc
-    run_root = run_dir.resolve()
+    if staging_root.is_symlink() or not staging_root.is_dir():
+        raise RuntimeError("evaluator artifact directory must be a real directory")
     seen: set[Path] = set()
     sources: list[tuple[str, Path]] = []
     for value in values:
         supplied = Path(value)
-        source = (supplied if supplied.is_absolute() else run_root / supplied).resolve()
         try:
-            source.relative_to(run_root)
-        except ValueError as exc:
+            source = (supplied if supplied.is_absolute() else run_root / supplied).resolve(strict=True)
+            source.relative_to(run_root.resolve(strict=True))
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"artifact is missing or not a file: {value}") from exc
+        except (OSError, RuntimeError, ValueError) as exc:
             raise RuntimeError(f"artifact is outside the run directory: {value}") from exc
         if source in seen:
             raise RuntimeError(f"duplicate artifact path: {value}")
@@ -119,7 +168,11 @@ def stage_evaluator_artifacts(final: dict[str, Any], run_dir: Path, output_dir: 
         sources.append((value, source))
 
     candidate_dir = staging_root / candidate_id
+    if candidate_dir.exists() or candidate_dir.is_symlink():
+        raise RuntimeError(f"evaluator artifact candidate already exists: {candidate_id}")
     candidate_dir.mkdir(parents=False, exist_ok=False)
+    if candidate_dir.is_symlink() or not candidate_dir.is_dir():
+        raise RuntimeError("evaluator artifact candidate directory must be a real directory")
     internal: list[dict[str, Any]] = []
     blinded: list[dict[str, Any]] = []
     for index, (value, source) in enumerate(sources, 1):
@@ -159,11 +212,21 @@ def verify_evaluator_artifacts(records: list[dict[str, Any]]) -> None:
             raise RuntimeError(f"staged artifact changed during evaluation: {record['id']}")
 
 
-def persist_evaluator_artifacts(records: list[dict[str, Any]], output_dir: Path,
-                                candidate_id: str) -> None:
+def persist_evaluator_artifacts(records: list[dict[str, Any]], run_dir: Path,
+                                output_dir: Path, candidate_id: str) -> None:
     """Persist verified copies after Team E exits, outside its evaluated path."""
-    destination = output_dir.resolve() / "evaluator-candidates" / candidate_id
+    run_root = require_real_contained_dir(run_dir, output_dir, "run directory")
+    staging_root = run_root / "evaluator-candidates"
+    if staging_root.is_symlink():
+        raise RuntimeError("evaluator artifact directory must not be a symlink")
+    staging_root.mkdir(parents=True, exist_ok=True)
+    require_real_contained_dir(staging_root, output_dir, "evaluator artifact directory")
+    require_real_contained_dir(run_dir, output_dir, "run directory")
+    destination = staging_root / candidate_id
+    if destination.exists() or destination.is_symlink():
+        raise RuntimeError(f"evaluator artifact candidate already exists: {candidate_id}")
     destination.mkdir(parents=True, exist_ok=False)
+    require_real_contained_dir(destination, output_dir, "evaluator artifact candidate directory")
     for record in records:
         source = Path(record["staged_path"])
         target = destination / source.name
@@ -173,6 +236,15 @@ def persist_evaluator_artifacts(records: list[dict[str, Any]], output_dir: Path,
             raise RuntimeError(f"persisted artifact copy hash mismatch: {record['id']}")
         record["staged_path"] = str(target)
         record["persisted_sha256"] = sha256_file(target)
+
+
+def write_run_json(run_dir: Path, output_dir: Path, name: str, value: Any) -> None:
+    """Write one retained run artifact only after rechecking the run boundary."""
+    require_real_contained_dir(run_dir, output_dir, "run directory")
+    destination = run_dir / name
+    if destination.is_symlink():
+        raise RuntimeError(f"run artifact must not be a symlink: {name}")
+    write_json(destination, value)
 
 
 def relevant_archetype_overlays(scenario: dict[str, Any]) -> dict[str, Any]:
@@ -221,9 +293,22 @@ def read_json(path: Path) -> Any:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temp, path)
+    payload = json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+    except BaseException:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def scenario_errors(data: Any) -> list[str]:
@@ -237,8 +322,8 @@ def scenario_errors(data: Any) -> list[str]:
     for field in ("id", "title", "domain", "initial_request"):
         if not isinstance(data.get(field), str) or not data.get(field, "").strip():
             errors.append(f"{field} must be a nonempty string")
-    if isinstance(data.get("id"), str) and not re.fullmatch(r"[a-z0-9][a-z0-9-]*", data["id"]):
-        errors.append("id must contain lowercase letters, digits, and hyphens")
+    if isinstance(data.get("id"), str) and not re.fullmatch(SCENARIO_ID_PATTERN, data["id"]):
+        errors.append("id must use lowercase alphanumeric segments separated by single hyphens")
     if (not isinstance(data.get("profile"), str)
             or data.get("profile") not in {"scoped", "standard", "high-assurance"}):
         errors.append("invalid profile")
@@ -366,6 +451,138 @@ def public_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _output_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _close_process_pipes(proc: subprocess.Popen[Any]) -> None:
+    for name in ("stdin", "stdout", "stderr"):
+        stream = getattr(proc, name, None)
+        if stream is not None:
+            try:
+                stream.close()
+            except (OSError, ValueError):
+                pass
+
+
+def _linux_descendants(root_pid: int) -> list[int]:
+    """Snapshot descendants before group kill, including children that called setsid."""
+    if not sys.platform.startswith("linux"):
+        return []
+    found: list[int] = []
+    pending = [root_pid]
+    while pending:
+        parent = pending.pop()
+        try:
+            raw = Path(f"/proc/{parent}/task/{parent}/children").read_text(
+                encoding="ascii"
+            )
+        except OSError:
+            continue
+        children = [int(value) for value in raw.split() if value.isdigit()]
+        found.extend(children)
+        pending.extend(children)
+    return found
+
+
+class _LinuxDescendantTracker:
+    """Best-effort PID tracker for Linux children that escape the process group."""
+
+    def __init__(self, root_pid: int):
+        self.root_pid = root_pid
+        self.pids: set[int] = set()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if not sys.platform.startswith("linux"):
+            return
+        self._thread = threading.Thread(target=self._track, daemon=True)
+        self._thread.start()
+
+    def _track(self) -> None:
+        while not self._stop.is_set():
+            self.pids.update(_linux_descendants(self.root_pid))
+            self._stop.wait(0.01)
+        self.pids.update(_linux_descendants(self.root_pid))
+
+    def stop(self) -> list[int]:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=ADAPTER_DRAIN_TIMEOUT_SECONDS)
+        self.pids.update(_linux_descendants(self.root_pid))
+        return list(self.pids)
+
+
+def _terminate_adapter_tree(proc: subprocess.Popen[Any], descendants: list[int] | None = None) -> None:
+    """Terminate the adapter and its descendants without assuming a live PID."""
+    if os.name == "posix":
+        if descendants is None:
+            descendants = _linux_descendants(proc.pid)
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            try:
+                proc.kill()
+            except (OSError, ProcessLookupError):
+                pass
+        for pid in reversed(descendants):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+        return
+    try:
+        subprocess.run(
+            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=ADAPTER_DRAIN_TIMEOUT_SECONDS, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        proc.kill()
+    except (OSError, ProcessLookupError):
+        pass
+
+
+def _drain_timed_out_adapter(proc: subprocess.Popen[Any], timeout_error: subprocess.TimeoutExpired,
+                             descendants: list[int] | None = None) -> tuple[str, str]:
+    """Collect what is immediately available, then force-close inherited pipes."""
+    stdout = _output_text(timeout_error.output)
+    stderr = _output_text(timeout_error.stderr)
+    _terminate_adapter_tree(proc, descendants)
+    try:
+        drained_stdout, drained_stderr = proc.communicate(
+            timeout=ADAPTER_DRAIN_TIMEOUT_SECONDS
+        )
+        if drained_stdout is not None:
+            stdout = _output_text(drained_stdout)
+        if drained_stderr is not None:
+            stderr = _output_text(drained_stderr)
+    except subprocess.TimeoutExpired as drain_error:
+        if drain_error.output is not None:
+            stdout = _output_text(drain_error.output)
+        if drain_error.stderr is not None:
+            stderr = _output_text(drain_error.stderr)
+        _terminate_adapter_tree(proc, descendants)
+    finally:
+        _close_process_pipes(proc)
+        wait = getattr(proc, "wait", None)
+        if callable(wait):
+            try:
+                wait(timeout=ADAPTER_DRAIN_TIMEOUT_SECONDS)
+            except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
+                _terminate_adapter_tree(proc, descendants)
+    return stdout, stderr
+
+
 def call_adapter(command: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
     started = time.monotonic()
     request = canonical_json(payload) + "\n"
@@ -373,18 +590,16 @@ def call_adapter(command: str, payload: dict[str, Any], timeout: int) -> dict[st
         shlex.split(command), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, text=True, start_new_session=os.name == "posix",
     )
+    tracker = _LinuxDescendantTracker(proc.pid)
+    tracker.start()
     try:
         stdout, stderr = proc.communicate(input=request, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
-        try:
-            if os.name == "posix":
-                os.killpg(proc.pid, signal.SIGKILL)
-            else:
-                proc.kill()
-        except ProcessLookupError:
-            pass
-        stdout, stderr = proc.communicate()
+        descendants = tracker.stop()
+        stdout, stderr = _drain_timed_out_adapter(proc, exc, descendants)
         raise RuntimeError(f"Adapter timed out after {timeout}s: {stderr[-2000:]}") from exc
+    finally:
+        tracker.stop()
     elapsed = time.monotonic() - started
     if proc.returncode != 0:
         raise RuntimeError(f"Adapter failed ({proc.returncode}): {stderr[-2000:]}")
@@ -627,15 +842,31 @@ def team_s_condition_view(condition: dict[str, Any]) -> dict[str, Any]:
 def _run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
              output_dir: Path, timeout: int, max_turns: int) -> dict[str, Any]:
     condition_id = condition["id"]
-    if not isinstance(condition_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", condition_id):
-        raise RuntimeError("condition id must contain lowercase letters, digits, dots, and hyphens")
+    if not isinstance(condition_id, str) or not re.fullmatch(CONDITION_ID_PATTERN, condition_id):
+        raise RuntimeError(
+            "condition id must use lowercase alphanumeric segments separated by single dots or hyphens"
+        )
     if not isinstance(replicate, int) or isinstance(replicate, bool) or replicate < 1:
         raise RuntimeError("replicate must be a positive integer")
+    output_root = output_dir.resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
     run_id = f"{scenario['id']}--{condition_id}--r{replicate}"
-    run_dir = output_dir.resolve() / run_id
-    if run_dir.exists():
+    retained_run_dir = output_root / run_id
+    if retained_run_dir.exists() or retained_run_dir.is_symlink():
         raise RuntimeError(f"run identity already exists: {run_id}")
-    run_dir.mkdir(parents=True, exist_ok=False)
+    with tempfile.TemporaryDirectory(prefix="rescamp-team-s-") as team_s_temp:
+        team_s_dir = Path(team_s_temp) / "run"
+        team_s_dir.mkdir()
+        return _run_one_with_workspace(
+            scenario, condition, replicate, output_root, timeout, max_turns,
+            run_id, retained_run_dir, team_s_dir,
+        )
+
+
+def _run_one_with_workspace(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
+                            output_dir: Path, timeout: int, max_turns: int,
+                            run_id: str, run_dir: Path, team_s_dir: Path) -> dict[str, Any]:
+    condition_id = condition["id"]
     public_transcript: list[dict[str, Any]] = [{"role": "user", "message": scenario["initial_request"]}]
     evaluator_transcript: list[dict[str, Any]] = [{"role": "user", "message": scenario["initial_request"]}]
     system_state: dict[str, Any] = {}
@@ -671,7 +902,7 @@ def _run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int
             payload = {
                 "protocol": "rescamp-team-s-v1", "public_scenario": public_scenario(scenario),
                 "history": public_transcript, "condition": team_s_condition_view(condition),
-                "run_dir": str(run_dir),
+                "run_dir": str(team_s_dir),
             }
             response = invoke("team_s", condition["command"], payload)
         action = response.get("action")
@@ -717,9 +948,19 @@ def _run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int
     # evidence only after the evaluator exits. This removes direct path leakage; a
     # same-user process is still not an OS security boundary, which the protocol
     # requires operators to provide for a strong blinding claim.
+    retained_created = False
+
+    def remove_retained_run() -> None:
+        if not retained_created:
+            return
+        if run_dir.is_symlink():
+            run_dir.unlink()
+        elif run_dir.is_dir():
+            shutil.rmtree(run_dir)
+
     with tempfile.TemporaryDirectory(prefix="rescamp-evaluator-") as evaluator_temp:
         artifact_records, blinded_artifacts = stage_evaluator_artifacts(
-            final, run_dir, Path(evaluator_temp), blinded_label,
+            final, team_s_dir, Path(evaluator_temp), blinded_label,
         )
         if condition.get("evaluator_adapter"):
             overlays = relevant_archetype_overlays(scenario)
@@ -743,9 +984,15 @@ def _run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int
         else:
             evaluation = fixture_team_e(scenario, evaluator_transcript, final, condition_id)
         verify_evaluator_artifacts(artifact_records)
-        # Persist only after Team E exits. Keeping the copies inside the run makes a
-        # failed/retried sample cleanly removable as one unit.
-        persist_evaluator_artifacts(artifact_records, run_dir, blinded_label)
+        # Team S's workspace is discarded. Retain only declared artifacts after
+        # Team E has returned, under the run's verified evidence directory.
+        try:
+            run_dir.mkdir(parents=False, exist_ok=False)
+            retained_created = True
+            persist_evaluator_artifacts(artifact_records, run_dir, output_dir, blinded_label)
+        except BaseException:
+            remove_retained_run()
+            raise
 
     elapsed = time.monotonic() - started
     total_tokens = sum(float(item["tokens"]) for item in usage_by_role.values())
@@ -774,41 +1021,35 @@ def _run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int
         "evaluation_digest": sha256_json(evaluation), "score_digest": sha256_json(score),
         "evaluator_artifacts": artifact_records,
     }
-    write_json(run_dir / "public_scenario.json", public_scenario(scenario))
-    write_json(run_dir / "transcript.json", public_transcript)
-    write_json(run_dir / "evaluator_transcript.json", evaluator_transcript)
-    write_json(run_dir / "adapter_calls.json", adapter_calls)
-    write_json(run_dir / "evaluation.json", evaluation)
-    write_json(run_dir / "score.json", score)
-    manifest["files"] = {
-        path.relative_to(run_dir).as_posix(): {
-            "bytes": path.stat().st_size, "sha256": sha256_file(path),
+    try:
+        write_run_json(run_dir, output_dir, "public_scenario.json", public_scenario(scenario))
+        write_run_json(run_dir, output_dir, "transcript.json", public_transcript)
+        write_run_json(run_dir, output_dir, "evaluator_transcript.json", evaluator_transcript)
+        write_run_json(run_dir, output_dir, "adapter_calls.json", adapter_calls)
+        write_run_json(run_dir, output_dir, "evaluation.json", evaluation)
+        write_run_json(run_dir, output_dir, "score.json", score)
+        require_real_contained_dir(run_dir, output_dir, "run directory")
+        run_entries = sorted(run_dir.rglob("*"))
+        if any(path.is_symlink() for path in run_entries):
+            raise RuntimeError("run directory contains a symlink")
+        manifest["files"] = {
+            path.relative_to(run_dir).as_posix(): {
+                "bytes": path.stat().st_size, "sha256": sha256_file(path),
+            }
+            for path in run_entries
+            if path.is_file() and path.name != "manifest.json"
         }
-        for path in sorted(run_dir.rglob("*"))
-        if path.is_file() and path.name != "manifest.json"
-    }
-    write_json(run_dir / "manifest.json", manifest)
-    return score
+        write_run_json(run_dir, output_dir, "manifest.json", manifest)
+        return score
+    except BaseException:
+        remove_retained_run()
+        raise
 
 
 def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
             output_dir: Path, timeout: int, max_turns: int) -> dict[str, Any]:
-    """Run one sample and remove an incomplete run directory after failure."""
-    try:
-        return _run_one(scenario, condition, replicate, output_dir, timeout, max_turns)
-    except BaseException:
-        scenario_id = scenario.get("id")
-        condition_id = condition.get("id")
-        if (isinstance(scenario_id, str)
-                and re.fullmatch(r"[a-z0-9][a-z0-9-]*", scenario_id)
-                and isinstance(condition_id, str)
-                and re.fullmatch(r"[a-z0-9][a-z0-9.-]*", condition_id)
-                and isinstance(replicate, int) and not isinstance(replicate, bool)
-                and replicate >= 1):
-            failed_dir = output_dir.resolve() / f"{scenario_id}--{condition_id}--r{replicate}"
-            if failed_dir.exists():
-                shutil.rmtree(failed_dir)
-        raise
+    """Run one sample, retaining only the verified result bundle."""
+    return _run_one(scenario, condition, replicate, output_dir, timeout, max_turns)
 
 
 def evaluation_errors(scenario: dict[str, Any], evaluation: dict[str, Any]) -> list[str]:
@@ -1066,6 +1307,7 @@ def scenario_cluster_ci(items: list[dict[str, Any]], value_field: str, seed: int
 
 def aggregate(scores: list[dict[str, Any]],
               attempts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    attempts_known = attempts is not None
     identities = [str(item.get("run_id", "")) for item in scores]
     duplicates = sorted({ident for ident in identities if ident and identities.count(ident) > 1})
     if duplicates:
@@ -1083,16 +1325,33 @@ def aggregate(scores: list[dict[str, Any]],
     for item in scores:
         grouped[item["condition"]].append(item)
     if attempts is None:
-        attempts = [
+        attempt_records = [
             {"scenario_id": item["scenario_id"], "condition": item["condition"],
              "replicate": item["replicate"], "succeeded": True}
             for item in scores
         ]
+    else:
+        attempt_records = attempts
     attempted_by_condition: dict[str, set[tuple[str, int]]] = defaultdict(set)
-    for attempt in attempts:
-        attempted_by_condition[str(attempt["condition"])].add(
-            (str(attempt["scenario_id"]), int(attempt["replicate"]))
-        )
+    planned_by_condition: dict[str, set[tuple[str, int]]] = defaultdict(set)
+    for attempt in attempt_records:
+        key = (str(attempt["scenario_id"]), int(attempt["replicate"]))
+        condition = str(attempt["condition"])
+        if attempts_known:
+            if key in planned_by_condition[condition]:
+                raise RuntimeError(
+                    "duplicate planned sample: "
+                    + ":".join((key[0], condition, str(key[1])))
+                )
+            planned_by_condition[condition].add(key)
+        if not attempt.get("attempted", True):
+            continue
+        if key in attempted_by_condition[condition]:
+            raise RuntimeError(
+                "duplicate attempted sample: "
+                + ":".join((key[0], condition, str(key[1])))
+            )
+        attempted_by_condition[condition].add(key)
     classes = {str(item.get("evidence_class", UNSPECIFIED_EVIDENCE_CLASS)) for item in scores}
     overall_class = classes.pop() if len(classes) == 1 else ("mixed" if classes else UNSPECIFIED_EVIDENCE_CLASS)
     result: dict[str, Any] = {
@@ -1104,8 +1363,14 @@ def aggregate(scores: list[dict[str, Any]],
         ),
         "conditions": {},
         "pairwise_matched": {},
+        "attempts_known": attempts_known,
     }
-    for condition in sorted(set(grouped) | set(attempted_by_condition)):
+    conditions = sorted(set(grouped) | set(attempted_by_condition) | set(planned_by_condition))
+    score_keys_by_condition = {
+        condition: {(item["scenario_id"], item["replicate"]) for item in grouped[condition]}
+        for condition in conditions
+    }
+    for condition in conditions:
         items = grouped.get(condition, [])
         values = [float(item["score"]) for item in items]
         item_classes = sorted({str(item.get("evidence_class", UNSPECIFIED_EVIDENCE_CLASS)) for item in items})
@@ -1119,17 +1384,29 @@ def aggregate(scores: list[dict[str, Any]],
             if not verified_live and items else None
         )
         attempted_n = len(attempted_by_condition[condition])
+        planned_n = len(planned_by_condition[condition]) if attempts_known else None
+        condition_complete = bool(
+            attempts_known and planned_n and attempted_n == planned_n == len(values)
+            and score_keys_by_condition[condition] == planned_by_condition[condition]
+        )
+        condition_class = (
+            item_classes[0] if len(item_classes) == 1
+            else "mixed" if item_classes else UNSPECIFIED_EVIDENCE_CLASS
+        )
         result["conditions"][condition] = {
             "n": len(values),
+            "planned_n": planned_n,
             "attempted_n": attempted_n,
-            "failure_rate": round((attempted_n - len(values)) / attempted_n, 4)
-                            if attempted_n else None,
+            "unstarted_n": planned_n - attempted_n if planned_n is not None else None,
+            "complete": condition_complete,
+            "failure_rate": (round((attempted_n - len(values)) / attempted_n, 4)
+                             if attempts_known and attempted_n else None),
             "scenario_n": len({item["scenario_id"] for item in items}),
             "score_mean_ci95": scenario_cluster_ci(
                 items, "score", seed=stable_seed(condition), suppress=not verified_live
             ),
             "interval_suppressed_because": interval_suppression_reason,
-            "evidence_class": item_classes[0] if len(item_classes) == 1 else "mixed",
+            "evidence_class": condition_class,
             "median": round(statistics.median(values), 3) if values else None,
             "critical_defect_rate": (round(sum(item["metrics"]["critical_defect_count"] > 0 for item in items) / len(items), 4)
                                      if items else None),
@@ -1138,7 +1415,6 @@ def aggregate(scores: list[dict[str, Any]],
             "mean_burden_score": (round(statistics.fmean(item["metrics"]["interaction_burden_score"] for item in items), 3)
                                   if items else None),
         }
-    conditions = sorted(set(grouped) | set(attempted_by_condition))
     by_key: dict[str, dict[tuple[str, int], dict[str, Any]]] = {}
     for condition in conditions:
         by_key[condition] = {(item["scenario_id"], item["replicate"]): item for item in grouped[condition]}
@@ -1148,10 +1424,16 @@ def aggregate(scores: list[dict[str, Any]],
             diffs = [by_key[left][key]["score"] - by_key[right][key]["score"] for key in keys]
             expected_left = attempted_by_condition[left]
             expected_right = attempted_by_condition[right]
+            planned_left = planned_by_condition[left]
+            planned_right = planned_by_condition[right]
             complete = (
-                expected_left == expected_right
-                and set(by_key[left]) == expected_left
-                and set(by_key[right]) == expected_right
+                attempts_known
+                and bool(planned_left)
+                and planned_left == planned_right
+                and expected_left == planned_left
+                and expected_right == planned_right
+                and set(by_key[left]) == planned_left
+                and set(by_key[right]) == planned_right
             )
             pair_evidence_classes = {
                 str(by_key[side][key].get("evidence_class", UNSPECIFIED_EVIDENCE_CLASS))
@@ -1165,6 +1447,7 @@ def aggregate(scores: list[dict[str, Any]],
                 pair_suppressed_because = "confidence intervals require verified live-adapter evidence with matched controls"
             result["pairwise_matched"][f"{left} minus {right}"] = {
                 "n": len(diffs),
+                "planned_n": len(planned_left) if attempts_known else None,
                 "complete_matched_matrix": complete,
                 "difference_mean_ci95": (
                     bootstrap_mean_ci(
@@ -1209,6 +1492,233 @@ def score_input_errors(value: Any) -> list[str]:
             or not math.isfinite(float(burden)) or not 0 <= burden <= 100):
         errors.append("metrics.interaction_burden_score must be a finite number from 0 to 100")
     return errors
+
+
+def _score_records_from_json(data: Any, path: Path, require_list: bool = False,
+                             allow_empty: bool = False) -> list[dict[str, Any]]:
+    if isinstance(data, list):
+        records = data
+    elif not require_list and isinstance(data, dict) and "score" in data:
+        records = [data]
+    else:
+        raise SystemExit(f"Unrecognized score input: {path}")
+    if not records and not allow_empty:
+        raise SystemExit(f"Invalid score input {path}: no score records")
+    checked: list[dict[str, Any]] = []
+    for index, record in enumerate(records):
+        errors = score_input_errors(record)
+        if errors:
+            label = f"{path}[{index}]" if isinstance(data, list) else str(path)
+            raise SystemExit(f"Invalid score input {label}: " + "; ".join(errors))
+        checked.append(dict(record))
+    return checked
+
+
+def _sample_key(record: dict[str, Any]) -> tuple[str, str, int]:
+    return str(record["scenario_id"]), str(record["condition"]), int(record["replicate"])
+
+
+def _sample_id(key: tuple[str, str, int]) -> str:
+    scenario_id, condition, replicate = key
+    return f"{scenario_id}--{condition}--r{replicate}"
+
+
+def _key_from_sample_id(value: Any, source: Path, index: int) -> tuple[str, str, int]:
+    if not isinstance(value, str) or not value:
+        raise SystemExit(f"Invalid run summary {source}: job_order[{index}] has invalid identity")
+    prefix, separator, replicate_text = value.rpartition("--r")
+    if separator != "--r" or not replicate_text.isdigit() or int(replicate_text) < 1:
+        raise SystemExit(f"Invalid run summary {source}: job_order[{index}] has invalid identity")
+    parts = prefix.split("--")
+    if len(parts) != 2 or not all(parts):
+        raise SystemExit(
+            f"Invalid run summary {source}: job_order[{index}] has ambiguous identity"
+        )
+    return parts[0], parts[1], int(replicate_text)
+
+
+def _failure_key(failure: Any, source: Path, index: int) -> tuple[str, str, int]:
+    if not isinstance(failure, dict):
+        raise SystemExit(f"Invalid run summary {source}: failures[{index}] must be an object")
+    scenario_id = failure.get("scenario_id", failure.get("scenario"))
+    condition = failure.get("condition")
+    replicate = failure.get("replicate")
+    if not isinstance(scenario_id, str) or not scenario_id.strip():
+        raise SystemExit(f"Invalid run summary {source}: failures[{index}] has invalid scenario")
+    if not isinstance(condition, str) or not condition.strip():
+        raise SystemExit(f"Invalid run summary {source}: failures[{index}] has invalid condition")
+    if isinstance(replicate, str) and replicate.isdigit():
+        replicate = int(replicate)
+    if not isinstance(replicate, int) or isinstance(replicate, bool) or replicate < 1:
+        raise SystemExit(f"Invalid run summary {source}: failures[{index}] has invalid replicate")
+    return scenario_id, condition, replicate
+
+
+def _attempts_from_summary(summary: dict[str, Any], scores: list[dict[str, Any]],
+                           source: Path) -> list[dict[str, Any]] | None:
+    """Validate the run bundle and return the attempts consumed by aggregate()."""
+    # Summaries written before the run-bundle contract contained only aggregate
+    # condition data. They remain readable, but their planned matrix is unknown.
+    if ("planned_sample_count" not in summary
+            and "job_order" not in summary and "attempts" not in summary):
+        return None
+    planned = summary.get("planned_sample_count")
+    attempted_count = summary.get("attempted_sample_count")
+    score_count = summary.get("score_count")
+    if (not isinstance(planned, int) or isinstance(planned, bool) or planned < 0
+            or not isinstance(attempted_count, int) or isinstance(attempted_count, bool)
+            or attempted_count < 0
+            or not isinstance(score_count, int) or isinstance(score_count, bool)
+            or score_count < 0):
+        raise SystemExit(f"Invalid run summary {source}: sample counts are required integers")
+    if planned < attempted_count:
+        raise SystemExit(f"Invalid run summary {source}: attempted samples exceed planned samples")
+    if score_count != len(scores):
+        raise SystemExit(
+            f"Invalid run summary {source}: score_count does not match scores.json"
+        )
+    job_order = summary.get("job_order")
+    if (not isinstance(job_order, list)
+            or len(job_order) != planned
+            or any(not isinstance(item, str) or not item for item in job_order)
+            or len(set(job_order)) != len(job_order)):
+        raise SystemExit(f"Invalid run summary {source}: job_order does not match planned samples")
+    job_ids = set(job_order)
+    planned_keys = {
+        _key_from_sample_id(value, source, index)
+        for index, value in enumerate(job_order)
+    }
+    score_keys = {_sample_key(record) for record in scores}
+    if len(score_keys) != len(scores):
+        raise SystemExit(f"Invalid run summary {source}: duplicate score samples")
+    for record in scores:
+        scenario_id, condition, replicate = _sample_key(record)
+        expected_id = _sample_id((scenario_id, condition, replicate))
+        if record["run_id"] != expected_id or expected_id not in job_ids:
+            raise SystemExit(f"Invalid run summary {source}: score identity is not in job_order")
+
+    raw_attempts = summary.get("attempts")
+    if raw_attempts is None:
+        # Transitional summaries persisted the planned order but not every
+        # attempt. Reconstruct omitted jobs as unstarted, never as successes.
+        failures = summary.get("failures")
+        if not isinstance(failures, list):
+            raise SystemExit(
+                f"Invalid run summary {source}: attempts metadata is missing"
+            )
+        failure_keys = {
+            _failure_key(failure, source, index)
+            for index, failure in enumerate(failures)
+        }
+        if score_keys & failure_keys:
+            raise SystemExit(f"Invalid run summary {source}: a sample is both scored and failed")
+        if not score_keys | failure_keys <= planned_keys:
+            raise SystemExit(f"Invalid run summary {source}: observed sample is not in job_order")
+        raw_attempts = []
+        for key in sorted(planned_keys):
+            raw_attempts.append({
+                "scenario_id": key[0], "condition": key[1], "replicate": key[2],
+                "attempted": key in score_keys or key in failure_keys,
+                "succeeded": key in score_keys,
+            })
+    if not isinstance(raw_attempts, list):
+        raise SystemExit(f"Invalid run summary {source}: attempts must be a list")
+
+    attempts: list[dict[str, Any]] = []
+    seen_attempts: set[tuple[str, str, int]] = set()
+    for index, attempt in enumerate(raw_attempts):
+        if not isinstance(attempt, dict):
+            raise SystemExit(f"Invalid run summary {source}: attempts[{index}] must be an object")
+        scenario_id = attempt.get("scenario_id")
+        condition = attempt.get("condition")
+        replicate = attempt.get("replicate")
+        if (not isinstance(scenario_id, str) or not scenario_id.strip()
+                or not isinstance(condition, str) or not condition.strip()
+                or not isinstance(replicate, int) or isinstance(replicate, bool)
+                or replicate < 1):
+            raise SystemExit(f"Invalid run summary {source}: attempts[{index}] has invalid identity")
+        attempted = attempt.get("attempted")
+        succeeded = attempt.get("succeeded")
+        if not isinstance(attempted, bool) or not isinstance(succeeded, bool):
+            raise SystemExit(f"Invalid run summary {source}: attempts[{index}] needs boolean status")
+        key = (scenario_id, condition, replicate)
+        if key in seen_attempts:
+            raise SystemExit(f"Invalid run summary {source}: duplicate attempted sample")
+        seen_attempts.add(key)
+        if _sample_id(key) not in job_ids:
+            raise SystemExit(f"Invalid run summary {source}: attempt is not in job_order")
+        if not attempted and succeeded:
+            raise SystemExit(f"Invalid run summary {source}: unstarted sample cannot succeed")
+        attempts.append({
+            "scenario_id": scenario_id, "condition": condition,
+            "replicate": replicate, "attempted": attempted, "succeeded": succeeded,
+        })
+
+    attempt_keys = set(seen_attempts)
+    if not attempt_keys <= planned_keys:
+        raise SystemExit(f"Invalid run summary {source}: attempts do not match job_order")
+    # The first fail-fast implementation recorded only started jobs. Fill those
+    # omitted planned jobs as unstarted so old bundles remain conservative.
+    for key in sorted(planned_keys - attempt_keys):
+        attempts.append({
+            "scenario_id": key[0], "condition": key[1], "replicate": key[2],
+            "attempted": False, "succeeded": False,
+        })
+    if len(attempts) != planned:
+        raise SystemExit(f"Invalid run summary {source}: attempts do not match planned samples")
+
+    attempted_keys = {(
+        item["scenario_id"], item["condition"], item["replicate"]
+    ) for item in attempts if item["attempted"]}
+    succeeded_keys = {(
+        item["scenario_id"], item["condition"], item["replicate"]
+    ) for item in attempts if item["attempted"] and item["succeeded"]}
+    failed_keys = attempted_keys - succeeded_keys
+    if len(attempted_keys) != attempted_count:
+        raise SystemExit(f"Invalid run summary {source}: attempted_sample_count does not match attempts")
+    if score_keys != succeeded_keys:
+        raise SystemExit(f"Invalid run summary {source}: scores do not match successful attempts")
+    failures = summary.get("failures", [])
+    if not isinstance(failures, list):
+        raise SystemExit(f"Invalid run summary {source}: failures must be a list")
+    failure_keys = {_failure_key(item, source, index) for index, item in enumerate(failures)}
+    if len(failure_keys) != len(failures) or failure_keys != failed_keys:
+        raise SystemExit(f"Invalid run summary {source}: failures do not match attempts")
+    return attempts
+
+
+def _load_compare_bundle(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None, tuple[str, str]] | None:
+    if path.is_dir():
+        summary_path = path / "summary.json"
+        scores_path = path / "scores.json"
+    elif path.name == "summary.json":
+        summary_path = path
+        scores_path = path.parent / "scores.json"
+    elif path.name == "scores.json":
+        scores_path = path
+        summary_path = path.parent / "summary.json"
+        if not summary_path.is_file():
+            raise SystemExit(
+                f"Ambiguous score input {path}: scores.json requires its sibling summary.json"
+            )
+    else:
+        return None
+    if not summary_path.is_file() or not scores_path.is_file():
+        raise SystemExit(
+            f"Incomplete run input {path}: provide a run directory containing summary.json and scores.json"
+        )
+    try:
+        summary = read_json(summary_path)
+        score_data = read_json(scores_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read run input {path}: {exc}") from exc
+    if not isinstance(summary, dict):
+        raise SystemExit(f"Invalid run summary {summary_path}: expected an object")
+    scores = _score_records_from_json(
+        score_data, scores_path, require_list=True, allow_empty=True
+    )
+    attempts = _attempts_from_summary(summary, scores, summary_path)
+    return scores, attempts, (str(summary_path.resolve()), str(scores_path.resolve()))
 
 
 def cmd_validate_scenarios(args: argparse.Namespace) -> None:
@@ -1278,9 +1788,11 @@ def load_config(path: Path) -> dict[str, Any]:
         raise SystemExit("Every condition must be an object")
     ids = [item.get("id") for item in config["conditions"]]
     if (any(
-            not isinstance(item, str) or not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", item)
+            not isinstance(item, str) or not re.fullmatch(CONDITION_ID_PATTERN, item)
             for item in ids) or len(ids) != len(set(ids))):
-        raise SystemExit("Condition IDs must be unique lowercase letters, digits, dots, and hyphens")
+        raise SystemExit(
+            "Condition IDs must be unique lowercase alphanumeric segments separated by single dots or hyphens"
+        )
     for item in config["conditions"]:
         adapter = item.get("adapter")
         if not isinstance(adapter, str) or adapter not in {"fixture", "external-command"}:
@@ -1418,13 +1930,16 @@ def cmd_run(args: argparse.Namespace) -> None:
                     future_jobs.add(pool.submit(execute, job))
         finally:
             pool.shutdown(wait=True)
-    observed_attempts = [item for item in attempts if item["attempted"]]
-    summary = aggregate(scores, observed_attempts)
+    attempted_count = sum(1 for item in attempts if item["attempted"])
+    summary = aggregate(scores, attempts)
     summary["created_at"] = now_id()
     summary["scenario_count"] = len(scenarios)
     summary["planned_sample_count"] = len(jobs)
-    summary["attempted_sample_count"] = len(observed_attempts)
+    summary["attempted_sample_count"] = attempted_count
     summary["score_count"] = len(scores)
+    # Keep every planned sample, including work canceled by fail-fast, together
+    # with scores.json so compare cannot mistake a partial matrix for a complete one.
+    summary["attempts"] = attempts
     summary["job_order"] = [
         f"{scenario['id']}--{condition['id']}--r{replicate}"
         for scenario, condition, replicate in jobs
@@ -1459,31 +1974,52 @@ def cmd_score(args: argparse.Namespace) -> None:
 
 def cmd_compare(args: argparse.Namespace) -> None:
     scores: list[dict[str, Any]] = []
+    attempts: list[dict[str, Any]] = []
+    unknown_bundle_metadata = False
+    input_kind: str | None = None
+    bundle_keys: set[tuple[str, str]] = set()
     for path in args.inputs:
+        input_path = Path(path)
+        bundle = _load_compare_bundle(input_path)
+        if bundle is not None:
+            if input_kind == "manual-score-records":
+                raise SystemExit("Cannot mix run bundles with standalone score records")
+            input_kind = "run-output-bundle"
+            bundle_scores, bundle_attempts, bundle_key = bundle
+            if bundle_key in bundle_keys:
+                continue
+            bundle_keys.add(bundle_key)
+            scores.extend(bundle_scores)
+            if bundle_attempts is None:
+                unknown_bundle_metadata = True
+            else:
+                attempts.extend(bundle_attempts)
+            continue
+        if input_kind == "run-output-bundle":
+            raise SystemExit("Cannot mix standalone score records with run bundles")
+        input_kind = "manual-score-records"
         try:
-            data = read_json(Path(path))
-        except (OSError, json.JSONDecodeError) as exc:
+            data = read_json(input_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise SystemExit(f"Could not read score input {path}: {exc}") from exc
-        if isinstance(data, list):
-            records = data
-        elif isinstance(data, dict) and "score" in data:
-            records = [data]
-        else:
-            raise SystemExit(f"Unrecognized score input: {path}")
-        if not records:
-            raise SystemExit(f"Invalid score input {path}: no score records")
-        for index, record in enumerate(records):
-            errors = score_input_errors(record)
-            if errors:
-                label = f"{path}[{index}]" if isinstance(data, list) else str(path)
-                raise SystemExit(f"Invalid score input {label}: " + "; ".join(errors))
+        records = _score_records_from_json(data, input_path)
+        for record in records:
             record = dict(record)
+            # A manually supplied record has no run-level attempt manifest or
+            # control proof.  Keep it descriptive, but never infer zero failures
+            # or a complete matched matrix from the successful records alone.
             record["evidence_class"] = UNSPECIFIED_EVIDENCE_CLASS
             scores.append(record)
+    if not scores and input_kind != "run-output-bundle":
+        raise SystemExit("No score records to compare")
     try:
-        result = aggregate(scores)
+        result = aggregate(
+            scores,
+            attempts if input_kind == "run-output-bundle" and not unknown_bundle_metadata else None,
+        )
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
+    result["input_contract"] = input_kind
     if args.output:
         write_json(Path(args.output), result)
     print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -1523,7 +2059,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output")
     p.set_defaults(func=cmd_score)
 
-    p = sub.add_parser("compare", help="aggregate existing score records conservatively")
+    p = sub.add_parser(
+        "compare",
+        help="aggregate a run directory/summary with its scores, or descriptive manual score records",
+    )
     p.add_argument("inputs", nargs="+")
     p.add_argument("--output")
     p.set_defaults(func=cmd_compare)

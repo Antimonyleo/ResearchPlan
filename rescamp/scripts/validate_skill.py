@@ -45,16 +45,6 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return result
 
 
-def has_symlink_component(root: Path, path: Path) -> bool:
-    """Return whether a required path or one of its ancestors is a symlink."""
-    current = root
-    for part in path.relative_to(root).parts:
-        current /= part
-        if current.is_symlink():
-            return True
-    return False
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", nargs="?", default=str(Path(__file__).resolve().parent.parent))
@@ -62,12 +52,19 @@ def main() -> int:
     root = Path(args.path).resolve()
     errors: list[str] = []
     warnings: list[str] = []
-    for relative in REQUIRED_FILES:
-        path = root / relative
-        if has_symlink_component(root, path):
-            errors.append(f"required path must not use symlinks: {relative}")
-        elif not path.is_file():
-            errors.append(f"missing required file: {relative}")
+    actual: set[str] = set()
+    for path in sorted(root.rglob("*")) if root.is_dir() else []:
+        relative = path.relative_to(root)
+        if "__pycache__" in relative.parts:
+            continue
+        name = relative.as_posix()
+        if path.is_symlink():
+            errors.append(f"skill path must not use symlinks: {name}")
+        elif path.is_file():
+            actual.add(name)
+    required = set(REQUIRED_FILES)
+    errors.extend(f"missing required file: {name}" for name in sorted(required - actual))
+    errors.extend(f"unexpected skill file: {name}" for name in sorted(actual - required))
     skill = root / "SKILL.md"
     if not skill.is_file() or skill.is_symlink():
         text = ""

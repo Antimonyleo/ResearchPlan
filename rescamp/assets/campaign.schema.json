@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.org/rescamp/campaign.schema.json",
-  "title": "ResCamp campaign state",
+  "title": "ResCamp campaign structural envelope",
+  "description": "Structural interchange schema for campaign state and rendered campaign.json. Run rescamp.py validate or audit for the complete semantic and cross-reference contract.",
   "type": "object",
   "required": ["schema_version", "rescamp_version", "campaign_id", "goal_verbatim", "profile", "archetypes", "workflow", "sketch", "intent_dimensions", "interview", "campaign", "assurance", "reviews"],
   "properties": {

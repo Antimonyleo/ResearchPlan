@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+from unittest import mock
 from common import add_passing_reviews, engine, complete_state
 
 
@@ -24,6 +25,10 @@ class AutomaticLoopTests(unittest.TestCase):
                 self.assertEqual(packet["rubric_digest"], rubric)
                 self.assertRegex(packet["packet_digest"], r"^sha256:[0-9a-f]{64}$")
                 self.assertTrue(packet["instructions"]["read_only"])
+                self.assertIn("prospective campaign contract", packet["instructions"]["review_object"])
+                self.assertIn("unstarted", packet["instructions"]["future_evidence_rule"])
+                self.assertIn("intentionally omitted", packet["instructions"]["scope_boundary_rule"])
+                self.assertIn("at most the three", packet["instructions"]["finding_policy"])
                 self.assertIn(
                     "packet_digest",
                     packet["instructions"]["required_output_schema"]["required"],
@@ -115,6 +120,51 @@ class AutomaticLoopTests(unittest.TestCase):
             self.assertIn(old_methods_digest, after["reviews"]["packet_metadata"])
             self.assertNotIn(old_operations_digest, after["reviews"]["packet_metadata"])
             self.assertEqual(len(after["reviews"]["packet_metadata"]), 3)
+
+    def test_packet_contract_change_invalidates_otherwise_current_reviews(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir, _ = self._campaign(temp)
+            _, _, paths = engine.freeze_and_packets(campaign_dir, engine.load_state(campaign_dir))
+            for index, path in enumerate(paths, 1):
+                packet = engine.read_json(path)
+                review_path = Path(temp) / f"{packet['role']}-review.json"
+                engine.write_json(review_path, self._record(packet, f"reviewer-{index}"))
+                engine.cmd_ingest_review(argparse.Namespace(
+                    campaign=str(campaign_dir), file=str(review_path),
+                ))
+
+            original_contract = engine.packet_contract_identity
+            original_packet = engine.packet_identity
+            with mock.patch.object(
+                engine,
+                "packet_contract_identity",
+                side_effect=lambda packet: {**original_contract(packet), "contract_revision": "changed"},
+            ), mock.patch.object(
+                engine,
+                "packet_identity",
+                side_effect=lambda packet: {**original_packet(packet), "contract_revision": "changed"},
+            ):
+                engine.freeze_and_packets(campaign_dir, engine.load_state(campaign_dir))
+
+            after = engine.load_state(campaign_dir)
+            self.assertEqual(after["reviews"]["records"], [])
+            self.assertEqual(
+                engine.review_status(after)[1],
+                ["methods-evidence", "operations-reproducibility"],
+            )
+
+    def test_optional_sequential_execution_evidence_is_still_typed(self):
+        record = self._record({
+            "role": "skeptical",
+            "content_digest": "sha256:" + "1" * 64,
+            "rubric_digest": "sha256:" + "2" * 64,
+            "packet_digest": "sha256:" + "3" * 64,
+            "reviewed_sections": {"mission": "sha256:" + "4" * 64},
+        }, "reviewer-1")
+        record["mode"] = "sequential-pass"
+        record["execution_evidence"]["host"] = []
+        errors = engine.review_record_errors(record)
+        self.assertIn("execution_evidence invalid host", errors)
 
     def test_invalid_design_does_not_offer_stale_review_work(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -320,6 +370,8 @@ class AutomaticLoopTests(unittest.TestCase):
         evidence = {"executor_id": "session-a", "started_at": engine.now_iso(), "completed_at": engine.now_iso()}
         record = {"role":"methods-evidence","reviewer_id":"r1","mode":"separate-session","verdict":"revise","content_digest":digest,"rubric_digest":rubric,"summary":"Need one user answer","execution_evidence":evidence,"findings":[{"severity":"major","action":"user-answer","description":"Clarify authority"}]}
         self.assertEqual(engine.review_record_errors(record), [])
+        record["findings"] *= 4
+        self.assertTrue(any("at most three" in item for item in engine.review_record_errors(record)))
 
     def test_independence_claim_requires_execution_evidence(self):
         """A record cannot claim independence by writing a bare mode string."""
@@ -371,8 +423,10 @@ class AutomaticLoopTests(unittest.TestCase):
             "content_digest": [engine.content_digest(state)],
             "rubric_digest": engine.rubric_digest(state["profile"]),
             "summary": ["looks fine"], "findings": [],
+            "evidence_inspected": ["packet", 7],
             "execution_evidence": {
                 "executor_id": 7, "started_at": "yesterday", "completed_at": engine.now_iso(),
+                "host": [],
             },
         }
 
@@ -384,6 +438,25 @@ class AutomaticLoopTests(unittest.TestCase):
         self.assertTrue(any("summary" in item for item in errors), errors)
         self.assertTrue(any("executor_id" in item for item in errors), errors)
         self.assertTrue(any("started_at" in item for item in errors), errors)
+        self.assertTrue(any("evidence_inspected" in item for item in errors), errors)
+        self.assertTrue(any("host" in item for item in errors), errors)
+
+        record.update({
+            "role": "methods-evidence", "reviewer_id": "r1", "summary": "Review",
+            "content_digest": engine.content_digest(state),
+            "evidence_inspected": ["packet"],
+            "execution_evidence": {
+                "executor_id": "executor-1", "started_at": engine.now_iso(),
+                "completed_at": engine.now_iso(), "host": "test-host",
+            },
+            "findings": [{
+                "severity": "minor", "action": "agent-fix", "description": "Finding",
+                "affected_ids": [7], "recommended_remedy": [],
+            }],
+        })
+        errors = engine.review_record_errors(record)
+        self.assertTrue(any("affected_ids" in item for item in errors), errors)
+        self.assertTrue(any("recommended_remedy" in item for item in errors), errors)
 
     def test_review_digests_require_exact_sha256_format(self):
         state = complete_state()

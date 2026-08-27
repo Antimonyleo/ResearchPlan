@@ -4,7 +4,9 @@ import contextlib
 import copy
 import io
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -62,6 +64,11 @@ class BenchmarkTests(unittest.TestCase):
         scenario["archetypes"] = ["not-a-real-archetype"]
         self.assertTrue(any("archetypes" in item for item in bench.scenario_errors(scenario)))
 
+    def test_scenario_validation_rejects_ambiguous_run_id_delimiters(self):
+        scenario = copy.deepcopy(bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0])
+        scenario["id"] = "double--hyphen"
+        self.assertTrue(any("id must" in item for item in bench.scenario_errors(scenario)))
+
     def test_validate_scenarios_help_describes_contract_and_release_schema_boundary(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
@@ -107,6 +114,22 @@ class BenchmarkTests(unittest.TestCase):
             summary = bench.aggregate(scores)
             self.assertEqual(sum(v["n"] for v in summary["conditions"].values()), 6)
             self.assertGreater(summary["conditions"]["rescamp-current-fixture"]["score_mean_ci95"][0], summary["conditions"]["no-skill-fixture"]["score_mean_ci95"][0])
+
+    def test_write_json_does_not_follow_predictable_temp_symlinks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            destination = root / "nested" / "state.json"
+            destination.parent.mkdir()
+            outside = root / "outside.txt"
+            outside.write_text("must remain unchanged", encoding="utf-8")
+            predictable = destination.with_suffix(destination.suffix + ".tmp")
+            predictable.symlink_to(outside)
+
+            bench.write_json(destination, {"safe": True})
+
+            self.assertEqual(outside.read_text(encoding="utf-8"), "must remain unchanged")
+            self.assertTrue(predictable.is_symlink())
+            self.assertEqual(json.loads(destination.read_text(encoding="utf-8")), {"safe": True})
 
     def test_false_readiness_has_hard_cap(self):
         scenario = next(s for s in bench.load_scenarios(ROOT / "benchmark/scenarios/public") if any(d.get("forces_blocker") for d in s["material_dimensions"]))
@@ -304,6 +327,7 @@ class BenchmarkTests(unittest.TestCase):
             {"conditions": ["not-an-object"]},
             {"conditions": [{"id": [], "adapter": "fixture"}]},
             {"conditions": [{"id": "../../../escape", "adapter": "fixture"}]},
+            {"conditions": [{"id": "double--hyphen", "adapter": "fixture"}]},
             {"conditions": [{"id": "x", "adapter": []}]},
             {"conditions": [{"id": "x", "adapter": "unknown", "command": "cmd"}]},
             {"conditions": [{"id": "x", "adapter": "external-command", "command": "cmd",
@@ -453,6 +477,94 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(process.kill_calls, 0)
         self.assertEqual(process.communications, 2)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups are required")
+    def test_timeout_cleanup_does_not_wait_for_an_escaped_descendant_pipe(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            script = root / "escaped_child.py"
+            child_pid = root / "child.pid"
+            child_code = (
+                "import os,sys,time\n"
+                "os.setsid()\n"
+                "with open(sys.argv[1], 'w', encoding='utf-8') as handle:\n"
+                "    handle.write(str(os.getpid()))\n"
+                "time.sleep(30)\n"
+            )
+            script.write_text(
+                "import subprocess,sys,time\n"
+                f"subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}, sys.argv[1]])\n"
+                "for _ in range(100):\n"
+                "    if __import__('os').path.exists(sys.argv[1]): break\n"
+                "    time.sleep(0.01)\n"
+                "time.sleep(30)\n",
+                encoding="utf-8",
+            )
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(RuntimeError, "timed out"):
+                    bench.call_adapter(
+                        f"{sys.executable} {script} {child_pid}", {"request": "value"}, 1
+                    )
+            finally:
+                if child_pid.is_file():
+                    pid = int(child_pid.read_text(encoding="utf-8"))
+                    deadline = time.monotonic() + 1.0
+                    while Path(f"/proc/{pid}").exists() and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                    try:
+                        os.kill(pid, 0)
+                    except (OSError, ValueError, ProcessLookupError):
+                        pass
+                    else:
+                        self.fail("escaped adapter descendant survived timeout cleanup")
+            self.assertLess(time.monotonic() - started, 3.0)
+
+    @unittest.skipUnless(os.name == "posix" and sys.platform.startswith("linux"),
+                         "Linux /proc process tracking is required")
+    def test_timeout_cleanup_tracks_escaped_descendant_after_root_exits(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            script = root / "root_exits.py"
+            child_pid = root / "child.pid"
+            child_code = (
+                "import os,sys,time\n"
+                "os.setsid()\n"
+                "with open(sys.argv[1], 'w', encoding='utf-8') as handle:\n"
+                "    handle.write(str(os.getpid()))\n"
+                "time.sleep(30)\n"
+            )
+            script.write_text(
+                "import os,subprocess,sys,time\n"
+                f"subprocess.Popen([{sys.executable!r}, '-c', {child_code!r}, sys.argv[1]])\n"
+                "for _ in range(100):\n"
+                "    if os.path.exists(sys.argv[1]): break\n"
+                "    time.sleep(0.01)\n"
+                "time.sleep(0.2)\n"
+                "os._exit(0)\n",
+                encoding="utf-8",
+            )
+            try:
+                with self.assertRaisesRegex(RuntimeError, "timed out"):
+                    bench.call_adapter(
+                        f"{sys.executable} {script} {child_pid}", {"request": "value"}, 1
+                    )
+            finally:
+                if child_pid.is_file():
+                    pid = int(child_pid.read_text(encoding="utf-8"))
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        pass
+
+    def test_timeout_cleanup_uses_windows_process_tree_termination(self):
+        process = mock.Mock(pid=321)
+        with mock.patch.object(bench.os, "name", "nt"), \
+                mock.patch.object(bench.subprocess, "run") as run:
+            bench._terminate_adapter_tree(process)
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0], ["taskkill", "/PID", "321", "/T", "/F"])
+        process.kill.assert_called_once_with()
+
     def test_parallel_fail_fast_collects_results_from_running_futures(self):
         scenarios = [{"id": "scenario", "title": "title", "domain": "domain",
                       "archetypes": ["experimental"], "profile": "profile",
@@ -495,7 +607,16 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(summary["score_count"], 1)
             self.assertEqual(summary["attempted_sample_count"], 2)
             self.assertEqual(summary["planned_sample_count"], 3)
+            self.assertEqual(len(summary["attempts"]), 3)
+            self.assertEqual(
+                [item["condition"] for item in summary["attempts"] if not item["attempted"]],
+                ["queued"],
+            )
             self.assertEqual(summary["failures"][0]["condition"], "failure")
+            self.assertEqual(summary["conditions"]["queued"]["planned_n"], 1)
+            self.assertEqual(summary["conditions"]["queued"]["attempted_n"], 0)
+            self.assertEqual(summary["conditions"]["queued"]["unstarted_n"], 1)
+            self.assertFalse(summary["conditions"]["queued"]["complete"])
 
     def test_generated_live_matrix_uses_the_loadable_conservative_control_contract(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -528,6 +649,18 @@ class BenchmarkTests(unittest.TestCase):
             result = subprocess.run([
                 sys.executable, str(ROOT / "scripts/create_benchmark_matrix.py"),
                 "--condition", "../escaped=run-rescamp",
+                "--user-adapter", "team-u", "--evaluator-adapter", "team-e",
+                "--model-id", "model", "--host-version", "host", "--output", str(output),
+            ], cwd=ROOT, capture_output=True, text=True, check=False)
+            self.assertFalse(output.exists())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("condition ID must", result.stderr)
+
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "live.json"
+            result = subprocess.run([
+                sys.executable, str(ROOT / "scripts/create_benchmark_matrix.py"),
+                "--condition", "double--hyphen=run-rescamp",
                 "--user-adapter", "team-u", "--evaluator-adapter", "team-e",
                 "--model-id", "model", "--host-version", "host", "--output", str(output),
             ], cwd=ROOT, capture_output=True, text=True, check=False)
@@ -667,6 +800,77 @@ class BenchmarkTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "staged artifact changed"):
                 bench.run_one(scenario, condition, 1, root / "runs", 20, 2)
 
+    def test_team_s_run_dir_symlink_is_rejected_without_outside_writes(self):
+        scenario = copy.deepcopy(bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0])
+        scenario["id"] = "run-dir-boundary"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            outside = root / "outside"
+            outside.mkdir()
+            sentinel = outside / "sentinel.txt"
+            sentinel.write_text("untouched", encoding="utf-8")
+            team_s = root / "replace_run_dir.py"
+            team_s.write_text(
+                "import json,sys\n"
+                "from pathlib import Path\n"
+                "payload=json.loads(sys.stdin.read())\n"
+                "run_dir=Path(payload['run_dir'])\n"
+                "run_dir.rmdir()\n"
+                "run_dir.symlink_to(Path(sys.argv[1]), target_is_directory=True)\n"
+                "print(json.dumps({'action':'final','message':'done','declared_resolutions':[],"
+                "'declared_blockers':[],'declared_features':[],'readiness_claimed':False}))\n",
+                encoding="utf-8",
+            )
+            condition = {
+                "id": "symlink-condition", "adapter": "external-command",
+                "command": f"{sys.executable} {team_s} {outside}",
+            }
+            with self.assertRaisesRegex(RuntimeError, "must not be a symlink"):
+                bench.run_one(scenario, condition, 1, root / "runs", 20, 2)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "untouched")
+            self.assertFalse((outside / "evaluator-candidates").exists())
+            self.assertFalse((root / "runs" / "run-dir-boundary--symlink-condition--r1").exists())
+
+    def test_team_s_workspace_cannot_read_sibling_retained_transcripts(self):
+        scenario = copy.deepcopy(bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0])
+        scenario["id"] = "workspace-isolation"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "runs"
+            sibling = output / "retained-sibling--condition--r1"
+            sibling.mkdir(parents=True)
+            (sibling / "evaluator_transcript.json").write_text(
+                "SIBLING-PRIVATE-TRANSCRIPT", encoding="utf-8"
+            )
+            observed_workspace = root / "workspace.txt"
+            team_s = root / "inspect_workspace.py"
+            team_s.write_text(
+                "import json,sys\n"
+                "from pathlib import Path\n"
+                "payload=json.loads(sys.stdin.read())\n"
+                "workspace=Path(payload['run_dir'])\n"
+                "Path(sys.argv[1]).write_text(str(workspace), encoding='utf-8')\n"
+                "saw_sibling=any('SIBLING-PRIVATE-TRANSCRIPT' in p.read_text(encoding='utf-8')\n"
+                "    for p in workspace.parent.rglob('evaluator_transcript.json'))\n"
+                "message='saw sibling' if saw_sibling else 'isolated'\n"
+                "print(json.dumps({'action':'final','message':message,'declared_resolutions':[],\n"
+                "'declared_blockers':[],'declared_features':[],'readiness_claimed':False}))\n",
+                encoding="utf-8",
+            )
+            condition = {
+                "id": "rescamp-current-fixture", "adapter": "external-command",
+                "command": f"{sys.executable} {team_s} {observed_workspace}",
+            }
+
+            score = bench.run_one(scenario, condition, 1, output, 20, 2)
+
+            workspace = Path(observed_workspace.read_text(encoding="utf-8"))
+            self.assertNotEqual(workspace.parent, output.resolve())
+            transcript = json.loads(
+                (output / score["run_id"] / "evaluator_transcript.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(transcript[1]["message"], "isolated")
+
     def test_manifest_hashes_every_persisted_run_file(self):
         scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
         condition = bench.load_config(ROOT / "benchmark/conditions/fixture.json")["conditions"][0]
@@ -776,6 +980,156 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(pair["difference_mean_ci95"], [None, None, None])
         self.assertEqual(summary["conditions"]["b"]["failure_rate"], 0.5)
 
+    def test_compare_run_bundle_preserves_failed_attempts(self):
+        score = {
+            "run_id": "succeeded--condition-a--r1", "scenario_id": "succeeded",
+            "condition": "condition-a", "replicate": 1, "score": 50.0,
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 80.0},
+        }
+        summary = {
+            "planned_sample_count": 2, "attempted_sample_count": 2,
+            "score_count": 1,
+            "job_order": [
+                "succeeded--condition-a--r1", "failed--condition-a--r1",
+            ],
+            "attempts": [
+                {"scenario_id": "succeeded", "condition": "condition-a", "replicate": 1,
+                 "attempted": True, "succeeded": True},
+                {"scenario_id": "failed", "condition": "condition-a", "replicate": 1,
+                 "attempted": True, "succeeded": False},
+            ],
+            "failures": [{
+                "scenario": "failed", "condition": "condition-a", "replicate": "1",
+                "error": "adapter timed out",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            run_output = Path(temp) / "run-output"
+            run_output.mkdir()
+            (run_output / "scores.json").write_text(json.dumps([score]), encoding="utf-8")
+            (run_output / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                bench.cmd_compare(argparse.Namespace(inputs=[str(run_output)], output=None))
+        result = json.loads(output.getvalue())
+        condition = result["conditions"]["condition-a"]
+        self.assertEqual(result["input_contract"], "run-output-bundle")
+        self.assertTrue(result["attempts_known"])
+        self.assertEqual(condition["n"], 1)
+        self.assertEqual(condition["planned_n"], 2)
+        self.assertEqual(condition["attempted_n"], 2)
+        self.assertEqual(condition["unstarted_n"], 0)
+        self.assertEqual(condition["failure_rate"], 0.5)
+        self.assertFalse(condition["complete"])
+
+    def test_compare_rejects_scores_json_without_run_summary(self):
+        score = {
+            "run_id": "ambiguous", "scenario_id": "scenario", "condition": "condition",
+            "replicate": 1, "score": 50.0,
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 80.0},
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "scores.json"
+            path.write_text(json.dumps([score]), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "requires its sibling summary.json"):
+                bench.cmd_compare(argparse.Namespace(inputs=[str(path)], output=None))
+
+    def test_compare_all_failed_run_bundle_reports_failures_without_scores(self):
+        summary = {
+            "planned_sample_count": 1, "attempted_sample_count": 1, "score_count": 0,
+            "job_order": ["failed--condition-a--r1"],
+            "attempts": [{
+                "scenario_id": "failed", "condition": "condition-a", "replicate": 1,
+                "attempted": True, "succeeded": False,
+            }],
+            "failures": [{
+                "scenario": "failed", "condition": "condition-a", "replicate": "1",
+                "error": "adapter failed",
+            }],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            run_output = Path(temp) / "run-output"
+            run_output.mkdir()
+            (run_output / "scores.json").write_text("[]", encoding="utf-8")
+            (run_output / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                bench.cmd_compare(argparse.Namespace(inputs=[str(run_output)], output=None))
+        result = json.loads(output.getvalue())
+        condition = result["conditions"]["condition-a"]
+        self.assertEqual(condition["n"], 0)
+        self.assertEqual(condition["planned_n"], 1)
+        self.assertEqual(condition["attempted_n"], 1)
+        self.assertEqual(condition["unstarted_n"], 0)
+        self.assertEqual(condition["failure_rate"], 1.0)
+        self.assertFalse(condition["complete"])
+
+    def test_compare_run_bundle_preserves_unstarted_conditions(self):
+        score = {
+            "run_id": "started--condition-a--r1", "scenario_id": "started",
+            "condition": "condition-a", "replicate": 1, "score": 50.0,
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 80.0},
+        }
+        summary = {
+            "planned_sample_count": 2, "attempted_sample_count": 1,
+            "score_count": 1,
+            "job_order": [
+                "started--condition-a--r1", "queued--condition-b--r1",
+            ],
+            "attempts": [
+                {"scenario_id": "started", "condition": "condition-a", "replicate": 1,
+                 "attempted": True, "succeeded": True},
+                {"scenario_id": "queued", "condition": "condition-b", "replicate": 1,
+                 "attempted": False, "succeeded": False},
+            ],
+            "failures": [],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            run_output = Path(temp) / "run-output"
+            run_output.mkdir()
+            (run_output / "scores.json").write_text(json.dumps([score]), encoding="utf-8")
+            (run_output / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                bench.cmd_compare(argparse.Namespace(inputs=[str(run_output)], output=None))
+        result = json.loads(output.getvalue())
+        queued = result["conditions"]["condition-b"]
+        self.assertEqual(queued["planned_n"], 1)
+        self.assertEqual(queued["attempted_n"], 0)
+        self.assertEqual(queued["unstarted_n"], 1)
+        self.assertFalse(queued["complete"])
+        self.assertFalse(result["pairwise_matched"]["condition-a minus condition-b"]["complete_matched_matrix"])
+
+    def test_compare_accepts_legacy_summary_without_planned_metadata_conservatively(self):
+        score = {
+            "run_id": "legacy-run", "scenario_id": "scenario", "condition": "legacy",
+            "replicate": 1, "score": 50.0,
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 80.0},
+        }
+        legacy_summary = {
+            "run_id": "legacy", "scenario_count": 1, "score_count": 1,
+            "conditions": {"legacy": {"n": 1}}, "failures": [],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            run_output = Path(temp) / "legacy-output"
+            run_output.mkdir()
+            (run_output / "scores.json").write_text(json.dumps([score]), encoding="utf-8")
+            (run_output / "summary.json").write_text(json.dumps(legacy_summary), encoding="utf-8")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                bench.cmd_compare(argparse.Namespace(inputs=[str(run_output)], output=None))
+        result = json.loads(output.getvalue())
+        condition = result["conditions"]["legacy"]
+        self.assertEqual(result["input_contract"], "run-output-bundle")
+        self.assertFalse(result["attempts_known"])
+        self.assertIsNone(condition["planned_n"])
+        self.assertFalse(condition["complete"])
+        self.assertIsNone(condition["failure_rate"])
+
     def test_aggregate_rejects_duplicate_composite_samples(self):
         base = {
             "scenario_id": "s", "condition": "c", "replicate": 1, "score": 50.0,
@@ -814,6 +1168,8 @@ class BenchmarkTests(unittest.TestCase):
                 bench.cmd_compare(argparse.Namespace(inputs=[str(path)], output=None))
         summary = json.loads(output.getvalue())
         self.assertEqual(summary["evidence_class"], bench.UNSPECIFIED_EVIDENCE_CLASS)
+        self.assertFalse(summary["attempts_known"])
+        self.assertIsNone(summary["conditions"]["manual"]["failure_rate"])
         self.assertEqual(
             summary["conditions"]["manual"]["evidence_class"],
             bench.UNSPECIFIED_EVIDENCE_CLASS,
