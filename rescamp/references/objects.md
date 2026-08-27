@@ -13,10 +13,13 @@ whole dict-valued sections; use `add` or `apply`, not `set`, to replace object l
 explicit `--allow-unknown` or `--create-missing` escape hatches are for schema
 development, not normal campaign compilation.
 
-And `sketch`, top-level `assumptions`, and `contradictions` are campaign state that the
-prompt does not render — they inform the interview and the review, not the execution brief.
+`sketch` is the authoritative Camp-brief content and seeds Camp-full. Write it with `set`
+using `decision_or_purpose`, `scope`, `non_goals`, `core_inquiries`, `likely_evidence`,
+`rough_methods_stages`, `success_or_adjudication`, `assumptions_risks`,
+`proposed_outputs`, and `next_action`. Top-level `assumptions` and `contradictions` inform
+both the brief and the full campaign.
 
-The dict-valued sections (`campaign.starting_point`, `campaign.mission`,
+The dict-valued sections (`sketch`, `campaign.starting_point`, `campaign.mission`,
 `campaign.constitution`, `campaign.evaluation`, `campaign.resources_dispatch`,
 `campaign.runtime`, `campaign.ethics_rights_safety`, `campaign.reporting`, and
 `campaign.kickoff`) are written with `set`, not `add`, and have no table here; their required

@@ -50,6 +50,7 @@
       "expected_by_turn": 1,
       "forces_blocker": false,
       "id": "community-purpose",
+      "branch": "decision-purpose",
       "importance": "critical"
     },
     {
@@ -62,6 +63,7 @@
       "expected_by_turn": 2,
       "forces_blocker": true,
       "id": "authority-consent",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -74,6 +76,7 @@
       "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "restriction-protocol",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -86,6 +89,7 @@
       "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "language-capacity",
+      "branch": "evidence-access",
       "importance": "material"
     },
     {
@@ -98,6 +102,7 @@
       "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "data-sovereignty",
+      "branch": "evidence-access",
       "importance": "critical"
     },
     {
@@ -110,6 +115,7 @@
       "expected_by_turn": 6,
       "forces_blocker": false,
       "id": "analysis-publication",
+      "branch": "outputs-operations",
       "importance": "critical"
     },
     {
@@ -122,6 +128,7 @@
       "expected_by_turn": 7,
       "forces_blocker": false,
       "id": "benefit-compensation",
+      "branch": "ethics-authority",
       "importance": "material"
     }
   ],

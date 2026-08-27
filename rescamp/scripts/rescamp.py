@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ResCamp 0.10 durable campaign state, validation, review, and rendering.
+"""ResCamp durable campaign state, validation, review, and rendering.
 
 The language model conducts research design and synthesis. This dependency-free utility
 keeps canonical state, enforces proportional gates, prepares immutable review packets,
@@ -19,11 +19,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - advisory locking is Unix-only
+    fcntl = None  # type: ignore[assignment]
+
 SKILL_DIR = Path(__file__).resolve().parent.parent
 VERSION = (SKILL_DIR / "VERSION").read_text(encoding="utf-8").strip()
-SCHEMA_VERSION = "3.1"
+SCHEMA_VERSION = "3.2"
 STATE_REL = Path("state/campaign.json")
 VALIDATION_REL = Path("working/validation.json")
+BRIEF_VALIDATION_REL = Path("working/brief_validation.json")
 REVIEW_DIR_REL = Path("working/review_packets")
 OUTPUT_DIR_REL = Path("outputs")
 
@@ -70,6 +76,13 @@ STOP_REASONS = {
     "blocked-by-external-dependency", "user-requested-draft",
 }
 ENTRY_MODES = {"new-project", "existing-project"}
+PLANNING_MODES = {"auto", "brief", "full"}
+ARTIFACT_LEVELS = {"brief", "full"}
+PROMOTION_STATUSES = {"pending", "not-offered", "offered", "accepted", "declined", "not-applicable"}
+PROMOTION_DECISIONS = {"accept", "decline"}
+PROMOTION_SOURCES = {"auto-prompt", "camp-full"}
+BRIEF_SOFT_LIMIT = 3
+BRIEF_HARD_LIMIT = 4
 
 # Single source of truth for campaign object shapes. Drives `add` key checking,
 # `schema` output, and the rendered campaign prompt. `required` mirrors
@@ -215,6 +228,15 @@ OBJECT_SPECS: dict[str, dict[str, Any]] = {
 # whole architecture reference to find them costs ~4k tokens. `required` mirrors
 # validate_state exactly; changing one without the other is a defect.
 SECTION_SPECS: dict[str, dict[str, Any]] = {
+    "sketch": {
+        "required": (
+            "decision_or_purpose", "scope", "non_goals", "core_inquiries",
+            "likely_evidence", "rough_methods_stages", "success_or_adjudication",
+            "assumptions_risks", "proposed_outputs", "next_action",
+        ),
+        "optional": (),
+        "note": "This is the authoritative Camp-brief content and the seed for Camp-full.",
+    },
     "campaign.starting_point": {
         "required": ("entry_mode",),
         "optional": (
@@ -324,17 +346,87 @@ def write_json(path: Path, value: Any) -> None:
     atomic_write(path, json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def staged_directory(target: Path) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=f".{target.name}.staged-", dir=target.parent))
+
+
+def commit_state_and_directory(campaign_dir: Path, state: dict[str, Any],
+                               staged: Path, target: Path) -> None:
+    """Publish a complete directory and its matching state as one bounded commit.
+
+    The generated directory is derived data, so it moves first. If the compare-and-swap
+    state write then fails, restore the previous directory. A process crash can at worst
+    leave new derived data beside old canonical state, which the digest audit rejects;
+    canonical state never claims files that were not published.
+    """
+    if target.is_symlink():
+        raise SystemExit(f"Refusing to replace symlinked generated directory: {target}")
+    if target.exists() and not target.is_dir():
+        raise SystemExit(f"Generated output target must be a directory: {target}")
+    backup = staged.with_name(staged.name.replace(".staged-", ".previous-", 1))
+    had_target = target.exists()
+    if had_target:
+        os.replace(target, backup)
+    try:
+        os.replace(staged, target)
+        save_state(campaign_dir, state)
+    except BaseException:
+        if target.exists() and not target.is_symlink():
+            shutil.rmtree(target)
+        if had_target and backup.exists():
+            os.replace(backup, target)
+        raise
+    if backup.exists():
+        shutil.rmtree(backup, ignore_errors=True)
+
+
 def resolve_campaign(path: str | Path) -> Path:
-    candidate = Path(path).expanduser().resolve()
-    if (candidate / STATE_REL).exists():
+    supplied = Path(path).expanduser()
+    if supplied.name == "campaign.json" and supplied.parent.name == "state":
+        candidate = supplied.parent.parent.resolve()
+    else:
+        candidate = supplied.resolve()
+    state_path = candidate / STATE_REL
+    if state_path.exists() or state_path.is_symlink():
         return candidate
-    if candidate.name == "campaign.json" and candidate.parent.name == "state":
-        return candidate.parent.parent
     raise SystemExit(f"Campaign not found: {candidate}")
 
 
+def campaign_state_path(campaign_dir: Path, require_exists: bool = True) -> Path:
+    """Return the lexical state path only when it is a contained regular file."""
+    root = campaign_dir.resolve()
+    state_dir = root / STATE_REL.parent
+    path = root / STATE_REL
+    if state_dir.is_symlink():
+        raise SystemExit("Campaign state directory must not be a symlink")
+    try:
+        state_dir.resolve().relative_to(root)
+    except (OSError, ValueError):
+        raise SystemExit("Campaign state directory escapes the campaign") from None
+    if path.is_symlink():
+        raise SystemExit("Campaign state file must not be a symlink")
+    if path.exists() and not path.is_file():
+        raise SystemExit("Campaign state path must be a regular file")
+    if require_exists and not path.exists():
+        raise SystemExit(f"Campaign state file is missing: {path}")
+    return path
+
+
 def load_state(campaign_dir: Path) -> dict[str, Any]:
-    return read_json(campaign_dir / STATE_REL)
+    path = campaign_state_path(campaign_dir)
+    # Parse and fingerprint the same byte snapshot. Reading the file twice allowed a
+    # concurrent replacement between those reads to pair state A with the baseline
+    # digest of state B, defeating the later compare-and-swap guard.
+    try:
+        raw = path.read_bytes()
+        state = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read campaign state: {exc}") from None
+    if not isinstance(state, dict):
+        raise SystemExit("Campaign state must be a JSON object")
+    _STATE_BASELINES[path] = sha256_bytes(raw)
+    return state
 
 
 def substantive_state(state: dict[str, Any], deep: bool = True) -> dict[str, Any]:
@@ -356,6 +448,77 @@ def substantive_state(state: dict[str, Any], deep: bool = True) -> dict[str, Any
 
 def content_digest(state: dict[str, Any]) -> str:
     return sha256_json(substantive_state(state))
+
+
+def render_digest(state: dict[str, Any]) -> str:
+    """Bind rendered bytes to plan content plus review, pilot, and acceptance evidence."""
+    value = copy.deepcopy(state)
+    for key in ("updated_at", "outputs", "last_validation", "status"):
+        value.pop(key, None)
+    return sha256_json(value)
+
+
+def workflow_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Return workflow state, treating pre-3.2 campaigns as full campaigns.
+
+    The compatibility default is read-only. Release validation still rejects an old
+    schema until `migrate` records the workflow explicitly.
+    """
+    workflow = state.get("workflow")
+    if isinstance(workflow, dict):
+        return workflow
+    return {
+        "requested_mode": "full",
+        "artifact_level": "full",
+        "promotion": {
+            "status": "not-applicable", "brief_digest": "", "answer_verbatim": "",
+            "accepted_brief": {}, "source": "", "offered_at": "", "decided_at": "",
+        },
+    }
+
+
+def brief_payload(state: dict[str, Any]) -> dict[str, Any]:
+    """The accepted brief content, excluding workflow bookkeeping and full-only fields."""
+    campaign = state.get("campaign") if isinstance(state.get("campaign"), dict) else {}
+    interview = state.get("interview") if isinstance(state.get("interview"), dict) else {}
+    return {
+        "campaign_id": state.get("campaign_id", ""),
+        "goal_verbatim": state.get("goal_verbatim", ""),
+        "profile": state.get("profile", ""),
+        "archetypes": state.get("archetypes", []),
+        "starting_point": campaign.get("starting_point", {"entry_mode": "new-project"}),
+        "sketch": state.get("sketch", {}),
+        "intent_dimensions": state.get("intent_dimensions", []),
+        "interview": {
+            "turns": interview.get("turns", []),
+            "stopping_reason": interview.get("stopping_reason", ""),
+            "stopping_note": interview.get("stopping_note", ""),
+        },
+        "assumptions": state.get("assumptions", []),
+        "contradictions": state.get("contradictions", []),
+        "blockers": state.get("blockers", []),
+    }
+
+
+def brief_digest(state: dict[str, Any]) -> str:
+    return sha256_json(brief_payload(state))
+
+
+def mark_content_changed(state: dict[str, Any]) -> None:
+    """Invalidate derived readiness after authored content changes."""
+    workflow = workflow_state(state)
+    if workflow.get("artifact_level") == "brief":
+        state["status"] = "brief-draft"
+        promotion = workflow.get("promotion")
+        if isinstance(promotion, dict) and workflow.get("requested_mode") == "auto" \
+                and promotion.get("status") in {"offered", "declined"} \
+                and promotion.get("brief_digest") != brief_digest(state):
+            promotion.update({
+                "status": "pending", "brief_digest": "", "answer_verbatim": "",
+                "source": "", "offered_at": "", "accepted_brief": {}, "decided_at": "",
+            })
+    else:
+        state["status"] = "full-draft"
 
 
 def rubric_payload(profile: str) -> dict[str, Any]:
@@ -388,9 +551,29 @@ def finding_digest(role: str, finding: dict[str, Any]) -> str:
     return sha256_json({"role": role, "finding": finding})
 
 
+_STATE_BASELINES: dict[Path, str] = {}
+
+
 def save_state(campaign_dir: Path, state: dict[str, Any]) -> None:
-    state["updated_at"] = now_iso()
-    write_json(campaign_dir / STATE_REL, state)
+    """Atomically save unless another process changed the state after this load."""
+    path = campaign_state_path(campaign_dir, require_exists=False)
+    lock_path = campaign_dir / "working/.state.lock"
+    if lock_path.parent.is_symlink():
+        raise SystemExit("Campaign working directory must not be a symlink")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        if fcntl is not None:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        current = sha256_bytes(path.read_bytes()) if path.exists() else None
+        expected = _STATE_BASELINES.get(path)
+        if expected is not None and current != expected:
+            raise SystemExit(
+                "Campaign state changed in another process; reload it and reapply this edit"
+            )
+        state["updated_at"] = now_iso()
+        encoded = (json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+        atomic_write(path, encoded.decode("utf-8"))
+        _STATE_BASELINES[path] = sha256_bytes(encoded)
 
 
 TITLE_LIMIT = 120
@@ -411,9 +594,59 @@ def _title_from_goal(goal: str) -> str:
     return cut.rstrip(" ,;:.") + "…"
 
 
+def question_limits(profile: str, artifact_level: str) -> tuple[int, int]:
+    if artifact_level == "brief":
+        return BRIEF_SOFT_LIMIT, BRIEF_HARD_LIMIT
+    return PROFILES[profile]["soft"], PROFILES[profile]["hard"]
+
+
+def campaign_template(entry_mode: str) -> dict[str, Any]:
+    return {
+        "starting_point": {
+            "entry_mode": entry_mode,
+            "status_as_of": "", "status_summary": "", "assessment_basis": [],
+            "accepted_completed_work": [], "work_in_progress": [],
+            "inherited_artifacts": [], "decisions_in_force": [],
+            "known_deviations": [], "requires_recheck": [], "next_decision": "",
+        },
+        "constitution": {"rules": [], "worker_inheritance": True},
+        "mission": {"decision_or_purpose": "", "scope": "", "non_goals": [], "intended_users": [], "completion_definition": ""},
+        "dossier": {"objects": [], "context": [], "source_hierarchy": [], "access_rights": [], "alternatives": []},
+        "inquiries": [],
+        "methods": [],
+        "tools": [],
+        "canaries": [],
+        "evaluation": {
+            "frozen_before_production_asserted": False,
+            "criteria": [], "comparators_or_adjudication": [],
+            "missing_evidence_policy": "", "exploration_confirmation_policy": "",
+            "stop_pivot_no_go_rules": [],
+        },
+        "stages": [],
+        "gates": [],
+        "resources_dispatch": {"budgets": [], "access_constraints": [], "concurrency": "", "dispatch_rules": [], "approvals": []},
+        "roles": [],
+        "runtime": {"enabled": False, "continuation_trigger": "", "state_store": "", "event_log": "", "checkpoint_policy": "", "liveness": "", "recovery": "", "idempotency": ""},
+        "work_units": [],
+        "ethics_rights_safety": {"constraints": [], "external_actions": [], "human_approval_points": []},
+        "reporting": {"claim_rules": [], "negative_result_policy": "", "deviation_policy": "", "least_favorable_interpretation": True},
+        "claims": [],
+        "deliverables": [],
+        "kickoff": {"command": "", "first_gate_id": "", "initial_backlog": []},
+    }
+
+
 def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: str,
-                  entry_mode: str = "new-project") -> dict[str, Any]:
-    limits = PROFILES[profile]
+                  entry_mode: str = "new-project", planning_mode: str = "full") -> dict[str, Any]:
+    if planning_mode not in PLANNING_MODES:
+        raise ValueError(f"Unknown planning mode: {planning_mode}")
+    artifact_level = "full" if planning_mode == "full" else "brief"
+    soft_limit, hard_limit = question_limits(profile, artifact_level)
+    promotion_status = (
+        "pending" if planning_mode == "auto"
+        else "not-offered" if planning_mode == "brief"
+        else "not-applicable"
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "rescamp_version": VERSION,
@@ -425,59 +658,44 @@ def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: s
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "content_version": 1,
-        "status": "interviewing",
+        "status": "full-draft" if artifact_level == "full" else "brief-draft",
+        "workflow": {
+            "requested_mode": planning_mode,
+            "artifact_level": artifact_level,
+            "promotion": {
+                "status": promotion_status,
+                "brief_digest": "",
+                "answer_verbatim": "",
+                "accepted_brief": {},
+                "source": "",
+                "offered_at": "",
+                "decided_at": "",
+            },
+        },
         "sketch": {
             "decision_or_purpose": "",
             "scope": "",
+            "non_goals": [],
             "core_inquiries": [],
             "likely_evidence": [],
             "rough_methods_stages": [],
             "success_or_adjudication": "",
             "assumptions_risks": [],
             "proposed_outputs": [],
+            "next_action": "",
         },
         "intent_dimensions": [],
         "interview": {
-            "soft_limit": limits["soft"],
-            "hard_limit": limits["hard"],
+            "soft_limit": soft_limit,
+            "hard_limit": hard_limit,
             "extension_authorized": False,
             "turns": [],
             "stopping_reason": "",
             "stopping_note": "",
         },
-        "campaign": {
-            "starting_point": {
-                "entry_mode": entry_mode,
-                "status_as_of": "", "status_summary": "", "assessment_basis": [],
-                "accepted_completed_work": [], "work_in_progress": [],
-                "inherited_artifacts": [], "decisions_in_force": [],
-                "known_deviations": [], "requires_recheck": [], "next_decision": "",
-            },
-            "constitution": {"rules": [], "worker_inheritance": True},
-            "mission": {"decision_or_purpose": "", "scope": "", "non_goals": [], "intended_users": [], "completion_definition": ""},
-            "dossier": {"objects": [], "context": [], "source_hierarchy": [], "access_rights": [], "alternatives": []},
-            "inquiries": [],
-            "methods": [],
-            "tools": [],
-            "canaries": [],
-            "evaluation": {
-                "frozen_before_production_asserted": False,
-                "criteria": [], "comparators_or_adjudication": [],
-                "missing_evidence_policy": "", "exploration_confirmation_policy": "",
-                "stop_pivot_no_go_rules": [],
-            },
-            "stages": [],
-            "gates": [],
-            "resources_dispatch": {"budgets": [], "access_constraints": [], "concurrency": "", "dispatch_rules": [], "approvals": []},
-            "roles": [],
-            "runtime": {"enabled": False, "continuation_trigger": "", "state_store": "", "event_log": "", "checkpoint_policy": "", "liveness": "", "recovery": "", "idempotency": ""},
-            "work_units": [],
-            "ethics_rights_safety": {"constraints": [], "external_actions": [], "human_approval_points": []},
-            "reporting": {"claim_rules": [], "negative_result_policy": "", "deviation_policy": "", "least_favorable_interpretation": True},
-            "claims": [],
-            "deliverables": [],
-            "kickoff": {"command": "", "first_gate_id": "", "initial_backlog": []},
-        },
+        "campaign": (campaign_template(entry_mode) if artifact_level == "full" else {
+            "starting_point": campaign_template(entry_mode)["starting_point"],
+        }),
         "assumptions": [],
         "contradictions": [],
         "blockers": [],
@@ -492,7 +710,13 @@ def get_by_path(data: Any, dotted: str) -> Any:
     current = data
     for part in dotted.split("."):
         if isinstance(current, list):
-            current = current[int(part)]
+            try:
+                position = int(part)
+            except ValueError as exc:
+                raise SystemExit(f"List path segment must be a non-negative integer: {part!r}") from exc
+            if position < 0 or position >= len(current):
+                raise SystemExit(f"List index out of range: {position}")
+            current = current[position]
         else:
             current = current[part]
     return current
@@ -501,7 +725,7 @@ def get_by_path(data: Any, dotted: str) -> Any:
 # Engine-owned state. Writing these directly would bypass the checks that make them mean
 # anything: `reviews` has ingest-review, `status` is derived from validation, `outputs` and
 # `last_validation` are rendered records.
-PROTECTED_PATHS = ("reviews", "status", "outputs", "last_validation")
+PROTECTED_PATHS = ("workflow", "reviews", "status", "outputs", "last_validation")
 
 
 def guard_protected_path(dotted: str) -> None:
@@ -520,8 +744,11 @@ def set_by_path(data: Any, dotted: str, value: Any, create_missing: bool = True)
     current = data
     for index, part in enumerate(parts[:-1]):
         if isinstance(current, list):
-            position = int(part)
-            if position >= len(current):
+            try:
+                position = int(part)
+            except ValueError as exc:
+                raise SystemExit(f"List path segment must be a non-negative integer: {part!r}") from exc
+            if position < 0 or position >= len(current):
                 raise SystemExit(f"Index out of range at '{'.'.join(parts[:index + 1])}': list has {len(current)} item(s)")
             current = current[position]
         else:
@@ -538,7 +765,13 @@ def set_by_path(data: Any, dotted: str, value: Any, create_missing: bool = True)
             current = current[part]
     last = parts[-1]
     if isinstance(current, list):
-        current[int(last)] = value
+        try:
+            position = int(last)
+        except ValueError as exc:
+            raise SystemExit(f"List path segment must be a non-negative integer: {last!r}") from exc
+        if position < 0 or position >= len(current):
+            raise SystemExit(f"Index out of range at '{dotted}': list has {len(current)} item(s)")
+        current[position] = value
     else:
         if not create_missing and last not in current:
             known = ", ".join(sorted(current))
@@ -582,12 +815,15 @@ def cmd_init(args: argparse.Namespace) -> None:
     if len(campaign_id) > 56 or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", campaign_id):
         raise SystemExit("--id must be at most 56 lowercase letters, digits, and hyphens")
     campaign_dir = base / campaign_id
-    if campaign_dir.exists() and any(campaign_dir.iterdir()) and not args.force:
+    if campaign_dir.exists() and any(campaign_dir.iterdir()):
         raise SystemExit(f"Campaign directory already exists: {campaign_dir}")
     for rel in ("state", "working", "working/review_packets", "outputs", "artifacts"):
         (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
-    state = default_state(args.goal, args.profile, archetypes, campaign_id,
-                          getattr(args, "entry_mode", "new-project"))
+    state = default_state(
+        args.goal, args.profile, archetypes, campaign_id,
+        getattr(args, "entry_mode", "new-project"),
+        getattr(args, "planning_mode", "full"),
+    )
     save_state(campaign_dir, state)
     print(campaign_dir)
 
@@ -622,9 +858,14 @@ def cmd_set(args: argparse.Namespace) -> None:
     # A legacy campaign may lack a section introduced by a later compatible release.
     # Let the exact, documented section path create that final key without opening the
     # broader typo-prone `--create-missing` escape hatch.
+    before = copy.deepcopy(state)
     set_by_path(state, args.path, value,
                 create_missing=args.create_missing or section is not None)
+    if state == before:
+        print(f"unchanged {args.path}")
+        return
     state["content_version"] += 1
+    mark_content_changed(state)
     # Records are not wiped here: staleness is computed from the section digests, so a
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
@@ -664,6 +905,7 @@ def cmd_add(args: argparse.Namespace) -> None:
             collection.append(value)
     added = [str(value.get("id", "added")) for value in values]
     state["content_version"] += 1
+    mark_content_changed(state)
     # Records are not wiped here: staleness is computed from the section digests, so a
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
@@ -724,6 +966,7 @@ def cmd_apply(args: argparse.Namespace) -> None:
                     create_missing=args.allow_unknown or path in SECTION_SPECS)
         written.append(path)
     state["content_version"] += 1
+    mark_content_changed(state)
     save_state(campaign_dir, state)
     print("\n".join(sorted(written)))
 
@@ -745,6 +988,7 @@ def cmd_dimension(args: argparse.Namespace) -> None:
     else:
         dims.append(payload)
     state["content_version"] += 1
+    mark_content_changed(state)
     # Records are not wiped here: staleness is computed from the section digests, so a
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
@@ -758,7 +1002,9 @@ def cmd_turn(args: argparse.Namespace) -> None:
     state = load_state(campaign_dir)
     turns = state["interview"]["turns"]
     number = len(turns) + 1
-    if number > state["interview"]["hard_limit"] and not state["interview"].get("extension_authorized"):
+    hard_limit = (BRIEF_HARD_LIMIT if workflow_state(state).get("artifact_level") == "brief"
+                  else state["interview"]["hard_limit"])
+    if number > hard_limit and state["interview"].get("extension_authorized") is not True:
         raise SystemExit("Hard question limit reached; record explicit extension authorization first")
     record = {
         "number": number, "branch": args.branch, "question": args.question,
@@ -769,6 +1015,7 @@ def cmd_turn(args: argparse.Namespace) -> None:
     }
     turns.append(record)
     state["content_version"] += 1
+    mark_content_changed(state)
     # Records are not wiped here: staleness is computed from the section digests, so a
     # record whose sections did not move stays valid, and one whose sections did move is
     # filtered out by record_is_current. Wiping would also destroy the findings text the
@@ -784,6 +1031,18 @@ def cmd_stop(args: argparse.Namespace) -> None:
     state = load_state(campaign_dir)
     state["interview"]["stopping_reason"] = args.reason
     state["interview"]["stopping_note"] = args.note
+    if workflow_state(state).get("artifact_level") == "brief":
+        state["content_version"] += 1
+        mark_content_changed(state)
+        save_state(campaign_dir, state)
+        print(json.dumps({
+            "stopping_reason": args.reason,
+            "completed_by_this_command": ["brief-stopping-reason-recorded"],
+            "not_run_by_this_command": ["full-campaign-quality-loop"],
+            "phase": "ready-for-brief-finalize",
+            "next_action": "Run brief-finalize; Camp-auto will then ask the promotion question",
+        }, indent=2))
+        return
     state["status"] = "candidate"
     state["content_version"] += 1
     # Records are not wiped here: staleness is computed from the section digests, so a
@@ -882,6 +1141,185 @@ def _is_iso_timestamp(value: Any) -> bool:
     except ValueError:
         return False
     return parsed.tzinfo is not None
+
+
+def validate_brief_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Validate the small, non-executable planning artifact."""
+    errors: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = []
+
+    def issue(level: str, code: str, message: str, path: str = "") -> None:
+        (errors if level == "error" else warnings).append(
+            {"code": code, "message": message, "path": path}
+        )
+
+    if not isinstance(state, dict):
+        issue("error", "structure.type", "Campaign state must be an object")
+        return {
+            "rescamp_version": VERSION, "checked_at": now_iso(),
+            "brief_digest": sha256_json(state), "valid": False, "brief_ready": False,
+            "execution_ready": False, "release_status": "brief-draft",
+            "errors": errors, "warnings": warnings, "counts": {},
+        }
+
+    digest = brief_digest(state)
+    if state.get("schema_version") != SCHEMA_VERSION:
+        issue(
+            "error", "schema.unsupported",
+            f"Campaign schema {state.get('schema_version')!r} is not current {SCHEMA_VERSION!r}; "
+            "migrate explicitly before release", "schema_version",
+        )
+    for key in ("campaign_id", "title", "goal_verbatim", "profile"):
+        if not isinstance(state.get(key), str) or not state.get(key, "").strip():
+            issue("error", "structure.type", f"{key} must be a non-empty string", key)
+    if not isinstance(state.get("profile"), str) or state.get("profile") not in PROFILES:
+        issue("error", "profile.invalid", f"Unknown profile {state.get('profile')!r}", "profile")
+
+    archetypes = state.get("archetypes")
+    if not isinstance(archetypes, list) or not archetypes or not all(isinstance(x, str) for x in archetypes):
+        issue("error", "structure.type", "archetypes must be a non-empty list of strings", "archetypes")
+    elif set(archetypes) - ARCHETYPES:
+        issue("error", "archetype.invalid", ", ".join(sorted(set(archetypes) - ARCHETYPES)), "archetypes")
+
+    workflow = state.get("workflow")
+    if not isinstance(workflow, dict):
+        issue("error", "structure.type", "workflow must be an object", "workflow")
+        workflow = {}
+    requested_mode = workflow.get("requested_mode")
+    artifact_level = workflow.get("artifact_level")
+    if not isinstance(requested_mode, str) or requested_mode not in PLANNING_MODES:
+        issue("error", "workflow.mode", f"Unknown planning mode {requested_mode!r}", "workflow.requested_mode")
+    if not isinstance(artifact_level, str) or artifact_level not in ARTIFACT_LEVELS:
+        issue("error", "workflow.level", f"Unknown artifact level {artifact_level!r}", "workflow.artifact_level")
+    elif artifact_level != "brief":
+        issue("error", "workflow.not_brief", "This state is already a full campaign", "workflow.artifact_level")
+    promotion = workflow.get("promotion")
+    if not isinstance(promotion, dict):
+        issue("error", "structure.type", "workflow.promotion must be an object", "workflow.promotion")
+        promotion = {}
+    promotion_status = promotion.get("status")
+    if not isinstance(promotion_status, str) or promotion_status not in PROMOTION_STATUSES:
+        issue("error", "promotion.status", f"Unknown promotion status {promotion_status!r}", "workflow.promotion.status")
+    if requested_mode == "auto" and promotion_status not in {"pending", "offered", "declined"}:
+        issue("error", "promotion.auto_state", "An auto brief must be pending, offered, or declined", "workflow.promotion.status")
+    if requested_mode == "brief" and promotion_status != "not-offered":
+        issue("error", "promotion.brief_state", "An explicit brief does not offer promotion automatically", "workflow.promotion.status")
+    if promotion_status in {"offered", "declined"}:
+        if promotion.get("brief_digest") != digest:
+            issue("error", "promotion.stale", "The promotion decision is bound to an older brief", "workflow.promotion.brief_digest")
+        if not _is_iso_timestamp(promotion.get("offered_at")):
+            issue("error", "promotion.offered_at", "Promotion offer needs a timezone-aware timestamp", "workflow.promotion.offered_at")
+    if promotion_status == "declined":
+        if not _required_text(promotion.get("answer_verbatim")):
+            issue("error", "promotion.answer", "A declined promotion needs the verbatim answer", "workflow.promotion.answer_verbatim")
+        if not _is_iso_timestamp(promotion.get("decided_at")):
+            issue("error", "promotion.decided_at", "A declined promotion needs a timezone-aware timestamp", "workflow.promotion.decided_at")
+
+    sketch = state.get("sketch")
+    if not isinstance(sketch, dict):
+        issue("error", "structure.type", "sketch must be an object", "sketch")
+        sketch = {}
+    sketch_checks = {
+        "decision_or_purpose": _required_text,
+        "scope": _required_text,
+        "non_goals": _required_list,
+        "core_inquiries": _required_list,
+        "likely_evidence": _required_list,
+        "rough_methods_stages": _required_list,
+        "success_or_adjudication": _required_text,
+        "assumptions_risks": _required_list,
+        "proposed_outputs": _required_list,
+        "next_action": _required_text,
+    }
+    missing = [key for key, check in sketch_checks.items() if not check(sketch.get(key))]
+    if missing:
+        issue("error", "brief.incomplete", "Research brief is missing: " + ", ".join(missing), "sketch")
+
+    campaign = state.get("campaign")
+    if not isinstance(campaign, dict):
+        issue("error", "structure.type", "campaign must be an object", "campaign")
+        campaign = {}
+    point = campaign.get("starting_point")
+    if not isinstance(point, dict):
+        issue("error", "structure.type", "campaign.starting_point must be an object", "campaign.starting_point")
+        point = {}
+    entry_mode = point.get("entry_mode")
+    if entry_mode not in ENTRY_MODES:
+        issue("error", "starting_point.mode", f"Unknown starting-point mode {entry_mode!r}", "campaign.starting_point.entry_mode")
+    elif entry_mode == "existing-project":
+        missing_point = [
+            field for field in ("status_as_of", "status_summary", "assessment_basis", "next_decision")
+            if not (_required_list(point.get(field)) if field == "assessment_basis" else _required_text(point.get(field)))
+        ]
+        if missing_point:
+            issue("error", "starting_point.incomplete",
+                  "Existing-project brief is missing: " + ", ".join(missing_point),
+                  "campaign.starting_point")
+
+    for key in ("intent_dimensions", "assumptions", "contradictions", "blockers"):
+        values = state.get(key)
+        if not isinstance(values, list):
+            issue("error", "structure.type", f"{key} must be a list", key)
+        elif key != "assumptions" and any(not isinstance(item, dict) for item in values):
+            issue("error", "structure.type", f"{key} must contain only objects", key)
+    interview = state.get("interview")
+    if not isinstance(interview, dict):
+        issue("error", "structure.type", "interview must be an object", "interview")
+        interview = {}
+    turns = interview.get("turns", [])
+    if not isinstance(turns, list) or not all(isinstance(item, dict) for item in turns):
+        issue("error", "structure.type", "interview.turns must be a list of objects", "interview.turns")
+        turns = []
+    extension_authorized = interview.get("extension_authorized", False)
+    if not isinstance(extension_authorized, bool):
+        issue("error", "interview.extension_type",
+              "interview.extension_authorized must be boolean", "interview.extension_authorized")
+    stopping_reason = interview.get("stopping_reason")
+    if not _required_text(stopping_reason):
+        issue("error", "interview.no_stop_reason",
+              "Brief interview stopping reason is missing", "interview.stopping_reason")
+    elif stopping_reason not in STOP_REASONS:
+        issue("error", "interview.bad_stop_reason",
+              "Brief interview stopping reason is invalid", "interview.stopping_reason")
+    elif stopping_reason == "user-requested-draft":
+        issue("error", "interview.draft_requested",
+              "A user-requested draft cannot be labeled brief-ready",
+              "interview.stopping_reason")
+    if len(turns) > BRIEF_SOFT_LIMIT:
+        issue("warning", "brief.question_soft_limit",
+              f"Brief used {len(turns)} questions; the normal ceiling is {BRIEF_SOFT_LIMIT}",
+              "interview.turns")
+    if len(turns) > BRIEF_HARD_LIMIT and extension_authorized is not True:
+        issue("error", "brief.question_hard_limit",
+              f"Brief exceeded {BRIEF_HARD_LIMIT} questions without explicit extension",
+              "interview.turns")
+
+    outputs = state.get("outputs")
+    if not isinstance(outputs, dict):
+        issue("error", "structure.type", "outputs must be an object", "outputs")
+        outputs = {}
+    rendered = outputs.get("last_rendered_digest")
+    if rendered and rendered != digest:
+        issue("error", "outputs.stale", "The rendered brief was produced from older content", "outputs.last_rendered_digest")
+
+    release_status = "brief-ready" if not errors else "brief-draft"
+    return {
+        "rescamp_version": VERSION, "checked_at": now_iso(), "brief_digest": digest,
+        "content_digest": content_digest(state), "valid": not errors,
+        "brief_ready": not errors, "execution_ready": False,
+        "release_status": release_status, "errors": errors, "warnings": warnings,
+        "counts": {"interview_turns": len(turns)},
+        "promotion": {
+            "status": promotion_status,
+        },
+    }
+
+
+def validate_brief_content(state: dict[str, Any]) -> dict[str, Any]:
+    """Validate authored brief content without treating old rendered output as content."""
+    candidate = copy.deepcopy(state)
+    candidate["outputs"] = {}
+    return validate_brief_state(candidate)
 
 
 def _graph_cycle(nodes: set[str], edges: list[tuple[str, str]]) -> list[str]:
@@ -998,12 +1436,15 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     interview = require_object(state, "interview", "interview")
     assurance = require_object(state, "assurance", "assurance")
     sketch = require_object(state, "sketch", "sketch")
+    workflow = require_object(state, "workflow", "workflow")
+    promotion = require_object(workflow, "promotion", "workflow.promotion")
     camp = require_object(state, "campaign", "campaign")
     reviews = require_object(state, "reviews", "reviews")
     require_object(state, "outputs", "outputs")
-    for key in ("title", "campaign_id", "profile"):
-        if key not in state or not isinstance(state.get(key), str):
-            issue("error", "structure.type", f"{key} must be a string", key)
+    for key in ("rescamp_version", "title", "campaign_id", "goal_verbatim", "profile"):
+        if (key not in state or not isinstance(state.get(key), str)
+                or not state.get(key, "").strip()):
+            issue("error", "structure.type", f"{key} must be a non-empty string", key)
             state[key] = ""
     if "content_version" not in state or isinstance(state.get("content_version"), bool) \
             or not isinstance(state.get("content_version"), int):
@@ -1031,15 +1472,33 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
             path = f"archetypes.{index}"
             issue("error", "structure.type", f"{path} must be a string", path)
     state["archetypes"] = valid_archetypes
+    if not valid_archetypes:
+        issue("error", "archetype.none", "At least one archetype is required", "archetypes")
 
     require_object_list(state, "intent_dimensions", "intent_dimensions")
     require_list(state, "assumptions", "assumptions")
     require_object_list(state, "contradictions", "contradictions")
     require_object_list(state, "blockers", "blockers")
-    require_object_list(interview, "turns", "interview.turns")
-    for key in ("decision_or_purpose", "scope", "success_or_adjudication"):
+    turns = require_object_list(interview, "turns", "interview.turns")
+    for index, turn in enumerate(turns):
+        path = f"interview.turns.{index}"
+        number = turn.get("number")
+        if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+            issue("error", "interview.turn_malformed", "Interview turn number must be positive", path)
+        for key in ("branch", "question", "answer_verbatim", "decision_impact",
+                    "answer_utility", "asked_at"):
+            if not isinstance(turn.get(key), str) or not turn.get(key, "").strip():
+                issue("error", "interview.turn_malformed",
+                      f"Interview turn requires non-empty {key}", f"{path}.{key}")
+        linked = turn.get("linked_dimensions")
+        if (not isinstance(linked, list)
+                or any(not isinstance(item, str) or not item for item in linked)):
+            issue("error", "interview.turn_malformed",
+                  "Interview linked_dimensions must be a list of strings",
+                  f"{path}.linked_dimensions")
+    for key in ("decision_or_purpose", "scope", "success_or_adjudication", "next_action"):
         require_string(sketch, key, f"sketch.{key}")
-    for key in ("core_inquiries", "likely_evidence", "rough_methods_stages",
+    for key in ("non_goals", "core_inquiries", "likely_evidence", "rough_methods_stages",
                 "assumptions_risks", "proposed_outputs"):
         require_string_list(sketch, key, f"sketch.{key}")
     configured_profile = state.get("profile")
@@ -1139,6 +1598,55 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
               f"Campaign schema {state.get('schema_version')!r} is not current {SCHEMA_VERSION!r}; "
               "migrate explicitly before release", "schema_version")
 
+    requested_mode = workflow.get("requested_mode")
+    artifact_level = workflow.get("artifact_level")
+    promotion_status = promotion.get("status")
+    if not isinstance(requested_mode, str) or requested_mode not in PLANNING_MODES:
+        issue("error", "workflow.mode", f"Unknown planning mode {requested_mode!r}",
+              "workflow.requested_mode")
+    if not isinstance(artifact_level, str) or artifact_level not in ARTIFACT_LEVELS:
+        issue("error", "workflow.level", f"Unknown artifact level {artifact_level!r}",
+              "workflow.artifact_level")
+    elif artifact_level != "full":
+        issue("error", "workflow.not_full",
+              "A research brief is non-executable; promote it before full campaign validation",
+              "workflow.artifact_level")
+    if not isinstance(promotion_status, str) or promotion_status not in PROMOTION_STATUSES:
+        issue("error", "promotion.status", f"Unknown promotion status {promotion_status!r}",
+              "workflow.promotion.status")
+    if requested_mode == "full" and promotion_status != "not-applicable":
+        issue("error", "promotion.full_state", "A direct full campaign has no promotion record",
+              "workflow.promotion.status")
+    if (isinstance(requested_mode, str) and requested_mode in {"auto", "brief"}
+            and artifact_level == "full"):
+        if promotion_status != "accepted":
+            issue("error", "promotion.not_accepted",
+                  "A brief-origin campaign requires an accepted promotion record",
+                  "workflow.promotion.status")
+        if not str(promotion.get("brief_digest", "")).startswith("sha256:"):
+            issue("error", "promotion.digest", "Promotion must preserve the accepted brief digest",
+                  "workflow.promotion.brief_digest")
+        accepted_brief = promotion.get("accepted_brief")
+        if not isinstance(accepted_brief, dict) or not accepted_brief:
+            issue("error", "promotion.brief_missing",
+                  "Promotion must preserve the accepted brief content",
+                  "workflow.promotion.accepted_brief")
+        elif sha256_json(accepted_brief) != promotion.get("brief_digest"):
+            issue("error", "promotion.brief_mismatch",
+                  "Accepted brief content does not match its recorded digest",
+                  "workflow.promotion.accepted_brief")
+        if (not isinstance(promotion.get("source"), str)
+                or promotion.get("source") not in PROMOTION_SOURCES):
+            issue("error", "promotion.source", "Promotion source is invalid",
+                  "workflow.promotion.source")
+        if not _required_text(promotion.get("answer_verbatim")):
+            issue("error", "promotion.answer", "Promotion must preserve the user's verbatim answer",
+                  "workflow.promotion.answer_verbatim")
+        if not _is_iso_timestamp(promotion.get("decided_at")):
+            issue("error", "promotion.timestamp",
+                  "Promotion requires a timezone-aware decision timestamp",
+                  "workflow.promotion.decided_at")
+
     profile = state.get("profile")
     if not isinstance(profile, str) or profile not in PROFILES:
         issue("error", "profile.invalid", f"Unknown profile {profile!r}", "profile")
@@ -1150,12 +1658,14 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     sketch_checks = {
         "decision_or_purpose": _required_text,
         "scope": _required_text,
+        "non_goals": _required_list,
         "core_inquiries": _required_list,
         "likely_evidence": _required_list,
         "rough_methods_stages": _required_list,
         "success_or_adjudication": _required_text,
         "assumptions_risks": _required_list,
         "proposed_outputs": _required_list,
+        "next_action": _required_text,
     }
     missing_sketch = [key for key, check in sketch_checks.items()
                       if not check(sketch.get(key))]
@@ -1164,6 +1674,9 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
               "Campaign sketch v0 is missing: " + ", ".join(missing_sketch),
               "sketch")
 
+    if not isinstance(assurance.get("pilot_required"), bool):
+        issue("error", "structure.type", "assurance.pilot_required must be boolean",
+              "assurance.pilot_required")
     pilot_required = profile == "high-assurance" or assurance.get("pilot_required") is True
     pilot = assurance.get("pilot", {})
     if pilot_required and not isinstance(pilot, dict):
@@ -1171,7 +1684,10 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     elif pilot_required and not pilot:
         issue("error", "pilot.missing", "This campaign requires a completed, digest-bound pilot", "assurance.pilot")
     elif pilot_required:
-        if not _nonempty(pilot.get("authorized_by")) or not _nonempty(pilot.get("authority")):
+        if (not isinstance(pilot.get("authorized_by"), str)
+                or not pilot.get("authorized_by", "").strip()
+                or not isinstance(pilot.get("authority"), str)
+                or not pilot.get("authority", "").strip()):
             issue("error", "pilot.authority",
                   "A required pilot needs the identity and authority that authorized execution",
                   "assurance.pilot")
@@ -1183,12 +1699,16 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                   "assurance.pilot.content_digest")
         missing_pilot_fields = [
             field for field in ("executor_id", "scope", "resource_cap")
-            if not _nonempty(pilot.get(field))
+            if not isinstance(pilot.get(field), str) or not pilot.get(field, "").strip()
         ]
         if not _is_iso_timestamp(pilot.get("executed_at")):
             missing_pilot_fields.append("executed_at")
         list_fields = ("evidence", "failures", "repairs")
-        missing_pilot_fields.extend(field for field in list_fields if not isinstance(pilot.get(field), list))
+        missing_pilot_fields.extend(
+            field for field in list_fields
+            if (not isinstance(pilot.get(field), list)
+                or any(not isinstance(item, str) for item in pilot.get(field, [])))
+        )
         if not _required_list(pilot.get("evidence")):
             if "evidence" not in missing_pilot_fields:
                 missing_pilot_fields.append("evidence")
@@ -1199,11 +1719,17 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
 
     interview = state.get("interview", {})
     turns = interview.get("turns", [])
-    if len(turns) > interview.get("hard_limit", PROFILES[profile]["hard"]) and not interview.get("extension_authorized"):
+    extension_authorized = interview.get("extension_authorized", False)
+    if not isinstance(extension_authorized, bool):
+        issue("error", "interview.extension_type",
+              "interview.extension_authorized must be boolean", "interview.extension_authorized")
+    if len(turns) > interview.get("hard_limit", PROFILES[profile]["hard"]) \
+            and extension_authorized is not True:
         issue("error", "interview.hard_limit", "Interview exceeded hard limit without explicit authorization", "interview.turns")
     if not interview.get("stopping_reason"):
         issue("error", "interview.no_stop_reason", "Interview stopping reason is missing", "interview.stopping_reason")
-    elif interview.get("stopping_reason") not in STOP_REASONS:
+    elif (not isinstance(interview.get("stopping_reason"), str)
+          or interview.get("stopping_reason") not in STOP_REASONS):
         issue("error", "interview.bad_stop_reason", "Interview stopping reason is invalid", "interview.stopping_reason")
     elif interview.get("stopping_reason") in NON_EXECUTABLE_STOP_REASONS:
         # The user asked for a draft, or the campaign is waiting on something outside it.
@@ -1221,10 +1747,12 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         issue("error", "dimension.duplicate", f"Duplicate intent dimensions: {', '.join(duplicates)}", "intent_dimensions")
     for index, dim in enumerate(state.get("intent_dimensions", [])):
         path = f"intent_dimensions.{index}"
-        if dim.get("status") not in DIMENSION_STATUSES:
+        if (not isinstance(dim.get("status"), str)
+                or dim.get("status") not in DIMENSION_STATUSES):
             issue("error", "dimension.status", f"Invalid status for {dim.get('id', index)}", path)
         importance = dim.get("importance", "material")
-        if importance in {"critical", "material"} and dim.get("status") not in COMPLETE_DIMENSION_STATUSES:
+        if (isinstance(importance, str) and importance in {"critical", "material"}
+                and dim.get("status") not in COMPLETE_DIMENSION_STATUSES):
             issue("error", "dimension.unresolved", f"Material dimension {dim.get('id', index)} is unresolved", path)
         if dim.get("status") in {"explicit-default", "deferred", "not-applicable", "blocked"} \
                 and not _required_text(dim.get("reason")):
@@ -1409,6 +1937,10 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                     issue("error", "work_unit.incomplete", f"Work unit {unit.get('id', index)} missing {field}", f"campaign.work_units.{index}")
     ethics = camp.get("ethics_rights_safety", {})
     external_actions = ethics.get("external_actions", [])
+    if not isinstance(external_actions, list):
+        issue("error", "external_action.malformed", "external_actions must be a list",
+              "campaign.ethics_rights_safety.external_actions")
+        external_actions = []
     approval_sources = (
         ("campaign.resources_dispatch.approvals", resources.get("approvals", [])),
         ("campaign.ethics_rights_safety.human_approval_points", ethics.get("human_approval_points", [])),
@@ -1468,7 +2000,7 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
 
     # 3. Rendered outputs must still match the state they were rendered from.
     rendered = state.get("outputs", {}).get("last_rendered_digest")
-    if rendered and rendered != input_digest:
+    if rendered and rendered != render_digest(state):
         issue("error", "outputs.stale",
               "The rendered bundle was produced from an older campaign version; re-render before "
               "relying on it or auditing it.", "outputs.last_rendered_digest")
@@ -1539,7 +2071,18 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
         current_rubric = rubric_digest(profile)
         records = state.get("reviews", {}).get("records", [])
         leaves = section_digests(state)
-        valid_records = [item for item in records if record_is_current(item, state, leaves)]
+        valid_records: list[dict[str, Any]] = []
+        for index, record in enumerate(records):
+            semantic_errors = review_record_errors(record)
+            if semantic_errors:
+                issue(
+                    "error", "review.record_invalid",
+                    f"Review record {index} is invalid: {'; '.join(semantic_errors)}",
+                    f"reviews.records.{index}",
+                )
+                continue
+            if record_is_current(record, state, leaves):
+                valid_records.append(record)
         role_map = {item.get("role"): item for item in valid_records if item.get("role")}
         required = PROFILES[profile]["review_roles"]
         missing = [role for role in required if role not in role_map]
@@ -1566,12 +2109,19 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                 digest = finding_digest(role, finding)
                 accepted = any(
                     item.get("finding_digest") == digest
-                    and _nonempty(item.get("accepted_by"))
+                    and isinstance(item.get("accepted_by"), str)
+                    and bool(item["accepted_by"].strip())
                     and item.get("accepted_by") != record.get("reviewer_id")
-                    and _nonempty(item.get("authority"))
+                    and isinstance(item.get("authority"), str)
+                    and bool(item["authority"].strip())
                     and _is_iso_timestamp(item.get("accepted_at"))
-                    and _nonempty(item.get("scope"))
-                    and _nonempty(item.get("evidence"))
+                    and isinstance(item.get("scope"), str)
+                    and bool(item["scope"].strip())
+                    and (
+                        (isinstance(item.get("evidence"), str)
+                         and bool(item["evidence"].strip()))
+                        or _required_list(item.get("evidence"))
+                    )
                     for item in current_acceptances
                 )
                 if accepted:
@@ -1711,10 +2261,22 @@ def cap_validation_for_stdout(result: dict[str, Any]) -> dict[str, Any]:
 def cmd_validate(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
-    result = validate_state(state, include_reviews=not args.no_reviews)
+    if workflow_state(state).get("artifact_level") == "brief":
+        result = validate_brief_state(state)
+    else:
+        result = validate_state(state, include_reviews=not args.no_reviews)
+        if args.no_reviews:
+            result["execution_ready"] = False
+            if result["valid"]:
+                result["release_status"] = "plan-ready-execution-blocked"
+            result.setdefault("warnings", []).append({
+                "code": "review.not_checked",
+                "message": "Review checks were excluded; this result cannot establish execution readiness",
+                "path": "reviews.records",
+            })
     state["last_validation"] = result
     write_json(campaign_dir / VALIDATION_REL, result)
-    write_json(campaign_dir / STATE_REL, state)
+    save_state(campaign_dir, state)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     if args.strict and not result["valid"]:
         raise SystemExit(2)
@@ -1722,13 +2284,13 @@ def cmd_validate(args: argparse.Namespace) -> None:
 
 # What each reviewer role actually has to read. Shipping the whole campaign to every
 # reviewer made a methods reviewer read the runtime config and the interview transcript,
-# and cost ~16k tokens per role per round. A record still binds to the digest of the full
-# frozen campaign, so scoping changes what is *shown*, never what is attested against.
+# and cost ~16k tokens per role per round. A record carries the packet's full-campaign
+# digest as provenance, while its exact section digests are the freshness boundary.
 ROLE_SCOPES: dict[str, dict[str, Any]] = {
     "methods-evidence": {
         "sections": ("starting_point", "mission", "dossier", "inquiries", "methods",
                      "evaluation", "claims"),
-        "top_level": ("goal_verbatim", "profile", "archetypes", "sketch", "assumptions",
+        "top_level": ("goal_verbatim", "profile", "archetypes", "workflow", "sketch", "assumptions",
                       "contradictions", "intent_dimensions"),
         "note": "Methods and evidence logic. Operations sections are omitted by design; do not infer they are absent.",
     },
@@ -1834,7 +2396,7 @@ def record_is_current(record: dict[str, Any], state: dict[str, Any], leaves: dic
     reviewed = record.get("reviewed_sections")
     if not isinstance(reviewed, dict):
         return record.get("content_digest") == content_digest(state)
-    if not str(record.get("content_digest", "")).startswith("sha256:"):
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", str(record.get("content_digest", ""))):
         return False
     current = leaves if leaves is not None else section_digests(state)
     campaign = substantive_state(state, deep=False).get("campaign", {})
@@ -1875,10 +2437,8 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
         if record_is_current(item, state, leaves)
     ]
     packet_dir = campaign_dir / REVIEW_DIR_REL
-    if packet_dir.exists():
-        shutil.rmtree(packet_dir)
-    packet_dir.mkdir(parents=True, exist_ok=True)
-    paths: list[Path] = []
+    staged = staged_directory(packet_dir)
+    names: list[str] = []
     frozen = substantive_state(state)
     campaign_sections = frozen.get("campaign", {})
     for role in PROFILES[state["profile"]]["review_roles"]:
@@ -1895,9 +2455,7 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
                 "read_only": True,
                 "evaluate_least_favorable_defensible_interpretation": True,
                 "do_not_edit_canonical_state": True,
-                # Absolute: a reviewer running as a separate process on any host must be
-                # able to resolve this without knowing the skill's install location.
-                "required_output_schema": str(SKILL_DIR / "assets/review.schema.json"),
+                "required_output_schema": read_json(SKILL_DIR / "assets/review.schema.json"),
                 "scope_note": ROLE_SCOPES.get(role, {}).get("note", "Full campaign."),
             },
             "scoped_sections": sorted(scoped.get("campaign", {})),
@@ -1909,16 +2467,20 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
                                   if name in leaves},
             "campaign": scoped,
         }
-        path = packet_dir / f"{role}.json"
+        name = f"{role}.json"
+        path = staged / name
         write_json(path, packet)
-        paths.append(path)
-    save_state(campaign_dir, state)
+        names.append(name)
+    commit_state_and_directory(campaign_dir, state, staged, packet_dir)
+    paths = [packet_dir / name for name in names]
     return digest, r_digest, paths
 
 
 def cmd_quality_loop(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
+    if workflow_state(state).get("artifact_level") == "brief":
+        raise SystemExit("A brief has no campaign review loop; use `brief-finalize` or promote it")
     pre = validate_plan_content(state, include_reviews=False)
     write_json(campaign_dir / VALIDATION_REL, pre)
     digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
@@ -1961,16 +2523,36 @@ def _review_next_action(needs_review: list[str]) -> str:
             + ", ".join(needs_review))
 
 
-def review_record_errors(record: dict[str, Any]) -> list[str]:
+def review_record_errors(record: Any) -> list[str]:
+    if not isinstance(record, dict):
+        return ["review record must be an object"]
     errors: list[str] = []
     for field in ("role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest", "summary"):
         if not _nonempty(record.get(field)):
             errors.append(f"missing {field}")
+    for field in ("content_digest", "rubric_digest"):
+        value = record.get(field)
+        if _nonempty(value) and (
+            not isinstance(value, str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", value)
+        ):
+            errors.append(f"invalid {field}")
+    reviewed = record.get("reviewed_sections")
+    if reviewed is not None:
+        if not isinstance(reviewed, dict) or not reviewed:
+            errors.append("reviewed_sections must be a non-empty object")
+        elif any(
+            not isinstance(name, str) or not name
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+            for name, digest in reviewed.items()
+        ):
+            errors.append("reviewed_sections contains an invalid section digest")
     # `findings` is required but may legitimately be empty: a reviewer that found
     # nothing must not be pushed into inventing a filler finding to pass.
     if "findings" not in record:
         errors.append("missing findings")
-    if record.get("mode") not in REVIEW_MODES:
+    if not isinstance(record.get("mode"), str) or record.get("mode") not in REVIEW_MODES:
         errors.append("invalid mode")
     elif record["mode"] in INDEPENDENCE_CLAIMING_MODES:
         evidence = record.get("execution_evidence")
@@ -1980,15 +2562,21 @@ def review_record_errors(record: dict[str, Any]) -> list[str]:
             for field in ("executor_id", "started_at", "completed_at"):
                 if not _nonempty(evidence.get(field)):
                     errors.append(f"execution_evidence missing {field}")
-    if record.get("verdict") not in REVIEW_VERDICTS:
+    if (not isinstance(record.get("verdict"), str)
+            or record.get("verdict") not in REVIEW_VERDICTS):
         errors.append("invalid verdict")
     if not isinstance(record.get("findings"), list):
         errors.append("findings must be a list")
     else:
         for index, finding in enumerate(record["findings"]):
-            if finding.get("severity") not in SEVERITIES:
+            if not isinstance(finding, dict):
+                errors.append(f"finding {index} must be an object")
+                continue
+            if (not isinstance(finding.get("severity"), str)
+                    or finding.get("severity") not in SEVERITIES):
                 errors.append(f"finding {index} invalid severity")
-            if finding.get("action") not in FINDING_ACTIONS:
+            if (not isinstance(finding.get("action"), str)
+                    or finding.get("action") not in FINDING_ACTIONS):
                 errors.append(f"finding {index} invalid action")
             if not _nonempty(finding.get("description")):
                 errors.append(f"finding {index} missing description")
@@ -2165,6 +2753,297 @@ def _starting_point_block(state: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _planning_origin_block(state: dict[str, Any]) -> str:
+    workflow = workflow_state(state)
+    promotion = workflow.get("promotion") if isinstance(workflow.get("promotion"), dict) else {}
+    if promotion.get("status") == "accepted":
+        return (
+            "**Planning origin:** Promoted from an accepted research brief "
+            f"`{promotion.get('brief_digest', '')}` via `{promotion.get('source', '')}`."
+        )
+    return "**Planning origin:** Camp-full selected directly."
+
+
+def render_research_brief(state: dict[str, Any]) -> str:
+    sketch = state.get("sketch", {})
+    dimensions = state.get("intent_dimensions", [])
+    unresolved = [
+        item for item in dimensions
+        if isinstance(item, dict) and item.get("status") not in COMPLETE_DIMENSION_STATUSES
+    ]
+    decisions = [
+        item for item in dimensions
+        if isinstance(item, dict) and item.get("status") in COMPLETE_DIMENSION_STATUSES
+    ]
+    blockers = [
+        item for item in state.get("blockers", [])
+        if isinstance(item, dict) and item.get("status", "open") == "open"
+    ]
+    lines = [
+        f"# Research brief — {state.get('title', '')}", "",
+        "**Status:** BRIEF-READY — NON-EXECUTABLE", "",
+        f"**Brief digest:** `{brief_digest(state)}`", "",
+        "## Goal", "", state.get("goal_verbatim", ""), "",
+        "## Starting point", "", _starting_point_block(state), "",
+        "## Decision or purpose", "", sketch.get("decision_or_purpose", ""), "",
+        "## Scope", "", sketch.get("scope", ""), "",
+        "## Non-goals", "", _md_list(sketch.get("non_goals")), "",
+        "## Core inquiries", "", _md_list(sketch.get("core_inquiries")), "",
+        "## Likely evidence", "", _md_list(sketch.get("likely_evidence")), "",
+        "## Rough method and stages", "", _md_list(sketch.get("rough_methods_stages")), "",
+        "## Success or adjudication", "", sketch.get("success_or_adjudication", ""), "",
+        "## Assumptions and risks", "",
+        _md_list(list(sketch.get("assumptions_risks", [])) + list(state.get("assumptions", []))), "",
+        "## Proposed outputs", "", _md_list(sketch.get("proposed_outputs")), "",
+        "## Decisions already made", "",
+    ]
+    if decisions:
+        lines.extend(
+            f"- **{item.get('label') or item.get('id')}:** {_fmt_value(item.get('value'))} "
+            f"({item.get('status')})"
+            for item in decisions
+        )
+    else:
+        lines.append("*None recorded.*")
+    interview = state.get("interview", {})
+    turns = interview.get("turns", []) if isinstance(interview, dict) else []
+    lines.extend(["", "## Interview record", ""])
+    if turns:
+        for item in turns:
+            lines.extend([
+                f"- **Q{item.get('number', '?')}:** {item.get('question', '')}",
+                f"  - **Answer:** {item.get('answer_verbatim', '')}",
+                f"  - **Recorded decision:** {_fmt_value(item.get('normalized_decision', ''))}",
+            ])
+    else:
+        lines.append("*No interview questions were needed.*")
+    lines.extend([
+        "", f"**Stopping reason:** {interview.get('stopping_reason', '')}",
+        f"**Stopping note:** {interview.get('stopping_note') or 'None recorded'}",
+    ])
+    lines.extend(["", "## Unknowns and blockers", ""])
+    for item in unresolved:
+        lines.append(
+            f"- **{item.get('label') or item.get('id')}:** {item.get('reason') or 'Unresolved'}"
+        )
+    for item in blockers:
+        lines.append(
+            f"- **{item.get('id', 'blocker')}:** {item.get('description', '')}"
+        )
+    if not unresolved and not blockers:
+        lines.append("*No material unknowns or blockers recorded.*")
+    lines.extend([
+        "", "## Next action", "", sketch.get("next_action", ""), "",
+        "Keep this as a planning brief, or promote it to Camp-full before delegating or executing work.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def render_brief_outputs(campaign_dir: Path, state: dict[str, Any],
+                         validation: dict[str, Any]) -> dict[str, Any]:
+    out_dir = campaign_dir / OUTPUT_DIR_REL
+    staged = staged_directory(out_dir)
+    try:
+        content = render_research_brief(state)
+        atomic_write(staged / "RESEARCH_BRIEF.md", content)
+        manifest = {"RESEARCH_BRIEF.md": sha256_bytes(content.encode("utf-8"))}
+        manifest_text = "\n".join(
+            f"{digest}  {name}" for name, digest in sorted(manifest.items())
+        ) + "\n"
+        atomic_write(staged / "MANIFEST.sha256", manifest_text)
+    except BaseException:
+        if staged.exists():
+            shutil.rmtree(staged)
+        raise
+    manifest["MANIFEST.sha256"] = sha256_bytes(manifest_text.encode("utf-8"))
+    state["status"] = validation["release_status"]
+    state["last_validation"] = validation
+    state["outputs"] = {
+        "last_rendered_digest": brief_digest(state),
+        "status": "BRIEF-READY — NON-EXECUTABLE",
+        "manifest": manifest,
+    }
+    try:
+        commit_state_and_directory(campaign_dir, state, staged, out_dir)
+    except BaseException:
+        if staged.exists():
+            shutil.rmtree(staged)
+        raise
+    return {
+        "rendered": True,
+        "status": "BRIEF-READY — NON-EXECUTABLE",
+        "output_dir": str(out_dir),
+        "manifest": manifest,
+        "validation": validation,
+    }
+
+
+def cmd_brief_finalize(args: argparse.Namespace) -> None:
+    campaign_dir = resolve_campaign(args.campaign)
+    state = load_state(campaign_dir)
+    workflow = workflow_state(state)
+    if workflow.get("artifact_level") != "brief":
+        raise SystemExit("This state is already Camp-full; use the full render/finalize path")
+
+    pre = validate_brief_content(state)
+    if not pre["valid"]:
+        out_dir = campaign_dir / OUTPUT_DIR_REL
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        state["outputs"] = {"last_rendered_digest": "", "manifest": {}}
+        state["last_validation"] = pre
+        write_json(campaign_dir / BRIEF_VALIDATION_REL, pre)
+        save_state(campaign_dir, state)
+        print(json.dumps({
+            "rendered": False, "status": "brief-draft", "validation": pre,
+            "next_action": "Resolve the brief findings, then rerun brief-finalize",
+        }, indent=2, ensure_ascii=False))
+        raise SystemExit(2)
+
+    promotion = workflow["promotion"]
+    if workflow.get("requested_mode") == "auto" and promotion.get("status") == "pending":
+        promotion.update({
+            "status": "offered",
+            "brief_digest": brief_digest(state),
+            "answer_verbatim": "",
+            "source": "auto-prompt",
+            "offered_at": now_iso(),
+            "decided_at": "",
+        })
+
+    validation = validate_brief_content(state)
+    write_json(campaign_dir / BRIEF_VALIDATION_REL, validation)
+    result = render_brief_outputs(campaign_dir, state, validation)
+    promotion = workflow_state(load_state(campaign_dir)).get("promotion", {})
+    result["promotion_prompt"] = (
+        {
+            "question": "The research brief is ready. Promote it to Camp-full?",
+            "choices": ["Promote to Camp-full", "Keep brief"],
+        }
+        if promotion.get("status") == "offered" else None
+    )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+def cmd_promotion(args: argparse.Namespace) -> None:
+    campaign_dir = resolve_campaign(args.campaign)
+    state = load_state(campaign_dir)
+    workflow = workflow_state(state)
+    promotion = workflow.get("promotion", {})
+
+    if workflow.get("artifact_level") == "full":
+        if promotion.get("status") == "accepted" and args.decision == "accept":
+            print(json.dumps({
+                "changed": False, "artifact_level": "full",
+                "promotion_status": "accepted", "brief_digest": promotion.get("brief_digest", ""),
+            }, indent=2))
+            return
+        raise SystemExit("This state is already Camp-full")
+
+    if args.source not in PROMOTION_SOURCES:
+        raise SystemExit("Invalid promotion source")
+    if not _required_text(args.answer):
+        raise SystemExit("Promotion decisions require the user's verbatim answer")
+
+    if args.decision == "decline":
+        if args.source != "auto-prompt" or workflow.get("requested_mode") != "auto":
+            raise SystemExit("Only the Camp-auto end prompt can record a decline")
+        if promotion.get("status") == "declined":
+            print(json.dumps({
+                "changed": False, "artifact_level": "brief", "promotion_status": "declined",
+                "brief_digest": promotion.get("brief_digest", ""),
+            }, indent=2))
+            return
+        if promotion.get("status") != "offered":
+            raise SystemExit("No current Camp-auto promotion offer is awaiting an answer")
+        if promotion.get("brief_digest") != brief_digest(state):
+            raise SystemExit("The promotion offer is bound to an older brief; finalize the current brief first")
+        promotion.update({
+            "status": "declined", "answer_verbatim": args.answer,
+            "source": "auto-prompt", "decided_at": now_iso(),
+        })
+        state["status"] = "brief-ready"
+        save_state(campaign_dir, state)
+        print(json.dumps({
+            "changed": True, "artifact_level": "brief", "promotion_status": "declined",
+            "brief_digest": promotion.get("brief_digest", ""),
+        }, indent=2))
+        return
+
+    if args.decision != "accept":
+        raise SystemExit("Invalid promotion decision")
+    if args.source == "auto-prompt" and promotion.get("status") != "offered":
+        raise SystemExit("No current Camp-auto promotion offer is awaiting acceptance")
+
+    validation = validate_brief_state(state)
+    if not validation["valid"]:
+        write_json(campaign_dir / BRIEF_VALIDATION_REL, validation)
+        raise SystemExit("The current brief is not ready; resolve brief validation before promotion")
+    accepted_digest = brief_digest(state)
+    accepted_brief = copy.deepcopy(brief_payload(state))
+    decided_at = now_iso()
+    promotion.update({
+        "status": "accepted", "brief_digest": accepted_digest,
+        "accepted_brief": accepted_brief,
+        "answer_verbatim": args.answer, "source": args.source,
+        "decided_at": decided_at,
+    })
+    workflow["artifact_level"] = "full"
+    point = state.get("campaign", {}).get("starting_point", {})
+    defaults = campaign_template(point.get("entry_mode", "new-project"))
+    campaign = state.setdefault("campaign", {})
+    for key, value in defaults.items():
+        campaign.setdefault(key, value)
+    sketch = state["sketch"]
+    mission = campaign["mission"]
+    if not _required_text(mission.get("decision_or_purpose")):
+        mission["decision_or_purpose"] = sketch["decision_or_purpose"]
+    if not _required_text(mission.get("scope")):
+        mission["scope"] = sketch["scope"]
+    if not _required_list(mission.get("non_goals")):
+        mission["non_goals"] = copy.deepcopy(sketch["non_goals"])
+    if not _required_text(mission.get("completion_definition")):
+        mission["completion_definition"] = sketch["success_or_adjudication"]
+    soft_limit, hard_limit = question_limits(state["profile"], "full")
+    state["interview"]["soft_limit"] = soft_limit
+    state["interview"]["hard_limit"] = hard_limit
+    state["reviews"] = {"frozen_content_digest": "", "rubric_digest": "", "records": []}
+    state["status"] = "full-draft"
+    state["content_version"] += 1
+    save_state(campaign_dir, state)
+    print(json.dumps({
+        "changed": True, "artifact_level": "full", "promotion_status": "accepted",
+        "brief_digest": accepted_digest,
+        "next_action": "Continue Camp-full from the preserved decisions; ask only missing full-campaign questions",
+    }, indent=2))
+
+
+def cmd_migrate(args: argparse.Namespace) -> None:
+    campaign_dir = resolve_campaign(args.campaign)
+    state = load_state(campaign_dir)
+    current = state.get("schema_version")
+    if current == SCHEMA_VERSION:
+        print(json.dumps({"changed": False, "schema_version": SCHEMA_VERSION}, indent=2))
+        return
+    if current != "3.1":
+        raise SystemExit(f"No migration path from schema {current!r} to {SCHEMA_VERSION}")
+    state["schema_version"] = SCHEMA_VERSION
+    state["rescamp_version"] = VERSION
+    state["workflow"] = workflow_state({})
+    campaign = state.get("campaign")
+    if not isinstance(campaign, dict):
+        raise SystemExit("Cannot migrate: campaign must be an object")
+    campaign.setdefault("starting_point", {"entry_mode": "new-project"})
+    state["status"] = "full-draft"
+    state["content_version"] = int(state.get("content_version", 0)) + 1
+    save_state(campaign_dir, state)
+    print(json.dumps({
+        "changed": True, "from_schema": current, "schema_version": SCHEMA_VERSION,
+        "planning_mode": "full", "next_action": "Revalidate and re-render stale outputs",
+    }, indent=2))
+
+
 def _coverage_note(state: dict[str, Any]) -> str:
     """Deterministic checks verify presence and cross-references, never substance.
     An execution-ready bundle must therefore disclose what it left empty rather than
@@ -2208,7 +3087,7 @@ def render_campaign_prompt(state: dict[str, Any], status: str) -> str:
     header = f"# Research Campaign Prompt: {state['title']}\n\n**Status:** {status}\n\n**Campaign ID:** `{state['campaign_id']}`\n\n**Content version:** {state['content_version']}\n\n**Content digest:** `{content_digest(state)}`\n\n**Profile:** {state['profile']}\n\n**Archetypes:** {', '.join(state['archetypes'])}\n"
     parts = [header, _section("0. Coverage and standing caveats", _coverage_note(state))]
     parts.append(_section("1. Campaign constitution", _md_list(camp["constitution"].get("rules")) + "\n\nEvery worker inherits these rules. Local briefs may narrow scope but may not weaken them."))
-    parts.append(_section("2. Starting point, mission, boundaries, and deliverables", f"{_starting_point_block(state)}\n\n**Decision or purpose:** {mission.get('decision_or_purpose','')}\n\n**Scope:** {mission.get('scope','')}\n\n**Non-goals**\n{_md_list(mission.get('non_goals'))}\n\n**Intended users**\n{_md_list(mission.get('intended_users'))}\n\n**Completion definition:** {mission.get('completion_definition','')}\n\n**Deliverables**\n\n{_render_objects(camp.get('deliverables'), 'campaign.deliverables')}"))
+    parts.append(_section("2. Starting point, mission, boundaries, and deliverables", f"{_starting_point_block(state)}\n\n{_planning_origin_block(state)}\n\n**Decision or purpose:** {mission.get('decision_or_purpose','')}\n\n**Scope:** {mission.get('scope','')}\n\n**Non-goals**\n{_md_list(mission.get('non_goals'))}\n\n**Intended users**\n{_md_list(mission.get('intended_users'))}\n\n**Completion definition:** {mission.get('completion_definition','')}\n\n**Deliverables**\n\n{_render_objects(camp.get('deliverables'), 'campaign.deliverables')}"))
     dossier = camp["dossier"]
     parts.append(_section("3. Object and evidence dossier", f"**Objects, cases, corpus, population, or system**\n\n{_render_objects(dossier.get('objects'), 'campaign.dossier.objects')}\n\n**Context**\n\n{_render_objects(dossier.get('context'), 'campaign.dossier.context')}\n\n**Source hierarchy**\n\n{_render_objects(dossier.get('source_hierarchy'), 'campaign.dossier.source_hierarchy')}\n\n**Access and rights**\n\n{_render_objects(dossier.get('access_rights'), 'campaign.dossier.access_rights')}\n\n**Known alternatives**\n\n{_render_objects(dossier.get('alternatives'), 'campaign.dossier.alternatives')}"))
     parts.append(_section("4. Inquiry and evidence logic", "Each inquiry must be evaluated against admissible support and explicit counterevidence, rival explanations/readings, counterexamples, or objections.\n\n" + _render_objects(camp.get("inquiries"), "campaign.inquiries")))
@@ -2317,7 +3196,7 @@ def render_review_report(state: dict[str, Any], validation: dict[str, Any]) -> s
         "", "## Reviewer records", "",
         "**Independence below is self-attested.** `mode` and `execution_evidence` are claims made",
         "by whoever produced each record. This engine checks that the values are legal and that",
-        "records are bound to the frozen content digest; distinct reviewer identities and distinct",
+        "records are bound to the exact frozen sections they inspected; distinct reviewer identities and distinct",
         "executors are enforced only at the high-assurance profile. It cannot observe another",
         "process and prove a separate reviewer ran. An agent reviewer checks internal coherence",
         "and is not external validation.",
@@ -2448,7 +3327,7 @@ def plan_continuity_protocol(state: dict[str, Any]) -> str:
     if not has_checkpoint_reviews:
         return contract + """
 
-If execution reveals a material plan change, pause affected future work and re-freeze the plan under a new digest before continuing — in ResCamp, the `revise` mode. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them."""
+If execution reveals a material plan change, pause affected future work, apply the explicit state edits, and run the targeted quality loop to freeze a new digest before continuing. Never rewrite a frozen plan in place: a pending brief carrying an older digest is stale, while completed artifacts remain bound to the version that produced them."""
 
     return contract + """ At every start or resume, load that contract, the latest checkpoint, open blockers, and the next bounded work unit; verify required inputs before acting.
 
@@ -2459,7 +3338,7 @@ For a broad campaign spanning multiple days or contexts, place one such review a
 Classify changes before continuing:
 
 - **Operational:** retry, reorder, or substitute an equivalent tool inside frozen limits. Record it in the checkpoint; the plan version stays current.
-- **Methodological:** change a method, intermediate criterion, sample, dependency, or stage design. Pause affected future work, re-freeze the plan under a new digest — in ResCamp, the `revise` mode — and rerun only affected reviews.
+- **Methodological:** change a method, intermediate criterion, sample, dependency, or stage design. Pause affected future work, apply the explicit state edits, freeze a new digest through `quality-loop`, and rerun only affected reviews.
 - **Constitutional:** change the mission, primary evaluation or estimand, ethics or authority boundary, resource ceiling, stop rule, or permitted claim. Stop, obtain the required user or institutional approval, version the plan, and re-review every affected section. If production outcomes motivated the change, keep prior results under their original version and label the affected inference exploratory.
 
 Never rewrite a frozen plan or completed record in place. A pending brief carrying an older digest is stale and must be regenerated; completed artifacts remain bound to the version that produced them."""
@@ -2502,9 +3381,6 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
         status = "NOT EXECUTION-READY — DESIGN BLOCKERS"
 
     out_dir = campaign_dir / OUTPUT_DIR_REL
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     # Set the derived status before snapshotting so outputs/campaign.json agrees
     # with canonical state. `status` is excluded from the content digest, so this
     # does not invalidate reviews bound to the frozen content.
@@ -2516,7 +3392,7 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
     # the new execution contract. The canonical state receives the full manifest
     # after all output bytes have been written.
     snapshot["outputs"] = {
-        "last_rendered_digest": content_digest(state),
+        "last_rendered_digest": render_digest(state),
         "status": status,
         "manifest_path": "MANIFEST.sha256",
     }
@@ -2540,14 +3416,25 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
         files["BLOCKERS.md"] = "\n".join(blocker_lines) + "\n"
 
     manifest: dict[str, str] = {}
-    for name, content in files.items():
-        atomic_write(out_dir / name, content)
-        manifest[name] = sha256_bytes(content.encode("utf-8"))
-    manifest_lines = [f"{digest}  {name}" for name, digest in sorted(manifest.items())]
-    atomic_write(out_dir / "MANIFEST.sha256", "\n".join(manifest_lines) + "\n")
+    staged = staged_directory(out_dir)
+    try:
+        for name, content in files.items():
+            atomic_write(staged / name, content)
+            manifest[name] = sha256_bytes(content.encode("utf-8"))
+        manifest_lines = [f"{digest}  {name}" for name, digest in sorted(manifest.items())]
+        atomic_write(staged / "MANIFEST.sha256", "\n".join(manifest_lines) + "\n")
+    except BaseException:
+        if staged.exists():
+            shutil.rmtree(staged)
+        raise
     manifest["MANIFEST.sha256"] = sha256_bytes(("\n".join(manifest_lines) + "\n").encode("utf-8"))
-    state["outputs"] = {"last_rendered_digest": content_digest(state), "status": status, "manifest": manifest}
-    save_state(campaign_dir, state)
+    state["outputs"] = {"last_rendered_digest": render_digest(state), "status": status, "manifest": manifest}
+    try:
+        commit_state_and_directory(campaign_dir, state, staged, out_dir)
+    except BaseException:
+        if staged.exists():
+            shutil.rmtree(staged)
+        raise
     return {"rendered": True, "status": status, "output_dir": str(out_dir),
             "manifest": manifest, "validation": validation}
 
@@ -2555,6 +3442,8 @@ def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool 
 def cmd_render(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
+    if workflow_state(state).get("artifact_level") == "brief":
+        raise SystemExit("A brief renders through `brief-finalize`, not the full campaign renderer")
     validation = validate_state(state, include_reviews=True)
     if render_blocking_errors(validation):
         result = render_refusal(validation)
@@ -2569,6 +3458,8 @@ def cmd_render(args: argparse.Namespace) -> None:
 def cmd_finalize(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
+    if workflow_state(state).get("artifact_level") == "brief":
+        raise SystemExit("A research brief is non-executable; accept promotion before finalizing Camp-full")
     pre = validate_plan_content(state, include_reviews=False)
     if render_blocking_errors(pre):
         write_json(campaign_dir / VALIDATION_REL, pre)
@@ -2606,9 +3497,24 @@ def cmd_finalize(args: argparse.Namespace) -> None:
 def cmd_status(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
     state = load_state(campaign_dir)
-    pre = validate_plan_content(state, include_reviews=False)
-    reviewed_plan = validate_plan_content(state, include_reviews=True)
-    full = validate_state(state, include_reviews=True)
+    workflow = workflow_state(state)
+    is_brief = workflow.get("artifact_level") == "brief"
+    if is_brief:
+        pre = validate_brief_content(state)
+        current = validate_brief_state(state)
+        reviewed_plan = pre
+        full = current
+        review = {"required": [], "current": [], "missing": [], "blocking": [],
+                  "independence_ok": True}
+    else:
+        pre = validate_plan_content(state, include_reviews=False)
+        reviewed_plan = validate_plan_content(state, include_reviews=True)
+        full = validate_state(state, include_reviews=True)
+        review = reviewed_plan.get(
+            "review",
+            {"required": [], "current": [], "missing": [], "blocking": [],
+             "independence_ok": False},
+        )
     dimensions = [item for item in state.get("intent_dimensions", [])
                   if isinstance(item, dict)] \
         if isinstance(state.get("intent_dimensions"), list) else []
@@ -2633,10 +3539,20 @@ def cmd_status(args: argparse.Namespace) -> None:
     interview = state.get("interview") if isinstance(state.get("interview"), dict) else {}
     outputs = state.get("outputs") if isinstance(state.get("outputs"), dict) else {}
     output_stale = any(item.get("code") == "outputs.stale" for item in full.get("errors", []))
+    derived_status = full.get("release_status", "brief-draft" if is_brief else "draft")
+    promotion = workflow.get("promotion") if isinstance(workflow.get("promotion"), dict) else {}
     payload = {
-        "campaign_id": state["campaign_id"], "title": state["title"],
-        "status": state["status"], "profile": state["profile"], "archetypes": state["archetypes"],
-        "content_version": state["content_version"], "content_digest": content_digest(state),
+        "campaign_id": state.get("campaign_id", ""), "title": state.get("title", ""),
+        "status": derived_status, "profile": state.get("profile", ""),
+        "archetypes": state.get("archetypes", []),
+        "requested_mode": workflow.get("requested_mode"),
+        "artifact_level": workflow.get("artifact_level"),
+        "promotion": {
+            "status": promotion.get("status"),
+            "brief_digest": promotion.get("brief_digest", ""),
+        },
+        "content_version": state.get("content_version"),
+        "content_digest": brief_digest(state) if is_brief else content_digest(state),
         "starting_point": {
             "entry_mode": (point.get("entry_mode") if "starting_point" in campaign
                            else "new-project"),
@@ -2664,10 +3580,13 @@ def cmd_status(args: argparse.Namespace) -> None:
             {key: item.get(key, "") for key in ("id", "severity", "description", "owner", "unblocks")}
             for item in open_blockers
         ],
-        "design_valid": pre["valid"], "execution_ready": full["execution_ready"],
-        "design_errors": len(pre["errors"]),
-        "review_errors": len(reviewed_plan["errors"]) - len(pre["errors"]),
-        "review": reviewed_plan["review"],
+        "design_valid": pre.get("valid", False),
+        "execution_ready": full.get("execution_ready", False),
+        "design_errors": len(pre.get("errors", [])),
+        "review_errors": (0 if is_brief else
+                          max(0, len(reviewed_plan.get("errors", []))
+                              - len(pre.get("errors", [])))),
+        "review": review,
         "output_status": outputs.get("status", "not rendered"),
         "output_stale": output_stale,
     }
@@ -2684,11 +3603,38 @@ def cmd_audit(args: argparse.Namespace) -> None:
     # Canonical hashes come from state, not from the manifest sitting in the directory
     # being audited. Trusting that file alone let anyone with sha256sum tamper an artifact
     # and rewrite its one manifest line; the state copy also covers MANIFEST.sha256 itself.
-    recorded = state.get("outputs", {}).get("manifest", {})
-    if manifest_path.exists():
+    outputs = state.get("outputs") if isinstance(state.get("outputs"), dict) else {}
+    recorded = outputs.get("manifest") if isinstance(outputs.get("manifest"), dict) else {}
+    out_dir_safe = True
+    if out_dir.is_symlink():
+        errors.append("outputs must be a real directory inside the campaign, not a symlink")
+        out_dir_safe = False
+    elif out_dir.exists() and not out_dir.is_dir():
+        errors.append("outputs must be a directory")
+        out_dir_safe = False
+    elif out_dir.exists():
+        try:
+            out_dir.resolve().relative_to(campaign_dir.resolve())
+        except (OSError, ValueError):
+            errors.append("outputs directory escapes the campaign")
+            out_dir_safe = False
+
+    if out_dir_safe and manifest_path.exists():
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            errors.append("MANIFEST.sha256 must be a regular file inside outputs")
+            manifest_text = ""
+            manifest_bytes = b""
+        else:
+            try:
+                manifest_bytes = manifest_path.read_bytes()
+                manifest_text = manifest_bytes.decode("utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                errors.append(f"could not read MANIFEST.sha256: {exc}")
+                manifest_text = ""
+                manifest_bytes = b""
         if not recorded:
             errors.append("outputs exist but state records no manifest; re-render before auditing")
-        for line in manifest_path.read_text(encoding="utf-8").splitlines():
+        for line in manifest_text.splitlines():
             if not line.strip():
                 continue
             if "  " not in line:
@@ -2696,12 +3642,26 @@ def cmd_audit(args: argparse.Namespace) -> None:
                 continue
             digest, name = line.split("  ", 1)
             relative = Path(name)
-            if relative.is_absolute() or ".." in relative.parts:
+            if (not name or name == "." or relative.is_absolute()
+                    or ".." in relative.parts):
                 errors.append(f"manifest artifact path escapes outputs: {name}")
                 verified[name] = False
                 continue
             path = out_dir / relative
-            actual = sha256_bytes(path.read_bytes()) if path.exists() else None
+            try:
+                path.resolve().relative_to(out_dir.resolve())
+                contained = True
+            except ValueError:
+                contained = False
+            if path.is_symlink() or not contained:
+                errors.append(f"manifest artifact must be a regular file inside outputs: {name}")
+                verified[name] = False
+                continue
+            try:
+                actual = sha256_bytes(path.read_bytes()) if path.is_file() else None
+            except OSError as exc:
+                errors.append(f"could not read output artifact {name}: {exc}")
+                actual = None
             ok = actual is not None and actual == digest
             if ok and recorded and name in recorded and recorded[name] != actual:
                 ok = False
@@ -2709,7 +3669,7 @@ def cmd_audit(args: argparse.Namespace) -> None:
             verified[name] = ok
             if not ok and f"artifact does not match the hash recorded in state: {name}" not in errors:
                 errors.append(f"artifact hash mismatch: {name}")
-        manifest_digest = sha256_bytes(manifest_path.read_bytes())
+        manifest_digest = sha256_bytes(manifest_bytes) if manifest_bytes else ""
         if recorded.get("MANIFEST.sha256") and recorded["MANIFEST.sha256"] != manifest_digest:
             errors.append("MANIFEST.sha256 has been modified since it was rendered")
         verified["MANIFEST.sha256"] = recorded.get("MANIFEST.sha256") == manifest_digest
@@ -2723,18 +3683,35 @@ def cmd_audit(args: argparse.Namespace) -> None:
         unexpected = sorted(actual_files - set(recorded))
         for name in unexpected:
             errors.append(f"unexpected output artifact not recorded in state: {name}")
+    elif not out_dir_safe:
+        pass
     elif recorded:
         errors.append("state records a rendered bundle but MANIFEST.sha256 is missing; "
                       "the outputs directory has been removed or emptied")
     elif out_dir.exists() and any(out_dir.iterdir()):
         errors.append("outputs exist without MANIFEST.sha256")
-    validation = validate_state(state, include_reviews=True)
+    else:
+        errors.append("no rendered output manifest exists; finalize the artifact before auditing")
+    is_brief = workflow_state(state).get("artifact_level") == "brief"
+    validation = (validate_brief_state(state) if is_brief
+                  else validate_state(state, include_reviews=True))
+    integrity_ok = not errors and validation.get("valid", False)
+    execution_ready = validation.get("execution_ready", False)
+    strict_ready = is_brief or (
+        execution_ready and outputs.get("status") == "EXECUTION-READY"
+    )
     result = {
-        "audited_at": now_iso(), "campaign_id": state["campaign_id"],
-        "content_digest": content_digest(state), "validation": validation,
+        "audited_at": now_iso(), "campaign_id": state.get("campaign_id", ""),
+        "content_digest": brief_digest(state) if is_brief else content_digest(state),
+        "artifact_level": "brief" if is_brief else "full", "validation": validation,
         "artifact_verification": verified, "errors": errors,
-        "ok": not errors and validation["valid"],
+        "integrity_ok": integrity_ok, "execution_ready": execution_ready,
+        "ok": integrity_ok and (strict_ready if args.strict else True),
     }
+    if args.strict and integrity_ok and not strict_ready:
+        result["errors"].append(
+            "strict audit requires an EXECUTION-READY full campaign bundle"
+        )
     write_json(campaign_dir / "working/audit.json", result)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     if not result["ok"]:
@@ -2799,9 +3776,12 @@ def cmd_profile(args: argparse.Namespace) -> None:
     if args.profile not in PROFILES:
         raise SystemExit("Invalid profile")
     state["profile"] = args.profile
-    state["interview"]["soft_limit"] = PROFILES[args.profile]["soft"]
-    state["interview"]["hard_limit"] = PROFILES[args.profile]["hard"]
+    level = workflow_state(state).get("artifact_level", "full")
+    soft_limit, hard_limit = question_limits(args.profile, level)
+    state["interview"]["soft_limit"] = soft_limit
+    state["interview"]["hard_limit"] = hard_limit
     state["content_version"] += 1
+    mark_content_changed(state)
     state["reviews"] = {"frozen_content_digest": "", "rubric_digest": "", "records": []}
     save_state(campaign_dir, state)
     print(args.profile)
@@ -2820,8 +3800,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--archetypes", default="evidence-synthesis")
     p.add_argument("--entry-mode", choices=sorted(ENTRY_MODES), default="new-project",
                    help="start from a new idea or adopt an existing project")
-    p.add_argument("--force", action="store_true")
+    p.add_argument("--planning-mode", choices=sorted(PLANNING_MODES), default="full",
+                   help="start Camp-auto/Camp-brief at brief level, or Camp-full directly")
     p.set_defaults(func=cmd_init)
+
+    p = sub.add_parser("migrate", help="migrate an older campaign state to the current schema")
+    p.add_argument("campaign")
+    p.set_defaults(func=cmd_migrate)
 
     p = sub.add_parser("set", help="set a dotted state path")
     p.add_argument("campaign")
@@ -2904,6 +3889,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("campaign")
     p.add_argument("--draft", action="store_true")
     p.set_defaults(func=cmd_render)
+
+    p = sub.add_parser("brief-finalize", help="validate and render a non-executable research brief")
+    p.add_argument("campaign")
+    p.set_defaults(func=cmd_brief_finalize)
+
+    p = sub.add_parser("promotion", help="record the user's brief-to-full decision")
+    p.add_argument("campaign")
+    p.add_argument("--decision", choices=sorted(PROMOTION_DECISIONS), required=True)
+    p.add_argument("--source", choices=sorted(PROMOTION_SOURCES), required=True)
+    p.add_argument("--answer", required=True)
+    p.set_defaults(func=cmd_promotion)
 
     p = sub.add_parser("finalize", help="run fail-closed automatic QA and render")
     p.add_argument("campaign")

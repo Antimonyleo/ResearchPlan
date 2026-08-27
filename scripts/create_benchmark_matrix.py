@@ -28,7 +28,7 @@ def main() -> int:
                         help="repeatable ID=TEAM_S_COMMAND; quote the whole value")
     parser.add_argument("--user-adapter", required=True)
     parser.add_argument("--evaluator-adapter", required=True)
-    parser.add_argument("--model-id", required=True, help="exact shared model ID or 'varies-record-per-run'")
+    parser.add_argument("--model-id", required=True, help="exact shared model ID")
     parser.add_argument("--host-version", required=True)
     parser.add_argument("--capabilities", default="elicitation,campaign-compilation")
     parser.add_argument("--output", required=True)

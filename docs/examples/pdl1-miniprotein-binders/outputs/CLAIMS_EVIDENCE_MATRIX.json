@@ -1,6 +1,6 @@
 {
   "campaign_id": "pdl1-miniprotein-binders",
-  "content_digest": "sha256:cec061c58fca6136d0d70765c7c307fa82692a7020455fdb2ce8691f7230bb2d",
+  "content_digest": "sha256:5027fd0be0557eb8d85df05f7cfaf0b401cb53b8d44e921242fd400e48948c39",
   "rows": [
     {
       "counterevidence_or_objections": [
@@ -10,43 +10,48 @@
       ],
       "id": "INQ-separation",
       "kind": "inquiry",
-      "reporting_rule": "Report group-level held-out results, pooled point estimates, intervals, and all-group versus post-cutoff-group disagreement. Failure of the post-cutoff-group lower bound, independent-group minimum, or hard-negative requirement is a revise or terminal no-go, never a calibration opportunity.",
-      "statement": "Under the frozen filter stack, do published PD-L1 binders separate from scrambled and unrelated-fold decoys well enough for the ranking to carry decision weight?",
+      "reporting_rule": "Apply the authoritative G2 outcome map. Invalid pre-adjudication non-runs may be corrected before G2 and supply no gate outcome. Report the census, eligibility, unique components, observed results, sensitivities, point estimate, and lower-limit classification. Every adjudicated nonaccepted G2 is terminal no-go for this campaign, with the control-failure record as complete evidence; it is never an in-campaign revise or rerun.",
+      "statement": "Under the frozen D-control-protocol, do epitope-valid published PD-L1 binders separate from uniquely assigned, assay-valid topology-matched NE1/NE2 negatives well enough for the ranking to carry decision weight?",
       "status": "open",
       "support": [
-        "Predeclared leave-one-scaffold-group-out predictions for positives and topology-matched hard-negative strata, with group provenance, all-group and post-cutoff-group AUROC, fixed-seed interval estimates, and per-filter diagnostics."
+        "Every branch: the immutable pre-score D-control-protocol, complete census and inclusion flow, eligibility records, unique assignments, and exact observed control-result digests. After accepted G2 only: D-thresholds, per-group and assay-format results, equal-group estimate, and calibrated confidence bound. After adjudicated nonaccepted G2: the bound terminal control-failure record and immutable G2 reconciliation as complete control evidence and no-go recommendation."
       ],
-      "verification": "Use only pooled held-out scaffold-group predictions. Freeze each group's earliest public date across every linked sequence, structure, design lineage, and parent scaffold; the group is cutoff-clean only if that date is later than every production model's training cutoff. The decision table consumes the one-sided 90 percent lower confidence bound for at least 5 cutoff-clean groups with defensible topology-matched hard negatives. All-group AUROC is descriptive only."
+      "verification": "Verify protocol timing and reproduce control analyses. If scientific candidate pass was reached, verify candidate thresholds and compatibility were frozen before the one adjudication as non-authoritative diagnostics with zero S3 authority. After accepted G2, verify compatibility passed and APR-G2 promoted their exact unchanged digests. After nonacceptance, verify diagnostics only when staged after candidate pass; for direct candidate-fail or adjudicated-invalid terminal no-go, verify both candidate artifact paths are absent and no placeholder diagnostics exist. In every nonaccepted branch verify the terminal failure record, zero-active G2 reconciliation, absent APR-G2/APR-G3, zero S3 authorization, no authoritative D-thresholds or D-designs, and prohibited go."
     },
     {
       "counterevidence_or_objections": [
-        "A passing set that is one design and its near-copies.",
-        "Cluster count, not raw pass count, is the decision-relevant quantity; a rival reading of a large pass count is that the pipeline converged on a single solution and the redundancy is an artefact of sampling."
+        "A completed passing set may be one design and its near-copies; cluster count, not raw pass count, is the decision-relevant quantity.",
+        "A large raw pass count can reflect redundant sampling rather than independent design yield and must collapse under the predeclared sequence and structural cuts.",
+        "An incomplete or expired S3 can overstate or understate yield because unfinished or unstarted batches are not exchangeable with completed batches. Retained partial scores or clusters are non-decision evidence and cannot answer the inquiry."
       ],
       "id": "INQ-yield",
       "kind": "inquiry",
-      "reporting_rule": "Report cluster count, cluster occupancy, and the raw count separately. Never report the raw count alone.",
-      "statement": "Does the design pipeline produce enough distinct designs clearing the frozen thresholds to make a synthesis order worth placing?",
+      "reporting_rule": "Ordinary branch only—after accepted G2, APR-G2, complete D-designs, and accepted G3—report cluster count, cluster occupancy, raw pass count, and sensitivity at every predeclared cut. After accepted G2 but terminal incomplete or expired S3, report 'INQ-yield not adjudicated; no-decision', retain and inventory every partial artifact solely as non-decision evidence, and claim no cluster-corrected yield conclusion. After adjudicated nonaccepted G2, report 'INQ-yield not evaluated; zero S3 authority' and do not require or infer design or ranked-table evidence.",
+      "statement": "Only after accepted G2, APR-G2, complete D-designs, and accepted G3, does the design pipeline produce enough distinct threshold-clearing designs to make synthesis worth considering; otherwise is yield explicitly not adjudicated or not evaluated under the applicable terminal branch?",
       "status": "open",
       "support": [
-        "Count of campaign designs clearing every frozen threshold, after clustering to remove near-duplicates, with the diversity of the passing set reported as structural and sequence distance."
+        "Ordinary yield conclusion only: compatibility pass, accepted G2, APR-G2 promotion of the exact unchanged threshold and compatibility digests, complete D-designs, accepted G3, and the count of all designs clearing every frozen threshold after predeclared clustering, with raw counts and sequence and structural diversity.",
+        "Accepted-G2 terminal incomplete/expired S3: terminal S3 event, allocation and completeness accounting, immutable G3 non-acceptance reconciliation, G3 explicitly not accepted, and every retained partial artifact labelled non-decision evidence. These support only 'inquiry not adjudicated' and no-decision; they are inadmissible for any cluster-corrected yield conclusion.",
+        "Adjudicated nonaccepted G2: the control-failure record and zero-active G2 reconciliation establish zero S3 authorization and 'yield not evaluated'; no design or yield evidence is admissible."
       ],
-      "verification": "Counted after single-linkage clustering at 60 percent global sequence identity and 2.0 Angstrom interface backbone RMSD, declared before generation, with the 50 and 70 percent alternatives reported alongside. Raw pass counts are recorded but are not the criterion."
+      "verification": "Ordinary branch: verify compatibility pass, accepted G2, APR-G2 promotion of exact unchanged digests, complete D-designs, accepted G3, and complete-set single-linkage clustering at 60 percent global sequence identity and 2.0 Angstrom interface backbone RMSD with 50 and 70 percent alternatives. Accepted-G2 terminal incomplete/expired S3: verify the terminal event, allocation and completeness accounting, immutable G3 non-acceptance reconciliation, G3 not accepted, every partial artifact labelled non-decision, inquiry not adjudicated, no table application, and no cluster-corrected yield conclusion. Adjudicated nonaccepted G2: verify the control-failure record, zero-active G2 reconciliation, and zero S3 authorization; record yield not evaluated."
     },
     {
       "counterevidence_or_objections": [
-        "The rival reading is that a marginal result should be resolved by more computation rather than by spending.",
-        "The decision table must therefore contain a revise cell with an explicit bounded scope, so 'run more designs' is a declared outcome rather than an improvised escape from a no-go."
+        "After accepted G2, the rival reading is that a marginal separation-by-yield result should be resolved by the ordinary table's bounded revise outcome rather than spending.",
+        "An adjudicated nonaccepted G2 cannot use revise inside this campaign; any retry is a new linked campaign with fresh authorization and no inherited dispatch authority."
       ],
       "id": "INQ-spend",
       "kind": "inquiry",
-      "reporting_rule": "State the cell reached and the values that placed it there in the first paragraph of the memo, before any discussion.",
-      "statement": "Given the observed separation and yield, is committing gene-synthesis and wet-lab budget the right decision?",
+      "reporting_rule": "After accepted G2, APR-G2, and accepted G3, state the ordinary cell and its two values first. After accepted G2 and APR-G2 but terminal incomplete or expired S3, state no-decision first, cite the terminal S3 and G3 non-acceptance evidence, report retained partial evidence only as non-decision evidence, and state explicitly that G3 was not accepted and no table cell or recommendation exists. After adjudicated nonaccepted G2, state terminal control-failure no-go first.",
+      "statement": "Does the eligible terminal branch support an ordinary synthesis-spend recommendation, require terminal control-failure no-go, or require no-decision because accepted-G2 production was incomplete or expired before G3 acceptance?",
       "status": "open",
       "support": [
-        "The frozen decision table mapping observed separation and cluster-corrected yield to go, revise, or no-go, applied once, with the memo stating which cell was reached."
+        "Ordinary branch: accepted G2, APR-G2 promoting unchanged threshold and compatibility digests, accepted G3, the frozen ordinary decision table, authoritative D-thresholds, and cluster-corrected yield from complete D-designs.",
+        "Accepted-G2 no-decision branch: APR-G2, terminal incomplete_or_expired S3 evidence, allocation and completeness accounting, immutable G3 non-acceptance reconciliation, G3 not accepted, and retained partial S3 artifacts labelled non-decision evidence; no ordinary table cell or recommendation is admissible.",
+        "Failed-G2 branch: immutable failure record and zero-active G2 reconciliation are common. Compatibility failure binds retained staged candidate threshold and compatibility paths/digests. Direct scientific failure or adjudicated-invalid G2 requires both candidate artifact paths explicitly absent and no placeholder diagnostics. Correctable invalid pre-adjudication non-runs supply no gate outcome and are not this terminal branch. No APR-G2, S3 authority, D-designs, G3, or ordinary table applies."
       ],
-      "verification": "Freeze the decision table in D-thresholds before campaign designs are generated. Apply it once using the one-sided 90 percent lower bound of post-cutoff out-of-fold AUROC and cluster-corrected yield. All-positive AUROC is descriptive only. The memo may add context but cannot move the mechanically reached cell."
+      "verification": "Ordinary branch: verify accepted G2, APR-G2, accepted G3, authoritative D-thresholds, complete D-designs, and the ordinary cell mechanically. Accepted-G2 no-decision branch: verify APR-G2, terminal incomplete_or_expired S3 evidence, immutable G3 non-acceptance reconciliation, G3 not accepted, retained partial evidence labelled non-decision, table not run, no cell, no recommendation, and matching no_decision_accepted G4 event. Failed-G2 branch: verify the control-failure record, zero-active G2 reconciliation, absent APR-G2 and S3 authority, and matching control_failure_no_go_accepted G4 event."
     },
     {
       "counterevidence_or_objections": [
@@ -55,13 +60,13 @@
       "id": "CLM-separation",
       "inquiry_id": "INQ-separation",
       "kind": "claim",
-      "reporting_rule": "Reported whether the margin is large, small, or absent. An absent margin is the campaign's terminal result.",
-      "statement": "The predeclared leave-one-scaffold-group-out control procedure separates published PD-L1 binders from topology-matched hard negatives by the held-out margin recorded in D-thresholds.",
+      "reporting_rule": "Report the enumerated control frame, inclusion denominator, label-validity and independence checks, effect distribution, and whether the lower limit is calibrated-confidence or descriptive. An invalid pre-adjudication non-run may be corrected before G2 and supplies no gate evidence. Under the authoritative G2 outcome map, every adjudicated nonaccepted G2 is terminal no-go for this campaign; it is not bounded revise, and any retry requires a new linked campaign with no inherited authorization.",
+      "statement": "Under the immutable D-control-protocol, the leave-one-scaffold-group-out procedure either supplies protocol-valid control evidence accepted at G2 and then recorded in D-thresholds, or supplies the observed failed-control evidence bound in the terminal control-failure record when G2 is adjudicated nonaccepted.",
       "status": "unevaluated",
       "support": [
-        "Held-out scaffold-group control predictions and separation estimates in D-thresholds, computed under predeclared groups and the same production implementation later frozen for campaign designs."
+        "The pre-score D-control-protocol and its detached digest plus the complete census and eligibility flow; after accepted G2, D-thresholds binding that digest with observed held-out predictions, group-balanced estimates, assay-format sensitivities, and lower-limit classification; after adjudicated nonaccepted G2, the immutable terminal control-failure record and G2 reconciliation binding the protocol and all observed control-result digests."
       ],
-      "verification": "Recompute pooled leave-one-scaffold-group-out AUROC and its fixed-seed confidence bound from D-thresholds; verify that no sequence/structure scaffold group crosses folds and never substitute in-sample or individual-positive resubstitution performance."
+      "verification": "Verify protocol timing, census, eligibility, unique components, and all observed result digests. If scientific candidate pass was reached, verify candidate thresholds and compatibility were frozen before adjudication as immutable non-authoritative diagnostics with zero S3 authority. After accepted G2, verify compatibility passed and APR-G2 promoted their exact unchanged digests. After nonacceptance, verify diagnostics only when staged after candidate pass; for direct candidate-fail or adjudicated-invalid terminal no-go, verify both candidate artifact paths are absent and no placeholder diagnostics exist. In every nonaccepted branch verify the terminal failure record, zero-active G2 reconciliation, absent APR-G2/APR-G3, zero S3 authorization, and no authoritative D-thresholds or D-designs."
     },
     {
       "counterevidence_or_objections": [
@@ -71,13 +76,15 @@
       "id": "CLM-recommendation",
       "inquiry_id": "INQ-spend",
       "kind": "claim",
-      "reporting_rule": "The memo states the cell first and any narrative second. A PI override is recorded as an override with its reason, never folded into the recommendation.",
-      "statement": "The recommendation delivered to the principal investigator is the cell reached on the frozen decision table, together with the evidence that placed it there.",
+      "reporting_rule": "After accepted G2, APR-G2, and accepted G3, state the ordinary decision-table cell and recommendation first. After accepted G2 and APR-G2 but terminal incomplete or expired S3, state no-decision first, bind the terminal S3 evidence and G3 non-acceptance reconciliation, retain partial evidence as non-decision evidence, and claim neither an ordinary cell nor a recommendation. After adjudicated nonaccepted G2, state terminal control-failure no-go first. A PI override is recorded with its reason and cannot convert no-decision or failed-G2 evidence into go authorization.",
+      "statement": "The outcome delivered to the principal investigator is exactly one branch: the ordinary frozen-table recommendation after accepted G2, APR-G2, and accepted G3; no-decision after accepted G2 and APR-G2 but terminal incomplete or expired S3 with G3 not accepted; or terminal no-go after adjudicated nonaccepted G2.",
       "status": "unevaluated",
       "support": [
-        "The frozen decision table in D-thresholds, the scaffold-group control calibration table, and the cluster-corrected yield from the ranked design table."
+        "Ordinary branch: accepted G2 and APR-G2 promoting the exact unchanged candidate threshold and compatibility digests, accepted G3, authoritative D-thresholds, complete D-designs, and cluster-corrected yield.",
+        "Accepted-G2 no-decision branch: APR-G2, immutable terminal incomplete_or_expired S3 event and G3 non-acceptance reconciliation, allocation and completeness accounting, and retained partial S3 evidence explicitly labelled non-decision evidence; G3 is not accepted and no ordinary table cell or recommendation exists.",
+        "Failed-G2 branch: immutable failure record and zero-active G2 reconciliation are common. Compatibility failure binds retained staged candidate threshold and compatibility paths/digests. Direct scientific failure or adjudicated-invalid G2 binds explicit absence of both candidate artifact paths and attests that no placeholder diagnostics exist. Correctable invalid pre-adjudication non-runs are not adjudicated outcomes and remain outside this terminal branch. APR-G2, S3 authority, D-designs, G3, and the ordinary table are absent."
       ],
-      "verification": "Derive the cell mechanically from the governing cutoff-clean leave-one-scaffold-group-out AUROC lower bound and cluster-corrected yield recorded in the frozen artifacts; verify each qualifying group's earliest linked public provenance date."
+      "verification": "Ordinary branch: verify accepted G2, APR-G2 promotion of unchanged candidate digests, accepted G3, D-thresholds, complete D-designs, and the mechanically derived cell. Accepted-G2 no-decision branch: verify APR-G2, terminal incomplete_or_expired S3 evidence, immutable G3 non-acceptance reconciliation, G3 not accepted, retained partial evidence labelled non-decision, table not run, no cell, no recommendation, and matching G4 no_decision_accepted event. Failed-G2 branch: verify the control-failure record, zero-active G2 reconciliation, absent APR-G2 and S3 authority, and matching G4 control_failure_no_go_accepted event."
     }
   ]
 }

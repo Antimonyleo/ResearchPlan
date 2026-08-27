@@ -50,6 +50,7 @@
       "expected_by_turn": 1,
       "forces_blocker": false,
       "id": "decision-thresholds",
+      "branch": "success-evaluation",
       "importance": "critical"
     },
     {
@@ -62,6 +63,7 @@
       "expected_by_turn": 2,
       "forces_blocker": false,
       "id": "theory-of-change",
+      "branch": "methods-comparison",
       "importance": "material"
     },
     {
@@ -74,6 +76,7 @@
       "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "design-variation",
+      "branch": "methods-comparison",
       "importance": "critical"
     },
     {
@@ -86,6 +89,7 @@
       "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "outcomes-harms",
+      "branch": "success-evaluation",
       "importance": "critical"
     },
     {
@@ -98,6 +102,7 @@
       "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "equity",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -110,6 +115,7 @@
       "expected_by_turn": 6,
       "forces_blocker": true,
       "id": "data-consent",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -122,6 +128,7 @@
       "expected_by_turn": 7,
       "forces_blocker": false,
       "id": "implementation",
+      "branch": "methods-comparison",
       "importance": "material"
     },
     {
@@ -134,6 +141,7 @@
       "expected_by_turn": 8,
       "forces_blocker": false,
       "id": "decision-integration",
+      "branch": "outputs-operations",
       "importance": "material"
     }
   ],

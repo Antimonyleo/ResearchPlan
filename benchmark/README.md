@@ -3,7 +3,7 @@
 The benchmark separates hidden-user Team U, tested-system Team S, and blinded-evaluator Team E.
 
 - `scenarios/public/`: 18 calibration/regression cases across 18 domains and 11 research archetypes.
-- `scenarios/templates/scenario.template.json`: start here when adding a case; `validate-scenarios` checks it against `../rescamp/assets/scenario.schema.json`.
+- `scenarios/templates/scenario.template.json`: start here when adding a case; `validate-scenarios` checks the required contract and semantic invariants. Release validation separately applies `../rescamp/assets/scenario.schema.json`.
 - `prompts/`: live Team U/S/E role contracts.
 - `../rescamp/assets/`: the universal rubric and archetype overlays used by the harness.
 - `conditions/`: deterministic fixtures; generate live or cross-version configs with
@@ -25,7 +25,7 @@ Generate a live matrix:
 
 ```bash
 python3 scripts/create_benchmark_matrix.py \
-  --condition 'rescamp-0.10=python3 my_team_s.py --skill /path/to/v0.10/rescamp' \
+  --condition 'rescamp-current=python3 my_team_s.py --skill /path/to/current/rescamp' \
   --condition 'rescamp-previous=python3 my_team_s.py --skill /path/to/previous/rescamp' \
   --condition 'neutral=python3 my_team_s.py --condition neutral' \
   --user-adapter 'python3 my_team_u.py' \

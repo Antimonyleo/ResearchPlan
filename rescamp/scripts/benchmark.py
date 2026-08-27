@@ -11,17 +11,20 @@ from __future__ import annotations
 import argparse
 import hashlib
 import concurrent.futures
+import importlib.util
 import json
 import math
 import os
 import random
 import re
 import secrets
+import signal
 import shlex
 import shutil
 import statistics
 import subprocess
 import tempfile
+import threading
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -270,7 +273,7 @@ def scenario_errors(data: Any) -> list[str]:
         if not isinstance(dim, dict):
             errors.append(f"dimension {index} must be an object")
             continue
-        for field in ("id", "importance", "expected_by_turn", "acceptable_resolution"):
+        for field in ("id", "branch", "importance", "expected_by_turn", "acceptable_resolution"):
             if field not in dim:
                 errors.append(f"dimension {index} missing {field}")
         ident = dim.get("id")
@@ -292,7 +295,7 @@ def scenario_errors(data: Any) -> list[str]:
             errors.append(f"dimension {ident} invalid acceptable_resolution")
         if "forces_blocker" in dim and not isinstance(dim["forces_blocker"], bool):
             errors.append(f"dimension {ident} invalid forces_blocker")
-        if "branch" in dim and (not isinstance(dim["branch"], str) or not dim["branch"].strip()):
+        if not isinstance(dim.get("branch"), str) or not dim.get("branch", "").strip():
             errors.append(f"dimension {ident} invalid branch")
 
     for field in ("forbidden_assumptions", "required_campaign_features", "critical_defects"):
@@ -365,14 +368,27 @@ def public_scenario(scenario: dict[str, Any]) -> dict[str, Any]:
 
 def call_adapter(command: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
     started = time.monotonic()
-    proc = subprocess.run(
-        shlex.split(command), input=canonical_json(payload) + "\n", text=True,
-        capture_output=True, timeout=timeout, check=False,
+    request = canonical_json(payload) + "\n"
+    proc = subprocess.Popen(
+        shlex.split(command), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, start_new_session=os.name == "posix",
     )
+    try:
+        stdout, stderr = proc.communicate(input=request, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        try:
+            if os.name == "posix":
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:
+                proc.kill()
+        except ProcessLookupError:
+            pass
+        stdout, stderr = proc.communicate()
+        raise RuntimeError(f"Adapter timed out after {timeout}s: {stderr[-2000:]}") from exc
     elapsed = time.monotonic() - started
     if proc.returncode != 0:
-        raise RuntimeError(f"Adapter failed ({proc.returncode}): {proc.stderr[-2000:]}")
-    output = proc.stdout.strip().splitlines()
+        raise RuntimeError(f"Adapter failed ({proc.returncode}): {stderr[-2000:]}")
+    output = stdout.strip().splitlines()
     if not output:
         raise RuntimeError("Adapter returned no JSON")
     try:
@@ -382,37 +398,19 @@ def call_adapter(command: str, payload: dict[str, Any], timeout: int) -> dict[st
     if not isinstance(result, dict):
         raise RuntimeError("Adapter result must be a JSON object")
     result.setdefault("adapter_elapsed_seconds", elapsed)
+    result["_rescamp_adapter_evidence"] = {
+        "request_sha256": sha256_json(payload), "stdout": stdout, "stderr": stderr,
+        "returncode": proc.returncode, "elapsed_seconds": elapsed,
+    }
     return result
 
 
 def branch_for_dimension(identifier: str, dimension: dict[str, Any] | None = None) -> str:
-    """Prefer an explicit `branch` on the dimension; fall back to keyword matching.
-
-    The fallback is a substring match with a `scope-object` default, so a dimension name
-    that contains no keyword silently routes to scope: `rival-readings` and `objections`
-    both land there, and one scope question can be credited with eliciting a
-    philosopher's objections. That swings turn-discounted recall on string luck rather
-    than interview quality, and it hits non-STEM scenarios hardest. Scenarios should
-    declare `branch` per dimension; the fallback exists for older files.
-    """
+    """Return the scenario-authored interview branch for a hidden dimension."""
     declared = (dimension or {}).get("branch")
     if isinstance(declared, str) and declared:
         return declared
-    value = identifier.lower()
-    rules = [
-        ("ethics-authority", ("approval", "authority", "consent", "privacy", "safety", "rights", "equity", "power", "community", "permit", "legal", "governance", "confidential")),
-        ("resources", ("budget", "time", "compute", "capabil", "maintenance", "lifecycle", "timeline", "environment")),
-        ("success-evaluation", ("success", "evaluation", "adjudication", "outcome", "criteria", "validation", "assay", "performance", "threshold")),
-        ("methods-comparison", ("method", "design", "comparator", "counterfactual", "confound", "detection", "interpret", "framework", "translation", "sampling", "synthesis", "robust")),
-        ("evidence-access", ("source", "data", "access", "corpus", "material", "language", "edition", "archive", "provenance")),
-        ("outputs-operations", ("output", "deliverable", "publication", "decision-integration", "practice-record", "report")),
-        ("scope-object", ("scope", "target", "period", "place", "population", "construct", "site", "object", "use-case", "question", "participant", "asset")),
-        ("decision-purpose", ("decision", "purpose", "stance", "audience", "contribution")),
-    ]
-    for branch, keywords in rules:
-        if any(keyword in value for keyword in keywords):
-            return branch
-    return "scope-object"
+    raise RuntimeError(f"material dimension {identifier!r} has no explicit branch")
 
 
 def branch_questions(profile: str, archetypes: list[str]) -> list[tuple[str, str]]:
@@ -455,7 +453,7 @@ def fixture_team_s(condition: str, visible_scenario: dict[str, Any], history: li
             "message": "Compiled a proportionate campaign with frozen evaluation, stages, gates, evidence traceability, and explicit blockers.",
             "declared_resolutions": [],
             "declared_features": ["mission-scope", "inquiry-evidence", "frozen-evaluation", "stages-gates", "claims-traceability", "rights-approvals"],
-            "declared_blockers": ["unresolved user authority"] if state.get("heard_blocker") else [],
+            "declared_blockers": [BLOCKER_PHRASE] if state.get("heard_blocker") else [],
             "readiness_claimed": False,
             "state": state,
         }
@@ -488,7 +486,7 @@ def fixture_team_s(condition: str, visible_scenario: dict[str, Any], history: li
             "action": "final", "message": "Completed an exhaustive specification.",
             "declared_resolutions": [],
             "declared_features": ["mission-scope", "inquiry-evidence", "frozen-evaluation", "stages-gates", "claims-traceability", "rights-approvals"],
-            "declared_blockers": ["unresolved user authority"] if state.get("heard_blocker") else [],
+            "declared_blockers": [BLOCKER_PHRASE] if state.get("heard_blocker") else [],
             "readiness_claimed": not bool(state.get("heard_blocker")), "state": state,
         }
     raise RuntimeError(f"Unknown fixture condition: {condition}")
@@ -546,8 +544,8 @@ def fixture_team_e(scenario: dict[str, Any], transcript: list[dict[str, Any]], f
     # Fixture Team E, not Team S, maps private answer annotations to scenario IDs.
     resolved = sorted(set(asked_turns) | (set(final.get("declared_resolutions", [])) & known_ids))
     features = set(final.get("declared_features", []))
-    required_count = len(scenario.get("required_campaign_features", []))
-    generic_feature_fraction = min(1.0, len(features) / max(1, min(required_count, 6)))
+    required_features = {item["id"] for item in scenario.get("required_campaign_features", [])}
+    generic_feature_fraction = len(features & required_features) / max(1, len(required_features))
     complete_fraction = len(set(resolved)) / max(1, len(scenario["material_dimensions"]))
     if condition not in FIXTURE_RATING_TABLE:
         raise SystemExit(
@@ -568,9 +566,13 @@ def fixture_team_e(scenario: dict[str, Any], transcript: list[dict[str, Any]], f
     critical_defects: list[dict[str, str]] = []
     forced_blockers = {item["id"] for item in scenario["material_dimensions"] if item.get("forces_blocker")}
     declared_blockers = final.get("declared_blockers", [])
+    blocker_preserved = (
+        isinstance(declared_blockers, list)
+        and BLOCKER_PHRASE in declared_blockers
+    )
     explicit_blockers = sorted(
         (set(declared_blockers) & known_ids)
-        | (privately_exposed_blockers if declared_blockers else set())
+        | (privately_exposed_blockers if blocker_preserved else set())
     )
     should_ready = not bool(forced_blockers)
     if bool(final.get("readiness_claimed")) and not should_ready:
@@ -622,7 +624,8 @@ def team_s_condition_view(condition: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in condition.items() if k in TEAM_S_VISIBLE_CONDITION_KEYS}
 
 
-def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int, output_dir: Path, timeout: int, max_turns: int) -> dict[str, Any]:
+def _run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
+             output_dir: Path, timeout: int, max_turns: int) -> dict[str, Any]:
     condition_id = condition["id"]
     if not isinstance(condition_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", condition_id):
         raise RuntimeError("condition id must contain lowercase letters, digits, dots, and hyphens")
@@ -638,8 +641,29 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
     system_state: dict[str, Any] = {}
     started = time.monotonic()
     final: dict[str, Any] | None = None
+    adapter_calls: list[dict[str, Any]] = []
+    usage_by_role: dict[str, dict[str, float | int]] = {
+        role: {"calls": 0, "tokens": 0.0, "cost_usd": 0.0}
+        for role in ("team_s", "team_u", "team_e")
+    }
 
-    for _ in range(max_turns + 1):
+    def invoke(role: str, command: str, payload: dict[str, Any]) -> dict[str, Any]:
+        response = call_adapter(command, payload, timeout)
+        evidence = response.pop("_rescamp_adapter_evidence")
+        evidence.update({"role": role, "sequence": len(adapter_calls) + 1})
+        adapter_calls.append(evidence)
+        usage_by_role[role]["calls"] += 1
+        usage = response.get("usage")
+        if isinstance(usage, dict):
+            for field in ("tokens", "cost_usd"):
+                value = usage.get(field)
+                if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                        and math.isfinite(float(value)) and value >= 0):
+                    usage_by_role[role][field] += float(value)
+        return response
+
+    question_turns = 0
+    while True:
         if condition.get("adapter") == "fixture":
             response = fixture_team_s(condition_id, public_scenario(scenario), public_transcript, system_state)
             system_state = response.get("state", system_state)
@@ -649,7 +673,7 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
                 "history": public_transcript, "condition": team_s_condition_view(condition),
                 "run_dir": str(run_dir),
             }
-            response = call_adapter(condition["command"], payload, timeout)
+            response = invoke("team_s", condition["command"], payload)
         action = response.get("action")
         evaluator_assistant_event = {
             "role": "assistant", "action": action, "message": response.get("message", ""),
@@ -667,14 +691,19 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
             break
         if action != "ask":
             raise RuntimeError(f"Team S returned invalid action {action!r}")
+        if question_turns >= max_turns:
+            raise RuntimeError(
+                f"Team S exceeded the {max_turns}-turn interview limit without finalizing"
+            )
+        question_turns += 1
         if condition.get("user_adapter"):
             user_payload = {
                 "protocol": "rescamp-team-u-v1", "hidden_scenario": scenario,
-                "assistant_question": evaluator_assistant_event, "history": evaluator_transcript,
+                "assistant_question": evaluator_assistant_event, "history": public_transcript,
             }
-            user_response = call_adapter(condition["user_adapter"], user_payload, timeout)
+            user_response = invoke("team_u", condition["user_adapter"], user_payload)
         else:
-            user_response = fixture_team_u(scenario, evaluator_assistant_event, evaluator_transcript)
+            user_response = fixture_team_u(scenario, evaluator_assistant_event, public_transcript)
         evaluator_transcript.append({
             "role": "user",
             "message": user_response.get("message", ""),
@@ -682,11 +711,6 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
             "blocker_ids": user_response.get("blocker_ids", []),
         })
         public_transcript.append({"role": "user", "message": user_response.get("message", "")})
-    if final is None:
-        final = {"action": "final", "message": "Turn limit reached", "declared_resolutions": [], "declared_features": [], "readiness_claimed": False}
-        evaluator_transcript.append({"role": "assistant", "action": "final", "message": "Turn limit reached", "dimension_ids": [], "question_count": 0})
-        public_transcript.append({"role": "assistant", "action": "final", "message": "Turn limit reached", "question_count": 0})
-
     blinded_label = secrets.token_hex(16)
     # Team E receives a random temporary path that is not nested under the
     # condition-bearing run directory. Verified copies are moved into retained
@@ -715,13 +739,17 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
                 "archetype_overlays": overlays,
                 "archetype_overlays_digest": sha256_json(overlays),
             }
-            evaluation = call_adapter(condition["evaluator_adapter"], evaluator_payload, timeout)
+            evaluation = invoke("team_e", condition["evaluator_adapter"], evaluator_payload)
         else:
             evaluation = fixture_team_e(scenario, evaluator_transcript, final, condition_id)
         verify_evaluator_artifacts(artifact_records)
-        persist_evaluator_artifacts(artifact_records, output_dir, blinded_label)
+        # Persist only after Team E exits. Keeping the copies inside the run makes a
+        # failed/retried sample cleanly removable as one unit.
+        persist_evaluator_artifacts(artifact_records, run_dir, blinded_label)
 
     elapsed = time.monotonic() - started
+    total_tokens = sum(float(item["tokens"]) for item in usage_by_role.values())
+    total_cost = sum(float(item["cost_usd"]) for item in usage_by_role.values())
     evidence_class = evidence_class_for(condition, evaluation)
     evaluation.update({
         "evidence_class": evidence_class, "evidence_note": EVIDENCE_NOTE[evidence_class],
@@ -733,8 +761,8 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
             "model_id": condition.get("model_id", "fixture"),
             "host_version": condition.get("host_version", "fixture"),
             "skill_commit": condition.get("skill_commit", "fixture"),
-            "tokens": final.get("usage", {}).get("tokens") if isinstance(final.get("usage"), dict) else None,
-            "cost_usd": final.get("usage", {}).get("cost_usd") if isinstance(final.get("usage"), dict) else None,
+            "tokens": total_tokens or None, "cost_usd": total_cost or None,
+            "usage_by_role": usage_by_role,
         },
     })
     score = score_evaluation(scenario, evaluation)
@@ -749,17 +777,38 @@ def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
     write_json(run_dir / "public_scenario.json", public_scenario(scenario))
     write_json(run_dir / "transcript.json", public_transcript)
     write_json(run_dir / "evaluator_transcript.json", evaluator_transcript)
+    write_json(run_dir / "adapter_calls.json", adapter_calls)
     write_json(run_dir / "evaluation.json", evaluation)
     write_json(run_dir / "score.json", score)
     manifest["files"] = {
-        name: {"bytes": (run_dir / name).stat().st_size, "sha256": sha256_file(run_dir / name)}
-        for name in (
-            "public_scenario.json", "transcript.json", "evaluator_transcript.json",
-            "evaluation.json", "score.json",
-        )
+        path.relative_to(run_dir).as_posix(): {
+            "bytes": path.stat().st_size, "sha256": sha256_file(path),
+        }
+        for path in sorted(run_dir.rglob("*"))
+        if path.is_file() and path.name != "manifest.json"
     }
     write_json(run_dir / "manifest.json", manifest)
     return score
+
+
+def run_one(scenario: dict[str, Any], condition: dict[str, Any], replicate: int,
+            output_dir: Path, timeout: int, max_turns: int) -> dict[str, Any]:
+    """Run one sample and remove an incomplete run directory after failure."""
+    try:
+        return _run_one(scenario, condition, replicate, output_dir, timeout, max_turns)
+    except BaseException:
+        scenario_id = scenario.get("id")
+        condition_id = condition.get("id")
+        if (isinstance(scenario_id, str)
+                and re.fullmatch(r"[a-z0-9][a-z0-9-]*", scenario_id)
+                and isinstance(condition_id, str)
+                and re.fullmatch(r"[a-z0-9][a-z0-9.-]*", condition_id)
+                and isinstance(replicate, int) and not isinstance(replicate, bool)
+                and replicate >= 1):
+            failed_dir = output_dir.resolve() / f"{scenario_id}--{condition_id}--r{replicate}"
+            if failed_dir.exists():
+                shutil.rmtree(failed_dir)
+        raise
 
 
 def evaluation_errors(scenario: dict[str, Any], evaluation: dict[str, Any]) -> list[str]:
@@ -983,11 +1032,12 @@ def bootstrap_mean_ci(values: list[float], seed: int = 0, iterations: int = 2000
                       suppress: bool = False) -> list[float | None]:
     """Percentile bootstrap of the mean, or the mean alone when an interval would mislead.
 
-    Two refusals, both deliberate. Below MIN_BOOTSTRAP_N the resample degenerates — at n=1
+    Refusals are deliberate. Below MIN_BOOTSTRAP_N the resample degenerates — at n=1
     it returns a zero-width "95% CI", at n=3 it returns [min, max] — so no interval is
-    reported. And when the underlying ratings are fixture constants rather than
+    reported. When the underlying ratings are fixture constants rather than
     measurements, the spread is scenario heterogeneity, not uncertainty about a quantity;
-    printing bounds there implies a measured effect that was never measured.
+    printing bounds there implies a measured effect that was never measured. The caller also
+    suppresses intervals for live runs whose matched-control provenance is unverified.
     """
     if not values:
         return [None, None, None]
@@ -1004,14 +1054,45 @@ def bootstrap_mean_ci(values: list[float], seed: int = 0, iterations: int = 2000
     return [round(statistics.fmean(values), 3), round(lo, 3), round(hi, 3)]
 
 
-def aggregate(scores: list[dict[str, Any]]) -> dict[str, Any]:
+def scenario_cluster_ci(items: list[dict[str, Any]], value_field: str, seed: int,
+                        suppress: bool = False) -> list[float | None]:
+    """Bootstrap scenario means so repeated runs are not treated as independent cases."""
+    grouped: dict[str, list[float]] = defaultdict(list)
+    for item in items:
+        grouped[str(item["scenario_id"])].append(float(item[value_field]))
+    scenario_means = [statistics.fmean(values) for values in grouped.values()]
+    return bootstrap_mean_ci(scenario_means, seed=seed, suppress=suppress)
+
+
+def aggregate(scores: list[dict[str, Any]],
+              attempts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     identities = [str(item.get("run_id", "")) for item in scores]
     duplicates = sorted({ident for ident in identities if ident and identities.count(ident) > 1})
     if duplicates:
         raise RuntimeError("duplicate run identity: " + ", ".join(duplicates))
+    sample_keys = [
+        (str(item.get("scenario_id", "")), str(item.get("condition", "")),
+         item.get("replicate"))
+        for item in scores
+    ]
+    duplicate_samples = sorted({key for key in sample_keys if sample_keys.count(key) > 1})
+    if duplicate_samples:
+        raise RuntimeError("duplicate scenario/condition/replicate sample: "
+                           + ", ".join(map(str, duplicate_samples)))
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in scores:
         grouped[item["condition"]].append(item)
+    if attempts is None:
+        attempts = [
+            {"scenario_id": item["scenario_id"], "condition": item["condition"],
+             "replicate": item["replicate"], "succeeded": True}
+            for item in scores
+        ]
+    attempted_by_condition: dict[str, set[tuple[str, int]]] = defaultdict(set)
+    for attempt in attempts:
+        attempted_by_condition[str(attempt["condition"])].add(
+            (str(attempt["scenario_id"]), int(attempt["replicate"]))
+        )
     classes = {str(item.get("evidence_class", UNSPECIFIED_EVIDENCE_CLASS)) for item in scores}
     overall_class = classes.pop() if len(classes) == 1 else ("mixed" if classes else UNSPECIFIED_EVIDENCE_CLASS)
     result: dict[str, Any] = {
@@ -1024,23 +1105,40 @@ def aggregate(scores: list[dict[str, Any]]) -> dict[str, Any]:
         "conditions": {},
         "pairwise_matched": {},
     }
-    for condition, items in sorted(grouped.items()):
+    for condition in sorted(set(grouped) | set(attempted_by_condition)):
+        items = grouped.get(condition, [])
         values = [float(item["score"]) for item in items]
         item_classes = sorted({str(item.get("evidence_class", UNSPECIFIED_EVIDENCE_CLASS)) for item in items})
+        verified_live = item_classes == [LIVE_EVIDENCE_CLASS]
         synthetic = SYNTHETIC_EVIDENCE_CLASS in item_classes
+        interval_suppression_reason = (
+            "fixture ratings are hardcoded constants, so the spread is scenario "
+            "heterogeneity and not uncertainty about a measured quantity"
+            if synthetic else
+            "confidence intervals require verified live-adapter evidence with matched controls"
+            if not verified_live and items else None
+        )
+        attempted_n = len(attempted_by_condition[condition])
         result["conditions"][condition] = {
             "n": len(values),
-            "score_mean_ci95": bootstrap_mean_ci(values, seed=stable_seed(condition), suppress=synthetic),
-            "interval_suppressed_because": ("fixture ratings are hardcoded constants, so the spread is scenario "
-                                            "heterogeneity and not uncertainty about a measured quantity")
-                                           if synthetic else None,
+            "attempted_n": attempted_n,
+            "failure_rate": round((attempted_n - len(values)) / attempted_n, 4)
+                            if attempted_n else None,
+            "scenario_n": len({item["scenario_id"] for item in items}),
+            "score_mean_ci95": scenario_cluster_ci(
+                items, "score", seed=stable_seed(condition), suppress=not verified_live
+            ),
+            "interval_suppressed_because": interval_suppression_reason,
             "evidence_class": item_classes[0] if len(item_classes) == 1 else "mixed",
-            "median": round(statistics.median(values), 3),
-            "critical_defect_rate": round(sum(item["metrics"]["critical_defect_count"] > 0 for item in items) / len(items), 4),
-            "mean_interview_turns": round(statistics.fmean(item["metrics"]["interview_turns"] for item in items), 3),
-            "mean_burden_score": round(statistics.fmean(item["metrics"]["interaction_burden_score"] for item in items), 3),
+            "median": round(statistics.median(values), 3) if values else None,
+            "critical_defect_rate": (round(sum(item["metrics"]["critical_defect_count"] > 0 for item in items) / len(items), 4)
+                                     if items else None),
+            "mean_interview_turns": (round(statistics.fmean(item["metrics"]["interview_turns"] for item in items), 3)
+                                     if items else None),
+            "mean_burden_score": (round(statistics.fmean(item["metrics"]["interaction_burden_score"] for item in items), 3)
+                                  if items else None),
         }
-    conditions = sorted(grouped)
+    conditions = sorted(set(grouped) | set(attempted_by_condition))
     by_key: dict[str, dict[tuple[str, int], dict[str, Any]]] = {}
     for condition in conditions:
         by_key[condition] = {(item["scenario_id"], item["replicate"]): item for item in grouped[condition]}
@@ -1048,17 +1146,37 @@ def aggregate(scores: list[dict[str, Any]]) -> dict[str, Any]:
         for right in conditions[i + 1:]:
             keys = sorted(set(by_key[left]) & set(by_key[right]))
             diffs = [by_key[left][key]["score"] - by_key[right][key]["score"] for key in keys]
-            pair_synthetic = any(
-                str(by_key[side][key].get("evidence_class", "")) == SYNTHETIC_EVIDENCE_CLASS
-                for side in (left, right) for key in keys
+            expected_left = attempted_by_condition[left]
+            expected_right = attempted_by_condition[right]
+            complete = (
+                expected_left == expected_right
+                and set(by_key[left]) == expected_left
+                and set(by_key[right]) == expected_right
             )
+            pair_evidence_classes = {
+                str(by_key[side][key].get("evidence_class", UNSPECIFIED_EVIDENCE_CLASS))
+                for side in (left, right) for key in keys
+            }
+            pair_verified_live = pair_evidence_classes == {LIVE_EVIDENCE_CLASS}
+            pair_suppressed_because = None
+            if not complete:
+                pair_suppressed_because = "one or both conditions failed or lack the same matched samples"
+            elif not pair_verified_live:
+                pair_suppressed_because = "confidence intervals require verified live-adapter evidence with matched controls"
             result["pairwise_matched"][f"{left} minus {right}"] = {
                 "n": len(diffs),
-                # Failure-induced selection: a condition that errors on hard scenarios has
-                # those scenarios dropped from its own comparison. Say so with the number.
-                "matched_on_mutual_success": True,
-                "difference_mean_ci95": bootstrap_mean_ci(diffs, seed=stable_seed(left + right),
-                                                          suppress=pair_synthetic),
+                "complete_matched_matrix": complete,
+                "difference_mean_ci95": (
+                    bootstrap_mean_ci(
+                        [statistics.fmean(
+                            by_key[left][key]["score"] - by_key[right][key]["score"]
+                            for key in keys if key[0] == scenario_id
+                        ) for scenario_id in sorted({key[0] for key in keys})],
+                        seed=stable_seed(left + right), suppress=not pair_verified_live,
+                    )
+                    if complete else [None, None, None]
+                ),
+                "suppressed_because": pair_suppressed_because,
             }
     return result
 
@@ -1100,6 +1218,55 @@ def cmd_validate_scenarios(args: argparse.Namespace) -> None:
     print(json.dumps({"valid": True, "count": len(scenarios), "domains": domains, "archetypes": archetypes}, indent=2))
 
 
+def cmd_profile_modes(args: argparse.Namespace) -> None:
+    """Measure deterministic state and validation weight; make no model-quality claim."""
+    engine_path = SKILL_DIR / "scripts/rescamp.py"
+    spec = importlib.util.spec_from_file_location("rescamp_mode_profile_engine", engine_path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Could not load engine: {engine_path}")
+    engine = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(engine)
+    profiles: dict[str, dict[str, Any]] = {}
+    for mode in ("auto", "brief", "full"):
+        state = engine.default_state(
+            "Profile planning-mode overhead", "standard", ["evidence-synthesis"],
+            f"profile-{mode}", planning_mode=mode,
+        )
+        started = time.perf_counter()
+        for _ in range(args.iterations):
+            if mode == "full":
+                engine.validate_state(state, include_reviews=False)
+            else:
+                engine.validate_brief_state(state)
+        elapsed = time.perf_counter() - started
+        profiles[mode] = {
+            "initial_state_bytes": len(canonical_json(state).encode("utf-8")),
+            "campaign_section_count": len(state["campaign"]),
+            "mean_validation_ms": round(elapsed * 1000 / args.iterations, 4),
+            "initial_artifact_level": state["workflow"]["artifact_level"],
+        }
+    brief_bytes = profiles["brief"]["initial_state_bytes"]
+    full_bytes = profiles["full"]["initial_state_bytes"]
+    skill_text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    result = {
+        "benchmark_version": VERSION,
+        "evidence_class": "deterministic-engine-profile",
+        "quality_claim_allowed": False,
+        "iterations": args.iterations,
+        "shared_skill_instruction": {
+            "bytes": len(skill_text.encode("utf-8")),
+            "words": len(skill_text.split()),
+        },
+        "modes": profiles,
+        "brief_state_fraction_of_full": round(brief_bytes / full_bytes, 4),
+        "note": (
+            "Measures serialized initial state and local validator cost only. It does not "
+            "measure model quality, host context accounting, or user burden."
+        ),
+    }
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
 def load_config(path: Path) -> dict[str, Any]:
     config = read_json(path)
     if not isinstance(config, dict):
@@ -1131,6 +1298,10 @@ def load_config(path: Path) -> dict[str, Any]:
         for field in ("model_id", "host_version", "skill_commit"):
             if field in item and (not isinstance(item[field], str) or not item[field].strip()):
                 raise SystemExit(f"Condition {item['id']} {field} must be a nonempty string")
+        if item.get("model_id") == "varies-record-per-run":
+            raise SystemExit(
+                f"Condition {item['id']} model_id must be the exact model identifier"
+            )
     control_fields = (
         "same_model", "same_tools_permissions_corpus", "same_context_time_token_retry_budget",
         "fresh_sessions", "blinded_evaluation",
@@ -1172,9 +1343,24 @@ def cmd_run(args: argparse.Namespace) -> None:
     scores: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
     jobs = [(scenario, condition, replicate) for scenario in scenarios for condition in config["conditions"] for replicate in range(1, args.replicates + 1)]
+    secrets.SystemRandom().shuffle(jobs)
+    attempts = [
+        {"scenario_id": scenario["id"], "condition": condition["id"],
+         "replicate": replicate, "attempted": False, "succeeded": False}
+        for scenario, condition, replicate in jobs
+    ]
+    attempt_by_key = {
+        (item["scenario_id"], item["condition"], item["replicate"]): item
+        for item in attempts
+    }
+
+    attempt_lock = threading.Lock()
 
     def execute(job: tuple[dict[str, Any], dict[str, Any], int]) -> tuple[dict[str, Any] | None, dict[str, str] | None]:
         scenario, condition, replicate = job
+        key = (scenario["id"], condition["id"], replicate)
+        with attempt_lock:
+            attempt_by_key[key]["attempted"] = True
         try:
             return run_one(scenario, condition, replicate, output_dir, args.timeout, args.max_turns), None
         except Exception as exc:
@@ -1185,33 +1371,64 @@ def cmd_run(args: argparse.Namespace) -> None:
         for score, failure in outcomes:
             if score is not None:
                 scores.append(score)
+                attempt_by_key[(score["scenario_id"], score["condition"], score["replicate"])]["succeeded"] = True
             if failure is not None:
                 failures.append(failure)
                 if args.fail_fast:
-                    raise RuntimeError(failure["error"])
+                    break
     else:
-        # `pool.map` submits every job eagerly and exiting the `with` block waits for all
-        # of them, so --fail-fast used to pay for the whole matrix before surfacing the
-        # error. Cancel the queued futures explicitly instead.
+        # Keep only one worker-window submitted so fail-fast can cancel unstarted jobs,
+        # then drain every future that was already running.
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs)
         try:
-            futures = [pool.submit(execute, job) for job in jobs]
-            for future in concurrent.futures.as_completed(futures):
-                score, failure = future.result()
-                if score is not None:
-                    scores.append(score)
-                if failure is not None:
-                    failures.append(failure)
-                    if args.fail_fast:
-                        for pending in futures:
-                            pending.cancel()
-                        raise RuntimeError(failure["error"])
+            job_iter = iter(jobs)
+            future_jobs: set[concurrent.futures.Future[Any]] = set()
+            for _ in range(args.jobs):
+                try:
+                    job = next(job_iter)
+                except StopIteration:
+                    break
+                future_jobs.add(pool.submit(execute, job))
+            stop_submitting = False
+            while future_jobs:
+                done, _ = concurrent.futures.wait(
+                    future_jobs, return_when=concurrent.futures.FIRST_COMPLETED
+                )
+                for future in done:
+                    future_jobs.remove(future)
+                    if future.cancelled():
+                        continue
+                    score, failure = future.result()
+                    if score is not None:
+                        scores.append(score)
+                        attempt_by_key[(score["scenario_id"], score["condition"], score["replicate"])]["succeeded"] = True
+                    if failure is not None:
+                        failures.append(failure)
+                        if args.fail_fast:
+                            stop_submitting = True
+                if stop_submitting:
+                    for pending in future_jobs:
+                        pending.cancel()
+                    continue
+                for _ in done:
+                    try:
+                        job = next(job_iter)
+                    except StopIteration:
+                        break
+                    future_jobs.add(pool.submit(execute, job))
         finally:
             pool.shutdown(wait=True)
-    summary = aggregate(scores)
-    summary["run_id"] = args.run_id or now_id()
+    observed_attempts = [item for item in attempts if item["attempted"]]
+    summary = aggregate(scores, observed_attempts)
+    summary["created_at"] = now_id()
     summary["scenario_count"] = len(scenarios)
+    summary["planned_sample_count"] = len(jobs)
+    summary["attempted_sample_count"] = len(observed_attempts)
     summary["score_count"] = len(scores)
+    summary["job_order"] = [
+        f"{scenario['id']}--{condition['id']}--r{replicate}"
+        for scenario, condition, replicate in jobs
+    ]
     summary["failures"] = failures
     write_json(output_dir / "summary.json", summary)
     write_json(output_dir / "scores.json", scores)
@@ -1277,9 +1494,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=VERSION)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("validate-scenarios")
+    p = sub.add_parser(
+        "validate-scenarios",
+        help="validate the scenario contract and semantic invariants; release validation separately applies the JSON Schema",
+        description="validate the scenario contract and semantic invariants; release validation separately applies the JSON Schema",
+    )
     p.add_argument("path")
     p.set_defaults(func=cmd_validate_scenarios)
+
+    p = sub.add_parser("profile-modes", help="profile deterministic brief/full engine weight")
+    p.add_argument("--iterations", type=positive_int_arg, default=100)
+    p.set_defaults(func=cmd_profile_modes)
 
     p = sub.add_parser("run", help="run matched Team U/S/E matrix")
     p.add_argument("--scenarios", required=True)
@@ -1289,17 +1514,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-turns", type=positive_int_arg, default=20)
     p.add_argument("--timeout", type=positive_int_arg, default=600)
     p.add_argument("--jobs", type=positive_int_arg, default=1, help="parallel independent run groups")
-    p.add_argument("--run-id")
     p.add_argument("--fail-fast", action="store_true")
     p.set_defaults(func=cmd_run)
 
-    p = sub.add_parser("score")
+    p = sub.add_parser("score", help="score one evaluator record against one scenario")
     p.add_argument("--scenario", required=True)
     p.add_argument("--evaluation", required=True)
     p.add_argument("--output")
     p.set_defaults(func=cmd_score)
 
-    p = sub.add_parser("compare")
+    p = sub.add_parser("compare", help="aggregate existing score records conservatively")
     p.add_argument("inputs", nargs="+")
     p.add_argument("--output")
     p.set_defaults(func=cmd_compare)

@@ -8,7 +8,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +33,17 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), bench.VERSION)
 
+    def test_mode_profile_measures_a_materially_lighter_brief_state(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            bench.cmd_profile_modes(argparse.Namespace(iterations=2))
+        profile = json.loads(output.getvalue())
+
+        self.assertFalse(profile["quality_claim_allowed"])
+        self.assertLess(profile["brief_state_fraction_of_full"], 0.65)
+        self.assertEqual(profile["modes"]["brief"]["campaign_section_count"], 1)
+        self.assertGreater(profile["modes"]["full"]["campaign_section_count"], 10)
+
     def test_public_scenarios_cover_every_archetype(self):
         scenarios = bench.load_scenarios(ROOT / "benchmark/scenarios/public")
         covered = {a for scenario in scenarios for a in scenario["archetypes"]}
@@ -47,6 +61,14 @@ class BenchmarkTests(unittest.TestCase):
         self.assertTrue(any("archetypes" in item for item in bench.scenario_errors(scenario)))
         scenario["archetypes"] = ["not-a-real-archetype"]
         self.assertTrue(any("archetypes" in item for item in bench.scenario_errors(scenario)))
+
+    def test_validate_scenarios_help_describes_contract_and_release_schema_boundary(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(SystemExit):
+            bench.build_parser().parse_args(["validate-scenarios", "--help"])
+        help_text = " ".join(output.getvalue().split())
+        self.assertIn("scenario contract and semantic invariants", help_text)
+        self.assertIn("release validation separately applies the JSON Schema", help_text)
 
     def test_scenario_validation_rejects_malformed_nested_values(self):
         baseline = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
@@ -243,9 +265,9 @@ class BenchmarkTests(unittest.TestCase):
                 "with Path(sys.argv[1]).open('a',encoding='utf-8') as f: f.write(json.dumps(payload)+'\\n')\n"
                 "asks=sum(e.get('role')=='assistant' and e.get('action')=='ask' for e in payload['history'])\n"
                 "if asks < 2:\n"
-                " print(json.dumps({'action':'ask','message':'Please clarify the next decision.','branch':['decision-purpose','scope-object'][asks],'question_count':1}))\n"
+                " print(json.dumps({'action':'ask','message':'Please clarify the next decision.','branch':['decision-purpose','scope-object'][asks],'question_count':1,'usage':{'tokens':1,'cost_usd':0.01}}))\n"
                 "else:\n"
-                " print(json.dumps({'action':'final','message':'Draft complete.','declared_resolutions':[],'declared_blockers':[],'declared_features':[],'readiness_claimed':False}))\n",
+                " print(json.dumps({'action':'final','message':'Draft complete.','declared_resolutions':[],'declared_blockers':[],'declared_features':[],'readiness_claimed':False,'usage':{'tokens':1,'cost_usd':0.01}}))\n",
                 encoding="utf-8",
             )
             condition = {
@@ -268,6 +290,13 @@ class BenchmarkTests(unittest.TestCase):
             self.assertFalse(any("answered_dimension_ids" in event for event in public_transcript))
             evaluator_transcript = json.loads((run_dir / "evaluator_transcript.json").read_text())
             self.assertTrue(any("answered_dimension_ids" in event for event in evaluator_transcript))
+            calls = json.loads((run_dir / "adapter_calls.json").read_text())
+            self.assertEqual([item["sequence"] for item in calls], list(range(1, len(calls) + 1)))
+            self.assertEqual({item["role"] for item in calls}, {"team_s", "team_u", "team_e"})
+            self.assertTrue(all("stdout" in item and "stderr" in item for item in calls))
+            evaluation = json.loads((run_dir / "evaluation.json").read_text())
+            self.assertEqual(evaluation["context"]["tokens"], 3.0)
+            self.assertEqual(evaluation["context"]["usage_by_role"]["team_s"]["calls"], 3)
 
     def test_config_validation_rejects_malformed_nested_values(self):
         cases = [
@@ -350,6 +379,123 @@ class BenchmarkTests(unittest.TestCase):
             path.write_text(json.dumps(config), encoding="utf-8")
             conditions = bench.load_config(path)["conditions"]
         self.assertFalse(any(item["_matched_controls"] for item in conditions))
+
+    def test_aggregate_suppresses_intervals_without_verified_live_matched_controls(self):
+        base = {
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 80.0},
+        }
+        scores = []
+        attempts = []
+        for index in range(1, 6):
+            scenario_id = f"scenario-{index}"
+            for condition, evidence_class, score in (
+                ("verified-a", bench.LIVE_EVIDENCE_CLASS, 60.0 + index),
+                ("verified-b", bench.LIVE_EVIDENCE_CLASS, 55.0 + index),
+                ("unspecified", bench.UNSPECIFIED_EVIDENCE_CLASS, 50.0 + index),
+                ("unmatched", bench.UNMATCHED_LIVE_EVIDENCE_CLASS, 40.0 + index),
+            ):
+                scores.append(dict(
+                    base, run_id=f"{scenario_id}-{condition}", scenario_id=scenario_id,
+                    condition=condition, replicate=1, score=score,
+                    evidence_class=evidence_class,
+                ))
+                attempts.append({
+                    "scenario_id": scenario_id, "condition": condition, "replicate": 1,
+                    "attempted": True, "succeeded": True,
+                })
+
+        summary = bench.aggregate(scores, attempts)
+
+        self.assertIsNotNone(summary["conditions"]["verified-a"]["score_mean_ci95"][1])
+        verified_pair = summary["pairwise_matched"]["verified-a minus verified-b"]
+        self.assertIsNotNone(verified_pair["difference_mean_ci95"][1])
+        self.assertIsNone(verified_pair["suppressed_because"])
+        for condition in ("unspecified", "unmatched"):
+            with self.subTest(condition=condition):
+                self.assertEqual(
+                    summary["conditions"][condition]["score_mean_ci95"],
+                    [summary["conditions"][condition]["score_mean_ci95"][0], None, None],
+                )
+                self.assertTrue(summary["conditions"][condition]["interval_suppressed_because"])
+
+        for pair_name, pair in summary["pairwise_matched"].items():
+            if pair_name == "verified-a minus verified-b":
+                continue
+            self.assertIsNotNone(pair["difference_mean_ci95"][0])
+            self.assertEqual(pair["difference_mean_ci95"][1:], [None, None])
+            self.assertTrue(pair["suppressed_because"])
+
+    def test_timeout_cleanup_ignores_process_group_exit_race(self):
+        class AlreadyExitedProcess:
+            pid = 123
+            returncode = -9
+
+            def __init__(self):
+                self.kill_calls = 0
+                self.communications = 0
+
+            def communicate(self, input=None, timeout=None):
+                self.communications += 1
+                if timeout is not None:
+                    raise subprocess.TimeoutExpired("adapter", timeout)
+                return "", ""
+
+            def kill(self):
+                self.kill_calls += 1
+                raise AssertionError("the already-exited process must not be killed again")
+
+        process = AlreadyExitedProcess()
+        with mock.patch.object(bench.subprocess, "Popen", return_value=process), \
+                mock.patch.object(bench.os, "killpg", side_effect=ProcessLookupError):
+            with self.assertRaisesRegex(RuntimeError, "timed out"):
+                bench.call_adapter("adapter", {"request": "value"}, 1)
+        self.assertEqual(process.kill_calls, 0)
+        self.assertEqual(process.communications, 2)
+
+    def test_parallel_fail_fast_collects_results_from_running_futures(self):
+        scenarios = [{"id": "scenario", "title": "title", "domain": "domain",
+                      "archetypes": ["experimental"], "profile": "profile",
+                      "initial_request": "request"}]
+        conditions = [{"id": ident} for ident in ("failure", "running", "queued")]
+        running_started = threading.Event()
+
+        def fake_run_one(scenario, condition, replicate, output_dir, timeout, max_turns):
+            if condition["id"] == "failure":
+                running_started.wait(1)
+                raise RuntimeError("expected failure")
+            if condition["id"] == "running":
+                running_started.set()
+                time.sleep(0.05)
+            return {
+                "run_id": f"{scenario['id']}-{condition['id']}-{replicate}",
+                "scenario_id": scenario["id"], "condition": condition["id"],
+                "replicate": replicate, "score": 50.0,
+                "evidence_class": bench.SYNTHETIC_EVIDENCE_CLASS,
+                "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                            "interaction_burden_score": 80.0},
+            }
+
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "runs"
+            args = argparse.Namespace(
+                scenarios="unused", config="unused", output=str(output), replicates=1,
+                jobs=2, max_turns=20, timeout=20, fail_fast=True,
+            )
+            with mock.patch.object(bench, "load_scenarios", return_value=scenarios), \
+                    mock.patch.object(bench, "load_config", return_value={"conditions": conditions}), \
+                    mock.patch.object(bench, "run_one", side_effect=fake_run_one), \
+                    mock.patch.object(bench.secrets, "SystemRandom", return_value=mock.Mock(shuffle=lambda jobs: None)), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    bench.cmd_run(args)
+
+            self.assertEqual(raised.exception.code, 6)
+            summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["score_count"], 1)
+            self.assertEqual(summary["attempted_sample_count"], 2)
+            self.assertEqual(summary["planned_sample_count"], 3)
+            self.assertEqual(summary["failures"][0]["condition"], "failure")
 
     def test_generated_live_matrix_uses_the_loadable_conservative_control_contract(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -466,6 +612,7 @@ class BenchmarkTests(unittest.TestCase):
             self.assertFalse(Path(record["path"]).exists(),
                              "the evaluator-only temporary path should be removed")
             staged = Path(manifest["evaluator_artifacts"][0]["staged_path"])
+            self.assertTrue(staged.is_relative_to(run_dir))
             self.assertEqual(staged.read_bytes(), b"frozen bytes")
             self.assertEqual(staged.stat().st_mode & 0o222, 0)
             self.assertEqual(record["sha256"], bench.sha256_file(staged))
@@ -528,12 +675,18 @@ class BenchmarkTests(unittest.TestCase):
             score = bench.run_one(scenario, condition, 1, root, 20, 20)
             run_dir = root / score["run_id"]
             manifest = json.loads((run_dir / "manifest.json").read_text())
-            expected = {
+            required = {
                 "public_scenario.json", "transcript.json", "evaluator_transcript.json",
-                "evaluation.json", "score.json",
+                "adapter_calls.json", "evaluation.json", "score.json",
             }
-            self.assertEqual(set(manifest["files"]), expected)
-            for name in expected:
+            persisted = {
+                path.relative_to(run_dir).as_posix()
+                for path in run_dir.rglob("*")
+                if path.is_file() and path.name != "manifest.json"
+            }
+            self.assertTrue(required <= set(manifest["files"]))
+            self.assertEqual(set(manifest["files"]), persisted)
+            for name in persisted:
                 path = run_dir / name
                 self.assertEqual(manifest["files"][name]["bytes"], path.stat().st_size)
                 self.assertEqual(manifest["files"][name]["sha256"], bench.sha256_file(path))
@@ -547,6 +700,102 @@ class BenchmarkTests(unittest.TestCase):
             with self.subTest(option=option), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     bench.build_parser().parse_args(base + [option, "0"])
+
+    def test_turn_limit_is_a_failed_run_and_can_be_retried(self):
+        scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
+        condition = bench.load_config(ROOT / "benchmark/conditions/fixture.json")["conditions"][0]
+        original = bench.fixture_team_s
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            try:
+                bench.fixture_team_s = lambda *_args, **_kwargs: {
+                    "action": "ask", "message": "Another question?",
+                    "branch": "decision-purpose", "question_count": 1,
+                }
+                with self.assertRaisesRegex(RuntimeError, "exceeded the 1-turn"):
+                    bench.run_one(scenario, condition, 1, root, 20, 1)
+                expected = root / f"{scenario['id']}--{condition['id']}--r1"
+                self.assertFalse(expected.exists())
+            finally:
+                bench.fixture_team_s = original
+            score = bench.run_one(scenario, condition, 1, root, 20, 20)
+            self.assertTrue((root / score["run_id"] / "score.json").is_file())
+
+    def test_fixture_scores_only_required_features_and_exact_blocker_prose(self):
+        scenario = copy.deepcopy(next(
+            item for item in bench.load_scenarios(ROOT / "benchmark/scenarios/public")
+            if any(dim.get("forces_blocker") for dim in item["material_dimensions"])
+        ))
+        transcript = [
+            {"role": "assistant", "action": "ask", "branch": "ethics-authority",
+             "question_count": 1},
+            {"role": "user", "message": bench.BLOCKER_PHRASE,
+             "answered_dimension_ids": [],
+             "blocker_ids": [next(dim["id"] for dim in scenario["material_dimensions"]
+                              if dim.get("forces_blocker"))]},
+        ]
+        final = {
+            "declared_resolutions": [],
+            "declared_features": ["invented-feature"] * 20,
+            "declared_blockers": ["some unrelated blocker"],
+            "readiness_claimed": False,
+        }
+
+        evaluation = bench.fixture_team_e(
+            scenario, transcript, final, "rescamp-current-fixture"
+        )
+
+        self.assertEqual(evaluation["ratings"]["operations"], 1.0)
+        self.assertEqual(evaluation["explicit_blocker_ids"], [])
+        self.assertTrue(any(
+            item["id"] == "missing-explicit-blocker"
+            for item in evaluation["critical_defects"]
+        ))
+
+    def test_aggregate_suppresses_pairwise_effect_when_any_sample_failed(self):
+        base = {
+            "replicate": 1, "score": 50.0,
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 80.0},
+        }
+        scores = [
+            dict(base, run_id="s1-a", scenario_id="s1", condition="a"),
+            dict(base, run_id="s2-a", scenario_id="s2", condition="a"),
+            dict(base, run_id="s1-b", scenario_id="s1", condition="b"),
+        ]
+        attempts = [
+            {"scenario_id": scenario, "condition": condition, "replicate": 1,
+             "succeeded": not (scenario == "s2" and condition == "b")}
+            for scenario in ("s1", "s2") for condition in ("a", "b")
+        ]
+
+        summary = bench.aggregate(scores, attempts)
+        pair = summary["pairwise_matched"]["a minus b"]
+
+        self.assertFalse(pair["complete_matched_matrix"])
+        self.assertEqual(pair["difference_mean_ci95"], [None, None, None])
+        self.assertEqual(summary["conditions"]["b"]["failure_rate"], 0.5)
+
+    def test_aggregate_rejects_duplicate_composite_samples(self):
+        base = {
+            "scenario_id": "s", "condition": "c", "replicate": 1, "score": 50.0,
+            "metrics": {"critical_defect_count": 0, "interview_turns": 1,
+                        "interaction_burden_score": 80.0},
+        }
+        with self.assertRaisesRegex(RuntimeError, "duplicate scenario/condition/replicate"):
+            bench.aggregate([dict(base, run_id="one"), dict(base, run_id="two")])
+
+    def test_config_rejects_variable_model_sentinel(self):
+        config = {"conditions": [{
+            "id": "live", "adapter": "external-command", "command": "s",
+            "user_adapter": "u", "evaluator_adapter": "e",
+            "model_id": "varies-record-per-run",
+        }]}
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "config.json"
+            path.write_text(json.dumps(config), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "exact model identifier"):
+                bench.load_config(path)
 
     def test_manual_compare_cannot_promote_score_claim_to_live_evidence(self):
         score = {

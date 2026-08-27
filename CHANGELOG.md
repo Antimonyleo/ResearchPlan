@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.11.0
+
+- Added two artifact levels behind one portable skill interface: `Camp-auto` is brief-first
+  and offers one digest-bound promotion choice, `Camp-brief` stops with a non-executable
+  `RESEARCH_BRIEF.md`, and `Camp-full` starts or adopts a brief without restarting decisions.
+- Schema 3.2 records planning mode, artifact level, the promotion decision, and the accepted
+  brief payload under its SHA-256 digest. `migrate` upgrades 3.1 campaigns explicitly as
+  direct full campaigns; briefs can never pass full validation or claim execution readiness.
+- Planning mode is independent of assurance profile. Brief interviews target zero to three
+  questions with a four-question hard stop unless extended; full campaigns retain the
+  profile-specific interview and review budgets.
+- Claude Code and Codex now share the same `Camp-*` tokens through a small host-adapter seam;
+  future harness support is localized to another adapter rather than another skill tree. Live
+  acceptance also supports non-Git Codex projects and safe artifact globs when a host chooses
+  the campaign slug.
+- Status now reports readiness derived from current validation, closing the contradiction
+  where edited state could retain a stored `execution-ready` label while readiness was false.
+- Added focused mode, promotion, migration, brief audit, tamper, burden, and cross-host
+  acceptance coverage. Strict audit now rejects valid brief content that was never rendered.
+  Version 0.11.0 uses campaign schema 3.2.
 
 - Support both new and in-progress projects. Existing-project intake records an evidence-based
   status baseline, preserves accepted work, identifies recheck needs, and starts the compiled
@@ -24,11 +43,21 @@
 
 Review pass over code, files, and writing:
 
+- State and artifact writes now fail closed under concurrent edits, render complete bundles
+  through staging directories, reject symlinked audit inputs, and bind review, pilot, and
+  accepted-risk evidence into rendered-output freshness rather than only plan content.
+- The benchmark now requires explicit scenario branches, keeps Team U history public-only,
+  records raw adapter evidence and accumulated role usage, kills timed-out process groups,
+  reports scenario-clustered intervals and failure rates, and suppresses matched effects when
+  either condition has failed samples. Public fixture ratings remain non-evidence.
+- Host acceptance now uses `/rescamp` for both Claude Code and Codex, checks complete installs
+  and changed file content, rejects out-of-project symlink results, and terminates descendant
+  processes on timeout. Mode-specific stale arguments are rejected instead of ignored.
 - Rejected campaign IDs that escape the requested root, made manual benchmark scoring fail cleanly on malformed JSON, and tightened live-matrix and host-acceptance arguments at their CLI boundaries.
 - Release validation now ignores local skill installs, generated campaigns and benchmark runs, dependency trees, and caches instead of treating workspace debris as release source.
 - Removed redundant live benchmark templates and transient worked-example `working/` snapshots; the generator and reproducible audit command are the canonical paths.
-- Corrected the worked example's final three-versus-four-canary mismatch and stale review-round counts, preserved the original sequential-review history accurately, and added current digest-bound independent-subagent maintenance reviews.
-- `scripts/validate_release.py` skipped every JSON Schema check silently when `jsonschema` was absent, and still reported `valid: true` with zero warnings. Missing schema validation is now a warning that names what did not run.
+- Corrected the worked example's final three-versus-four-canary mismatch and stale review-round counts, preserved the original sequential-review history accurately, and recorded both current passes as `independent-subagent`.
+- `scripts/validate_release.py` skipped every JSON Schema check silently when `jsonschema` was absent, and still reported `valid: true`. Missing schema validation is now release-blocking.
 - `rescamp/assets/campaign.schema.json` was only checked for well-formedness, so the published contract for `campaign.json` was free to drift from the engine. Release validation now validates committed example state against it, and a unit test validates freshly built state for all three profiles.
 - Release validation now strict-audits each committed example in a temporary copy; loose JSON Schema conformance can no longer certify a stale or semantically invalid example.
 - `benchmark/scenarios/templates/scenario.template.json` was referenced by nothing; `benchmark/README.md` now points to it as the starting point for a new case.

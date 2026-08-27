@@ -109,6 +109,58 @@ class EngineTests(unittest.TestCase):
         result = engine.validate_state(state, include_reviews=True)
         self.assertTrue(any(item["code"] == "review.missing" for item in result["errors"]))
 
+    def test_identical_set_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            (campaign_dir / "state").mkdir(parents=True)
+            state = complete_state()
+            engine.write_json(campaign_dir / engine.STATE_REL, state)
+            args = argparse.Namespace(
+                campaign=str(campaign_dir), path="campaign.mission",
+                value=engine.canonical_json(state["campaign"]["mission"]),
+                create_missing=False,
+            )
+            output = io.StringIO()
+
+            with contextlib.redirect_stdout(output):
+                engine.cmd_set(args)
+
+            self.assertEqual(engine.load_state(campaign_dir), state)
+            self.assertEqual(output.getvalue().strip(), "unchanged campaign.mission")
+
+    def test_list_paths_reject_negative_and_non_numeric_indices(self):
+        for path in ("campaign.methods.-1.purpose", "campaign.methods.nope.purpose"):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as temp:
+                campaign_dir = Path(temp) / "campaign"
+                (campaign_dir / "state").mkdir(parents=True)
+                state = complete_state()
+                engine.write_json(campaign_dir / engine.STATE_REL, state)
+                args = argparse.Namespace(
+                    campaign=str(campaign_dir), path=path,
+                    value="replacement", create_missing=False,
+                )
+
+                with self.assertRaises(SystemExit):
+                    engine.cmd_set(args)
+
+                self.assertEqual(engine.load_state(campaign_dir), state)
+
+    def test_stale_writer_cannot_overwrite_a_concurrent_change(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            (campaign_dir / "state").mkdir(parents=True)
+            engine.write_json(campaign_dir / engine.STATE_REL, complete_state())
+            stale = engine.load_state(campaign_dir)
+            concurrent = complete_state()
+            concurrent["title"] = "change from another writer"
+            engine.write_json(campaign_dir / engine.STATE_REL, concurrent)
+            stale["goal_verbatim"] = "stale writer edit"
+
+            with self.assertRaisesRegex(SystemExit, "changed in another process"):
+                engine.save_state(campaign_dir, stale)
+
+            self.assertEqual(engine.read_json(campaign_dir / engine.STATE_REL), concurrent)
+
     def test_render_and_audit_hashes(self):
         with tempfile.TemporaryDirectory() as temp:
             campaign_dir = Path(temp) / "campaign"

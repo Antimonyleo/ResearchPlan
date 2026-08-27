@@ -222,9 +222,10 @@ class BenchmarkHonestyTests(unittest.TestCase):
         self.assertIsNone(lo)
         self.assertIsNone(hi)
 
-    def test_explicit_branch_beats_keyword_routing(self):
-        """`rival-readings` and `objections` match no keyword and silently route to scope."""
-        self.assertEqual(self.bench.branch_for_dimension("rival-readings"), "scope-object")
+    def test_material_dimensions_require_an_explicit_branch(self):
+        """A missing branch must fail rather than silently credit the wrong question."""
+        with self.assertRaisesRegex(RuntimeError, "no explicit branch"):
+            self.bench.branch_for_dimension("rival-readings")
         self.assertEqual(
             self.bench.branch_for_dimension("rival-readings", {"branch": "methods-comparison"}),
             "methods-comparison",
@@ -311,7 +312,7 @@ class FailClosedTests(unittest.TestCase):
 
             final = engine.load_state(campaign_dir)
             self.assertEqual(final["status"], "execution-ready")
-            self.assertEqual(final["outputs"]["last_rendered_digest"], engine.content_digest(final))
+            self.assertEqual(final["outputs"]["last_rendered_digest"], engine.render_digest(final))
 
 
 if __name__ == "__main__":

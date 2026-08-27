@@ -163,7 +163,7 @@ Use the campaign digest as the active plan identity. At every start or resume, l
 Classify change before continuing:
 
 - **Operational:** retry, reorder, or substitute an equivalent tool inside frozen limits. Record it in the checkpoint; keep the current plan version.
-- **Methodological:** change a method, intermediate criterion, sample, dependency, or stage design. Pause affected future work, re-freeze the plan under a new digest — in ResCamp, the `revise` mode — and rerun only affected reviewers.
+- **Methodological:** change a method, intermediate criterion, sample, dependency, or stage design. Pause affected future work, apply explicit state edits, freeze a new digest through the quality loop, and rerun only affected reviewers.
 - **Constitutional:** change the mission, primary evaluation or estimand, ethics or authority boundary, resource ceiling, stop rule, or permitted claim. Stop for user or institutional approval, version the plan, and re-review every affected section. When production outcomes motivated the change, preserve the prior result under its original version and label the affected inference exploratory.
 
 Never rewrite a frozen plan or completed record in place. A pending work brief carrying an older digest is stale and must be regenerated; completed artifacts remain bound to the version that produced them.

@@ -51,8 +51,9 @@ class SkillStructureTests(unittest.TestCase):
         self.assertIn("name: rescamp", text)
         self.assertIn("description:", text)
         self.assertIn("disable-model-invocation: true", text)
-        self.assertIn("Automatic quality loop", text)
-        self.assertIn("manual `benchmark`", text)
+        self.assertIn("QA orchestration", text)
+        self.assertIn("Comparative `benchmark`", text)
+        self.assertIn("is always manual", text)
         self.assertIn("Treat unresolved shape as **fog**", text)
         self.assertIn("Never create placeholder campaign objects", text)
 
@@ -66,9 +67,7 @@ class SkillStructureTests(unittest.TestCase):
         self.assertGreaterEqual(len(description.group(1)), 25)
         self.assertLessEqual(len(description.group(1)), 64)
         skill = (ROOT / "rescamp/SKILL.md").read_text(encoding="utf-8")
-        # Assert on the names a host is actually referred to by. The previous token
-        # list was chosen so that it passed over the real violation it claimed to
-        # catch ("Claude Code invokes /rescamp; Codex invokes $rescamp").
+        # Host names and wrapper syntax belong in the focused host reference.
         for host_token in ("Claude Code", "Codex", "$rescamp", ".claude/", ".agents/",
                            "openai", "allow_implicit_invocation", "skillOverrides", "AskUserQuestion"):
             self.assertNotIn(

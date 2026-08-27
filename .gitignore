@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+*.cover
 .pytest_cache/
 .DS_Store
 

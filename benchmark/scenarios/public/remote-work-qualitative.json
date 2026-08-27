@@ -49,6 +49,7 @@
       "expected_by_turn": 1,
       "forces_blocker": false,
       "id": "purpose-audience",
+      "branch": "decision-purpose",
       "importance": "critical"
     },
     {
@@ -61,6 +62,7 @@
       "expected_by_turn": 2,
       "forces_blocker": false,
       "id": "participant-scope",
+      "branch": "scope-object",
       "importance": "material"
     },
     {
@@ -73,6 +75,7 @@
       "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "power-consent",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -85,6 +88,7 @@
       "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "confidentiality",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -97,6 +101,7 @@
       "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "method",
+      "branch": "methods-comparison",
       "importance": "material"
     },
     {
@@ -109,6 +114,7 @@
       "expected_by_turn": 6,
       "forces_blocker": false,
       "id": "interpretive-framework",
+      "branch": "methods-comparison",
       "importance": "material"
     },
     {
@@ -121,6 +127,7 @@
       "expected_by_turn": 7,
       "forces_blocker": true,
       "id": "publication-rights",
+      "branch": "ethics-authority",
       "importance": "critical"
     }
   ],

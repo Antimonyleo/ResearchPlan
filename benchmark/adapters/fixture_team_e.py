@@ -11,7 +11,6 @@ bench = importlib.util.module_from_spec(spec)
 assert spec.loader
 spec.loader.exec_module(bench)
 payload = json.loads(sys.stdin.read())
-condition = payload.get("condition_for_fixture", "rescamp-current-fixture")
 # The harness intentionally omits the condition in a real blinded evaluation. The
 # process fixture infers behavior class from the transcript only.
 transcript = payload["transcript"]

@@ -5,7 +5,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
-from common import engine, complete_state
+from common import add_passing_reviews, engine, complete_state
 
 
 class AutomaticLoopTests(unittest.TestCase):
@@ -197,6 +197,30 @@ class AutomaticLoopTests(unittest.TestCase):
             self.assertEqual(payload["design_errors"], 0)
             self.assertTrue(payload["output_stale"])
 
+    def test_status_derives_full_readiness_after_an_execution_ready_campaign_is_edited(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = add_passing_reviews(complete_state(profile="standard"))
+            engine.save_state(campaign_dir, state)
+            engine.render_outputs(campaign_dir, state)
+            self.assertEqual(engine.load_state(campaign_dir)["status"], "execution-ready")
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                engine.cmd_set(argparse.Namespace(
+                    campaign=str(campaign_dir), path="campaign.mission.scope",
+                    value="A materially revised scope", create_missing=False,
+                ))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                engine.cmd_status(argparse.Namespace(campaign=str(campaign_dir)))
+            payload = json.loads(output.getvalue())
+
+            self.assertEqual(payload["status"], "plan-ready-execution-blocked")
+            self.assertFalse(payload["execution_ready"])
+            self.assertTrue(payload["output_stale"])
+
     def test_review_record_schema_logic(self):
         state = complete_state()
         digest = engine.content_digest(state)
@@ -220,6 +244,31 @@ class AutomaticLoopTests(unittest.TestCase):
         record["mode"] = "sequential-pass"
         self.assertEqual(engine.review_record_errors(record), [],
                          "a sequential pass claims no independence and needs no evidence")
+
+    def test_semantically_invalid_stored_review_cannot_satisfy_readiness(self):
+        state = add_passing_reviews(complete_state())
+        state["reviews"]["records"][0]["mode"] = "invented-mode"
+        state["reviews"]["records"][0]["summary"] = ""
+
+        result = engine.validate_state(state, include_reviews=True)
+
+        self.assertFalse(result["execution_ready"])
+        self.assertTrue(any(
+            item["code"] == "review.record_invalid" for item in result["errors"]
+        ), result["errors"])
+
+    def test_review_digests_require_exact_sha256_format(self):
+        state = complete_state()
+        record = {
+            "role": "methods-evidence", "reviewer_id": "r1",
+            "mode": "sequential-pass", "verdict": "pass",
+            "content_digest": "sha256:not-a-digest",
+            "rubric_digest": engine.rubric_digest(state["profile"]),
+            "summary": "No findings", "findings": [],
+        }
+
+        self.assertIn("invalid content_digest", engine.review_record_errors(record))
+        self.assertFalse(engine.record_is_current(record, state))
 
 
 if __name__ == "__main__":

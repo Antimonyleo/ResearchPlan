@@ -1,7 +1,8 @@
 # Worked example: de novo PD-L1 miniprotein binders
 
-A complete campaign, compiled by ResCamp 0.10.0 and committed here unedited. Every file in
-`outputs/` was rendered by `rescamp.py finalize`; nothing was written by hand afterwards.
+A complete campaign maintained under ResCamp 0.11.0. Its canonical state preserves the
+digest-bound review history, and every file in `outputs/` is rendered by `rescamp.py
+finalize` rather than edited by hand.
 
 **Goal given to the skill**
 
@@ -10,7 +11,7 @@ A complete campaign, compiled by ResCamp 0.10.0 and committed here unedited. Eve
 > for wet-lab testing?
 
 **Result:** `EXECUTION-READY`, `audit --strict` exit 0, 7 interview turns, four original
-review rounds, and a current independent maintenance review.
+review rounds, and current independent-subagent records for methods and operations.
 
 ## What it demonstrates
 
@@ -62,22 +63,24 @@ canaries in WU-freeze's acceptance test. The work unit already required four eve
 else, but an executor following that sentence could have accepted an incomplete return.
 The corrected acceptance test and this review share the new campaign digest.
 
-**Current maintenance review — independent subagents.** A fresh methods reviewer first
-found that control scores were partly resubstitution, then that individual-positive folds
-still leaked scaffold families, and finally that a mixed-age scaffold group could be called
-post-cutoff. The repaired plan now uses frozen leave-one-scaffold-group-out evaluation,
-topology-matched hard negatives, and an earliest-public-provenance rule for cutoff-clean
-groups. A separate operations reviewer found circular canary gates, an underspecified event
-log, and incompatible freeze order. The final plan separates G1 raw-schema checks from G2
-threshold compatibility, records compatibility in its own immutable artifact, and uses a G3
-event-log prefix snapshot before final G4 closure. Both current role records pass with no
-open major or critical finding.
+**Current maintenance review — separate reviewer contexts and bounded rechecks.** Methods
+review first exposed control-score resubstitution, scaffold leakage, mixed-age provenance,
+unequal group weighting, weak negative-evidence eligibility, and a post-outcome protocol
+freeze. The repaired plan now uses a pre-score protocol, cutoff-clean scaffold-group folds,
+assay-valid controls, equal group weighting, and fail-closed small-sample calibration.
+
+Operations review exposed circular canary gates, ambiguous protocol identity, unterminated
+retries, unreachable failure and expiry branches, and crash windows around final closure.
+The repaired state now has one authoritative G2 outcome map, explicit dispatcher guards,
+branch-specific evidence contracts, zero-active reconciliation, and idempotent closure
+recovery. Every repair was re-frozen before review. The current methods and operations
+records are both labeled `independent-subagent`; both pass with no open finding.
 
 ## Honest limitations of this example
 
-- **The current reviews are `independent-subagent`, but that is self-attested.** They ran in
-  separate agent contexts and include execution evidence; they were not blinded, external,
-  or independent of this repository. The original four rounds were `sequential-pass`.
+- **Both current reviews are `independent-subagent`.** The claims are self-attested; neither
+  review was blinded, external, or independent of this repository. The original four rounds
+  were `sequential-pass`.
 - **No pilot was run.** This is `reviewed-static` plan evidence: a document that was read,
   not a campaign that was watched running.
 - **`EXECUTION-READY` means the plan passed its declared gates.** It does not mean the

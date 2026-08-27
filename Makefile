@@ -10,9 +10,10 @@ skill-check:
 
 benchmark-smoke:
 	@tmp=$$(mktemp -d); \
+	trap 'rc=$$?; rm -rf "$$tmp"; exit $$rc' 0; \
 	$(PYTHON) rescamp/scripts/benchmark.py validate-scenarios benchmark/scenarios/public && \
-	$(PYTHON) rescamp/scripts/benchmark.py run --scenarios benchmark/scenarios/public --config benchmark/conditions/fixture.json --output $$tmp/fixture --jobs 6 --timeout 30; \
-	rm -rf $$tmp
+	$(PYTHON) rescamp/scripts/benchmark.py profile-modes --iterations 20 >/dev/null && \
+	$(PYTHON) rescamp/scripts/benchmark.py run --scenarios benchmark/scenarios/public --config benchmark/conditions/fixture.json --output $$tmp/fixture --jobs 6 --timeout 30
 
 validate:
 	$(PYTHON) scripts/validate_release.py --root . --quick
@@ -22,5 +23,5 @@ validate-full:
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
-	find . -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+	find . -type f \( -name '*.pyc' -o -name '*.pyo' -o -name '*.cover' \) -delete
 	rm -rf dist .dist benchmark/runs

@@ -50,6 +50,108 @@ class MalformedStateTests(unittest.TestCase):
             with self.subTest(path=dotted):
                 self.assert_rejected_without_exception(dotted, "not-the-required-container")
 
+    def test_enum_and_optional_collection_types_never_raise(self):
+        cases = (
+            lambda state: state.update(profile=[]),
+            lambda state: state["workflow"].update(requested_mode={}),
+            lambda state: state["workflow"].update(artifact_level=[]),
+            lambda state: state["workflow"]["promotion"].update(status={}),
+            lambda state: state["interview"].update(stopping_reason={}),
+            lambda state: state["intent_dimensions"][0].update(status=[]),
+            lambda state: state["campaign"]["ethics_rights_safety"].update(
+                external_actions=None
+            ),
+        )
+        for mutate in cases:
+            with self.subTest(mutate=mutate):
+                state = complete_state()
+                mutate(state)
+                result = engine.validate_state(state, include_reviews=False)
+                self.assertFalse(result["valid"])
+                self.assertTrue(result["errors"])
+
+    def test_empty_interview_turn_is_not_valid_provenance(self):
+        state = complete_state()
+        state["interview"]["turns"] = [{}]
+
+        result = engine.validate_state(state, include_reviews=False)
+
+        self.assertFalse(result["valid"])
+        self.assertTrue(any(
+            item["code"] == "interview.turn_malformed" for item in result["errors"]
+        ))
+
+    def test_public_commands_reject_non_object_state_without_tracebacks(self):
+        for command in ("status", "validate", "audit"):
+            with self.subTest(command=command), tempfile.TemporaryDirectory() as temp:
+                campaign_dir = Path(temp) / "campaign"
+                (campaign_dir / "state").mkdir(parents=True)
+                engine.write_json(campaign_dir / engine.STATE_REL, [])
+
+                result = subprocess.run(
+                    [sys.executable, str(engine.__file__), command, str(campaign_dir)],
+                    capture_output=True, text=True,
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertIn("Campaign state must be a JSON object", result.stderr)
+
+    def test_public_commands_reject_invalid_json_without_tracebacks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            state_path = campaign_dir / engine.STATE_REL
+            state_path.parent.mkdir(parents=True)
+            state_path.write_text("{not-json\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [sys.executable, str(engine.__file__), "status", str(campaign_dir)],
+                capture_output=True, text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertIn("Could not read campaign state", result.stderr)
+
+    def test_symlinked_state_is_rejected_without_touching_its_target(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            campaign_dir = root / "campaign"
+            state_path = campaign_dir / engine.STATE_REL
+            state_path.parent.mkdir(parents=True)
+            outside = root / "outside.json"
+            outside.write_text('{"sentinel": true}\n', encoding="utf-8")
+            state_path.symlink_to(outside)
+
+            result = subprocess.run(
+                [sys.executable, str(engine.__file__), "validate", str(campaign_dir)],
+                capture_output=True, text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertIn("must not be a symlink", result.stderr)
+            self.assertEqual(outside.read_text(encoding="utf-8"), '{"sentinel": true}\n')
+
+    def test_malformed_review_record_is_rejected_without_mutating_state(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            (campaign_dir / "state").mkdir(parents=True)
+            state = complete_state()
+            engine.write_json(campaign_dir / engine.STATE_REL, state)
+            review = Path(temp) / "review.json"
+            engine.write_json(review, None)
+
+            result = subprocess.run(
+                [sys.executable, str(engine.__file__), "ingest-review",
+                 str(campaign_dir), "--file", str(review)],
+                capture_output=True, text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertEqual(engine.load_state(campaign_dir), state)
+
     def test_non_object_collection_entries_return_structured_errors(self):
         paths = (
             "intent_dimensions", "contradictions", "blockers", "reviews.records",
@@ -191,6 +293,50 @@ class MalformedStateTests(unittest.TestCase):
                 self.assertNotIn("Traceback", result.stderr)
                 payload = json.loads(result.stdout)
                 self.assertFalse(payload["design_valid"])
+
+    def test_status_handles_missing_identity_and_invalid_profile(self):
+        cases = (("campaign_id", None), ("profile", "not-a-profile"))
+        for field, value in cases:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temp:
+                campaign_dir = Path(temp) / "campaign"
+                (campaign_dir / "state").mkdir(parents=True)
+                state = complete_state()
+                if value is None:
+                    state.pop(field)
+                else:
+                    state[field] = value
+                engine.write_json(campaign_dir / engine.STATE_REL, state)
+
+                result = subprocess.run(
+                    [sys.executable, str(engine.__file__), "status", str(campaign_dir)],
+                    capture_output=True, text=True,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                payload = json.loads(result.stdout)
+                self.assertFalse(payload["design_valid"])
+                self.assertFalse(payload["execution_ready"])
+
+    def test_audit_handles_malformed_outputs_without_a_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            for rel in ("state", "working", "outputs"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state()
+            state["outputs"] = ["not-an-object"]
+            engine.write_json(campaign_dir / engine.STATE_REL, state)
+
+            result = subprocess.run(
+                [sys.executable, str(engine.__file__), "audit", str(campaign_dir), "--strict"],
+                capture_output=True, text=True,
+            )
+
+            self.assertEqual(result.returncode, 5, result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertFalse(payload["ok"])
+            self.assertFalse(payload["validation"]["valid"])
 
     def test_numeric_required_prose_is_rejected(self):
         cases = (

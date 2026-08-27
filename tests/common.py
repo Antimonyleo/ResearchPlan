@@ -17,12 +17,14 @@ def complete_state(archetype: str = "evidence-synthesis", profile: str = "standa
     state["sketch"].update({
         "decision_or_purpose": "Support a bounded research decision",
         "scope": "Defined case and evidence boundary",
+        "non_goals": ["No unsupported generalization or execution authority"],
         "core_inquiries": ["What conclusion is warranted?"],
         "likely_evidence": ["Primary and appropriate secondary evidence"],
         "rough_methods_stages": ["Dossier", "analysis", "challenge", "closeout"],
         "success_or_adjudication": "Predefined evidence and adjudication criteria",
         "assumptions_risks": ["Evidence may remain inconclusive"],
         "proposed_outputs": ["Campaign prompt", "roadmap"],
+        "next_action": "Verify the evidence boundary before beginning analysis",
     })
     state["intent_dimensions"] = [
         {"id": "decision", "label": "Decision", "status": "resolved", "value": "bounded decision", "importance": "critical", "source": "user", "confidence": "high", "reason": "", "dependencies": []},

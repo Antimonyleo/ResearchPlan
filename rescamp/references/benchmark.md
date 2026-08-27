@@ -54,4 +54,4 @@ Test interruption, duplicate dispatch, malformed artifacts, suspicious tools, bu
 
 ## Analysis
 
-Use matched scenario differences, repeated runs, bootstrap intervals (currently a flat percentile bootstrap over pooled runs, not a scenario-clustered resample, so intervals are anticonservative when replicates within a scenario are correlated), domain/profile strata, cost and context measurements, critical-defect rates, and human adjudication of high-impact disagreements. Publish raw blinded artifacts and exact commits when permissions permit.
+Use matched scenario differences, repeated runs, and scenario-clustered bootstrap intervals only for verified live evidence with matched controls. Also report domain/profile strata, cost and context measurements, critical-defect rates, and human adjudication of high-impact disagreements. Failed samples suppress pairwise effect estimates rather than being silently dropped. Publish raw blinded artifacts and exact commits when permissions permit.

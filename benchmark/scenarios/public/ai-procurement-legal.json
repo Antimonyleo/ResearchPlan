@@ -50,6 +50,7 @@
       "expected_by_turn": 1,
       "forces_blocker": false,
       "id": "jurisdiction",
+      "branch": "scope-object",
       "importance": "critical"
     },
     {
@@ -62,6 +63,7 @@
       "expected_by_turn": 2,
       "forces_blocker": false,
       "id": "use-case",
+      "branch": "scope-object",
       "importance": "critical"
     },
     {
@@ -74,6 +76,7 @@
       "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "decision-authority",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -86,6 +89,7 @@
       "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "data-rights",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -98,6 +102,7 @@
       "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "legal-source-hierarchy",
+      "branch": "evidence-access",
       "importance": "critical"
     },
     {
@@ -110,6 +115,7 @@
       "expected_by_turn": 6,
       "forces_blocker": false,
       "id": "pending-law",
+      "branch": "evidence-access",
       "importance": "material"
     },
     {
@@ -122,6 +128,7 @@
       "expected_by_turn": 7,
       "forces_blocker": false,
       "id": "equity-due-process",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -134,6 +141,7 @@
       "expected_by_turn": 8,
       "forces_blocker": false,
       "id": "vendor-unknowns",
+      "branch": "evidence-access",
       "importance": "material"
     }
   ],

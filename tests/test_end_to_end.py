@@ -5,9 +5,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
-from common import ROOT, add_passing_reviews, complete_state, engine
+from common import ROOT, add_passing_pilot, add_passing_reviews, complete_state, engine
 
 
 ENGINE = ROOT / "rescamp/scripts/rescamp.py"
@@ -46,7 +47,7 @@ class EndToEndTests(unittest.TestCase):
             snapshot = json.loads(contract.read_text(encoding="utf-8"))
             self.assertEqual(snapshot["status"], "execution-ready")
             self.assertEqual(
-                snapshot["outputs"]["last_rendered_digest"], engine.content_digest(snapshot)
+                snapshot["outputs"]["last_rendered_digest"], engine.render_digest(snapshot)
             )
             self.assertEqual(snapshot["outputs"]["manifest_path"], "MANIFEST.sha256")
             self.assertNotIn("manifest", snapshot["outputs"])
@@ -78,6 +79,155 @@ class EndToEndTests(unittest.TestCase):
                 "unexpected output artifact not recorded in state: UNTRACKED.txt",
                 extra["errors"],
             )
+
+    def test_audit_rejects_symlinked_and_non_file_manifest_entries(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            campaign_dir = self.finalized_campaign(root, "symlink-output")
+            target = campaign_dir / "outputs/KICKOFF.md"
+            outside = root / "outside.md"
+            outside.write_bytes(target.read_bytes())
+            target.unlink()
+            target.symlink_to(outside)
+
+            result = run_cli(ENGINE, "audit", campaign_dir, "--strict", check=False)
+
+            self.assertEqual(result.returncode, 5)
+            payload = json.loads(result.stdout)
+            self.assertIn(
+                "manifest artifact must be a regular file inside outputs: KICKOFF.md",
+                payload["errors"],
+            )
+
+    def test_strict_audit_does_not_accept_a_forced_draft_as_ready(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "draft"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = add_passing_reviews(complete_state())
+            engine.save_state(campaign_dir, state)
+            engine.render_outputs(campaign_dir, state, force_draft=True)
+
+            result = run_cli(ENGINE, "audit", campaign_dir, "--strict", check=False)
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 5)
+            self.assertTrue(payload["integrity_ok"])
+            self.assertFalse(payload["ok"])
+            self.assertIn("strict audit requires", payload["errors"][0])
+
+    def test_failed_render_preserves_the_previous_complete_bundle(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = self.finalized_campaign(Path(temp), "transactional-render")
+            out_dir = campaign_dir / "outputs"
+            before = {
+                path.name: path.read_bytes() for path in out_dir.iterdir() if path.is_file()
+            }
+            state_before = (campaign_dir / engine.STATE_REL).read_bytes()
+            state = engine.load_state(campaign_dir)
+            original = engine.atomic_write
+            staged_writes = 0
+
+            def fail_second_staged_write(path, content):
+                nonlocal staged_writes
+                if ".outputs.staged-" in str(path):
+                    staged_writes += 1
+                    if staged_writes == 2:
+                        raise OSError("injected render failure")
+                return original(path, content)
+
+            with mock.patch.object(engine, "atomic_write", side_effect=fail_second_staged_write):
+                with self.assertRaisesRegex(OSError, "injected render failure"):
+                    engine.render_outputs(campaign_dir, state)
+
+            after = {
+                path.name: path.read_bytes() for path in out_dir.iterdir() if path.is_file()
+            }
+            self.assertEqual(after, before)
+            self.assertEqual((campaign_dir / engine.STATE_REL).read_bytes(), state_before)
+            self.assertFalse(any(
+                path.name.startswith(".outputs.staged-")
+                for path in campaign_dir.iterdir()
+            ))
+
+    def test_state_commit_failure_restores_previous_output_bundle(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = self.finalized_campaign(Path(temp), "rollback-render")
+            out_dir = campaign_dir / "outputs"
+            bundle_before = {
+                path.name: path.read_bytes() for path in out_dir.iterdir() if path.is_file()
+            }
+            state_before = (campaign_dir / engine.STATE_REL).read_bytes()
+            state = engine.load_state(campaign_dir)
+
+            with mock.patch.object(
+                engine, "save_state", side_effect=SystemExit("injected stale writer")
+            ):
+                with self.assertRaisesRegex(SystemExit, "injected stale writer"):
+                    engine.render_outputs(campaign_dir, state)
+
+            bundle_after = {
+                path.name: path.read_bytes() for path in out_dir.iterdir() if path.is_file()
+            }
+            self.assertEqual(bundle_after, bundle_before)
+            self.assertEqual((campaign_dir / engine.STATE_REL).read_bytes(), state_before)
+
+    def test_audit_rejects_symlinked_outputs_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            campaign_dir = self.finalized_campaign(root, "symlinked-output-dir")
+            real_outputs = root / "external-outputs"
+            (campaign_dir / "outputs").rename(real_outputs)
+            (campaign_dir / "outputs").symlink_to(real_outputs, target_is_directory=True)
+
+            result = run_cli(ENGINE, "audit", campaign_dir, "--strict", check=False)
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 5)
+            self.assertIn(
+                "outputs must be a real directory inside the campaign, not a symlink",
+                payload["errors"],
+            )
+
+    def test_audit_rejects_manifest_directory_without_a_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = self.finalized_campaign(Path(temp), "manifest-directory")
+            manifest = campaign_dir / "outputs/MANIFEST.sha256"
+            manifest.unlink()
+            manifest.mkdir()
+
+            result = run_cli(ENGINE, "audit", campaign_dir, "--strict", check=False)
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 5)
+            self.assertNotIn("Traceback", result.stderr)
+            self.assertIn(
+                "MANIFEST.sha256 must be a regular file inside outputs", payload["errors"]
+            )
+
+    def test_pilot_evidence_change_stales_the_rendered_bundle(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "pilot-tamper"
+            for rel in ("state", "working", "outputs", "artifacts"):
+                (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+            state = complete_state()
+            state["assurance"]["pilot_required"] = True
+            add_passing_pilot(state)
+            add_passing_reviews(state)
+            engine.save_state(campaign_dir, state)
+            engine.render_outputs(campaign_dir, state)
+            changed = engine.load_state(campaign_dir)
+            changed["assurance"]["pilot"]["authorized_by"] = "different-authority"
+            engine.save_state(campaign_dir, changed)
+
+            audit = run_cli(ENGINE, "audit", campaign_dir, "--strict", check=False)
+            payload = json.loads(audit.stdout)
+
+            self.assertEqual(audit.returncode, 5)
+            self.assertTrue(any(
+                item["code"] == "outputs.stale"
+                for item in payload["validation"]["errors"]
+            ))
 
     def test_empty_operational_fields_fail_closed(self):
         state = complete_state()

@@ -50,6 +50,7 @@
       "expected_by_turn": 1,
       "forces_blocker": false,
       "id": "decision",
+      "branch": "decision-purpose",
       "importance": "critical"
     },
     {
@@ -62,6 +63,7 @@
       "expected_by_turn": 2,
       "forces_blocker": false,
       "id": "target-performance",
+      "branch": "success-evaluation",
       "importance": "critical"
     },
     {
@@ -74,6 +76,7 @@
       "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "construct-scope",
+      "branch": "scope-object",
       "importance": "material"
     },
     {
@@ -86,6 +89,7 @@
       "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "available-capabilities",
+      "branch": "resources",
       "importance": "material"
     },
     {
@@ -98,6 +102,7 @@
       "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "budget-time",
+      "branch": "resources",
       "importance": "material"
     },
     {
@@ -110,6 +115,7 @@
       "expected_by_turn": 6,
       "forces_blocker": false,
       "id": "evaluation-freeze",
+      "branch": "success-evaluation",
       "importance": "critical"
     },
     {
@@ -122,6 +128,7 @@
       "expected_by_turn": 7,
       "forces_blocker": false,
       "id": "external-approval",
+      "branch": "ethics-authority",
       "importance": "material"
     }
   ],

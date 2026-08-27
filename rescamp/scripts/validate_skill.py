@@ -8,6 +8,29 @@ import re
 from pathlib import Path
 
 
+REQUIRED_FILES = (
+    "SKILL.md",
+    "VERSION",
+    "LICENSE",
+    "agents/openai.yaml",
+    "assets/archetype_overlays.json",
+    "assets/campaign.schema.json",
+    "assets/review.schema.json",
+    "assets/scenario.schema.json",
+    "assets/universal_rubric.json",
+    "references/archetypes.md",
+    "references/architecture.md",
+    "references/benchmark.md",
+    "references/hosts.md",
+    "references/interview.md",
+    "references/objects.md",
+    "references/quality-loop.md",
+    "scripts/benchmark.py",
+    "scripts/rescamp.py",
+    "scripts/validate_skill.py",
+)
+
+
 def parse_frontmatter(text: str) -> dict[str, str]:
     if not text.startswith("---\n"):
         raise ValueError("SKILL.md lacks YAML frontmatter")
@@ -22,6 +45,16 @@ def parse_frontmatter(text: str) -> dict[str, str]:
     return result
 
 
+def has_symlink_component(root: Path, path: Path) -> bool:
+    """Return whether a required path or one of its ancestors is a symlink."""
+    current = root
+    for part in path.relative_to(root).parts:
+        current /= part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", nargs="?", default=str(Path(__file__).resolve().parent.parent))
@@ -29,9 +62,14 @@ def main() -> int:
     root = Path(args.path).resolve()
     errors: list[str] = []
     warnings: list[str] = []
+    for relative in REQUIRED_FILES:
+        path = root / relative
+        if has_symlink_component(root, path):
+            errors.append(f"required path must not use symlinks: {relative}")
+        elif not path.is_file():
+            errors.append(f"missing required file: {relative}")
     skill = root / "SKILL.md"
-    if not skill.is_file():
-        errors.append("missing SKILL.md")
+    if not skill.is_file() or skill.is_symlink():
         text = ""
     else:
         text = skill.read_text(encoding="utf-8")
@@ -52,9 +90,6 @@ def main() -> int:
             errors.append(f"SKILL.md exceeds 500 lines ({lines})")
         if conservative_tokens > 5000:
             errors.append(f"SKILL.md exceeds conservative 5000-token budget ({conservative_tokens})")
-    for rel in ("references", "assets", "scripts"):
-        if not (root / rel).is_dir():
-            errors.append(f"missing {rel}/")
     for path in sorted((root / "assets").glob("*.json")) if (root / "assets").is_dir() else []:
         try:
             json.loads(path.read_text(encoding="utf-8"))

@@ -63,6 +63,7 @@
       "expected_by_turn": 1,
       "forces_blocker": false,
       "id": "existing-project-baseline",
+      "branch": "evidence-access",
       "importance": "critical"
     },
     {
@@ -75,6 +76,7 @@
       "expected_by_turn": 2,
       "forces_blocker": false,
       "id": "review-question",
+      "branch": "scope-object",
       "importance": "critical"
     },
     {
@@ -87,6 +89,7 @@
       "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "comparators-outcomes",
+      "branch": "success-evaluation",
       "importance": "critical"
     },
     {
@@ -99,6 +102,7 @@
       "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "search-boundary",
+      "branch": "evidence-access",
       "importance": "material"
     },
     {
@@ -111,6 +115,7 @@
       "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "study-designs",
+      "branch": "methods-comparison",
       "importance": "critical"
     },
     {
@@ -123,6 +128,7 @@
       "expected_by_turn": 6,
       "forces_blocker": false,
       "id": "screening-extraction",
+      "branch": "methods-comparison",
       "importance": "material"
     },
     {
@@ -135,6 +141,7 @@
       "expected_by_turn": 7,
       "forces_blocker": false,
       "id": "bias-certainty",
+      "branch": "methods-comparison",
       "importance": "critical"
     },
     {
@@ -147,6 +154,7 @@
       "expected_by_turn": 8,
       "forces_blocker": false,
       "id": "synthesis-policy",
+      "branch": "methods-comparison",
       "importance": "material"
     }
   ],

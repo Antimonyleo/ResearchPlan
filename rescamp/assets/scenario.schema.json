@@ -33,9 +33,10 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "importance", "expected_by_turn", "acceptable_resolution"],
+        "required": ["id", "branch", "importance", "expected_by_turn", "acceptable_resolution"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
+          "branch": {"type": "string", "minLength": 1},
           "importance": {"enum": ["low", "material", "critical"]},
           "expected_by_turn": {"type": "integer", "minimum": 0},
           "acceptable_resolution": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},

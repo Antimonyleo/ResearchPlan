@@ -50,6 +50,7 @@
       "expected_by_turn": 1,
       "forces_blocker": false,
       "id": "decision-authority",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -62,6 +63,7 @@
       "expected_by_turn": 2,
       "forces_blocker": false,
       "id": "asset-failure-modes",
+      "branch": "scope-object",
       "importance": "critical"
     },
     {
@@ -74,6 +76,7 @@
       "expected_by_turn": 3,
       "forces_blocker": false,
       "id": "operating-environment",
+      "branch": "resources",
       "importance": "material"
     },
     {
@@ -86,6 +89,7 @@
       "expected_by_turn": 4,
       "forces_blocker": false,
       "id": "sensor-baseline",
+      "branch": "evidence-access",
       "importance": "material"
     },
     {
@@ -98,6 +102,7 @@
       "expected_by_turn": 5,
       "forces_blocker": false,
       "id": "validation",
+      "branch": "success-evaluation",
       "importance": "critical"
     },
     {
@@ -110,6 +115,7 @@
       "expected_by_turn": 6,
       "forces_blocker": false,
       "id": "safety-boundary",
+      "branch": "ethics-authority",
       "importance": "critical"
     },
     {
@@ -122,6 +128,7 @@
       "expected_by_turn": 7,
       "forces_blocker": false,
       "id": "maintenance-lifecycle",
+      "branch": "resources",
       "importance": "material"
     }
   ],

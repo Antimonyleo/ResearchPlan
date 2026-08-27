@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,7 @@ EXCLUDED_TOP_LEVEL = frozenset({
     ".agents", ".claude", ".codex", ".dist", ".git", ".pytest_cache",
     ".venv", "dist", "node_modules", "research-campaigns", "venv",
 })
+EXCLUDED_EXAMPLE_DIRS = frozenset({"artifacts", "private", "transient", "working"})
 
 
 def repository_files(root: Path, pattern: str) -> Iterator[Path]:
@@ -30,27 +32,88 @@ def repository_files(root: Path, pattern: str) -> Iterator[Path]:
                 or relative.parts[0] in EXCLUDED_TOP_LEVEL
                 or "__pycache__" in relative.parts
                 or relative.parts[:2] == ("benchmark", "runs")
-                or (len(relative.parts) >= 4
-                    and relative.parts[:2] == ("docs", "examples")
-                    and relative.parts[3] == "working")):
+                or (relative.parts[:2] == ("docs", "examples")
+                    and any(part in EXCLUDED_EXAMPLE_DIRS
+                            for part in relative.parts[2:-1]))):
             continue
         yield path
+
+
+def _captured_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return str(value)
+
+
+def _process_group_kwargs() -> dict[str, Any]:
+    if os.name == "posix":
+        return {"start_new_session": True}
+    if os.name == "nt":
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    return {}
+
+
+def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    """Kill a timed-out process and descendants, tolerating exit races."""
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, check=False,
+            )
+            return
+        except (OSError, ProcessLookupError):
+            pass
+    try:
+        process.kill()
+    except ProcessLookupError:
+        pass
 
 
 def run(command: list[str], cwd: Path, timeout: int = 180, env: dict[str, str] | None = None) -> dict[str, Any]:
     started = time.monotonic()
     child_env = dict(os.environ if env is None else env)
     child_env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
-    proc = subprocess.run(
-        command, cwd=cwd, text=True, capture_output=True, timeout=timeout,
-        env=child_env, check=False,
+    proc = subprocess.Popen(
+        command, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        env=child_env, **_process_group_kwargs(),
     )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        _terminate_process_group(proc)
+        stdout, stderr = proc.communicate()
+        timeout_message = f"command timed out after {timeout} seconds"
+        captured_stderr = _captured_text(stderr or exc.stderr)
+        if captured_stderr:
+            captured_stderr = f"{captured_stderr.rstrip()}\n{timeout_message}"
+        else:
+            captured_stderr = timeout_message
+        return {
+            "command": command,
+            "returncode": 124,
+            "timed_out": True,
+            "timeout_seconds": timeout,
+            "elapsed_seconds": round(time.monotonic() - started, 3),
+            "stdout": _captured_text(stdout or exc.stdout)[-20000:],
+            "stderr": captured_stderr[-20000:],
+        }
     return {
         "command": command,
         "returncode": proc.returncode,
+        "timed_out": False,
         "elapsed_seconds": round(time.monotonic() - started, 3),
-        "stdout": proc.stdout[-20000:],
-        "stderr": proc.stderr[-20000:],
+        "stdout": _captured_text(stdout)[-20000:],
+        "stderr": _captured_text(stderr)[-20000:],
     }
 
 
@@ -65,7 +128,7 @@ def compile_python(root: Path) -> list[str]:
 
 
 def validate_json(root: Path) -> tuple[list[str], list[str]]:
-    """Returns (errors, warnings). Warnings cover checks that could not run at all."""
+    """Return JSON and schema errors plus non-blocking release warnings."""
     errors: list[str] = []
     warnings: list[str] = []
     for path in sorted(repository_files(root, "*.json")):
@@ -76,10 +139,8 @@ def validate_json(root: Path) -> tuple[list[str], list[str]]:
     try:
         import jsonschema  # type: ignore
     except ImportError:
-        # Skipping silently reported `valid: true, warnings: 0` on a machine without
-        # jsonschema, with every scenario and campaign left unchecked. Say so instead.
-        warnings.append("jsonschema is not installed; scenario and campaign schema "
-                        "validation did not run (pip install jsonschema)")
+        errors.append("jsonschema is not installed; schema validation cannot run "
+                      "(pip install jsonschema)")
         return errors, warnings
     try:
         for name in ("campaign.schema.json", "review.schema.json", "scenario.schema.json"):
@@ -109,13 +170,23 @@ def validate_json(root: Path) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def ignore_example_transients(_directory: str, names: list[str]) -> list[str]:
+    """Keep copied examples limited to release inputs and published outputs."""
+    return [
+        name for name in names
+        if name in EXCLUDED_EXAMPLE_DIRS
+        or name == "__pycache__"
+        or name.endswith(".cover")
+    ]
+
+
 def audit_examples(root: Path, temp: Path) -> dict[str, dict[str, Any]]:
     """Audit committed examples in copies so release validation never mutates source."""
     results: dict[str, dict[str, Any]] = {}
     for state_path in sorted((root / "docs/examples").glob("*/state/campaign.json")):
         source = state_path.parent.parent
         target = temp / "examples" / source.name
-        shutil.copytree(source, target)
+        shutil.copytree(source, target, ignore=ignore_example_transients)
         results[source.name] = run([
             sys.executable, "rescamp/scripts/rescamp.py", "audit", str(target), "--strict",
         ], root)

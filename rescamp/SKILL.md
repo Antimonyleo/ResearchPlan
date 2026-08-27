@@ -5,39 +5,44 @@ license: MIT
 compatibility: Requires a coding agent with filesystem access; Python 3.9+ enables durable state, validation, review packets, rendering, and benchmarks.
 disable-model-invocation: true
 metadata:
-  version: "0.10.0"
+  version: "0.11.0"
   invocation: "explicit"
 ---
 
 # ResCamp
 
-Compile an early research goal or an existing project into a concrete, proportionate, auditable campaign that people and agents can execute. Work interactively with the user; do not silently launch the research campaign.
+Compile an early research goal or an existing project into a valid research brief or a concrete, proportionate, auditable campaign. Work interactively with the user; do not silently launch research execution.
 
-## Invocation and modes
+## Invocation and planning modes
 
-Treat plain invocation text as `start <goal>`.
+ResCamp is one explicitly invoked skill. Invoke it through the host's wrapper, then pass one host-neutral planning token:
 
-- `start <goal>` — begin a new idea or assess and adopt an existing project, then sketch and interview.
-- `resume [campaign]` — continue a ResCamp campaign from its durable state.
-- `status [campaign]` — show decisions, assumptions, blockers, question budget, and next branch.
-- `draft [campaign]` — render a clearly marked non-final draft.
-- `finalize [campaign]` — run the automatic quality loop, ask any remaining material questions, and render the final campaign bundle.
-- `review [campaign]` or `test [campaign]` — manually rerun validation and proportional review on the current campaign.
-- `benchmark <config>` — manually run a comparative benchmark; never run a full cross-system benchmark merely because an interview ended.
-- `revise [campaign] <change>` — update the campaign, invalidate affected reviews, and rerun quality checks.
-- `audit [campaign]` — verify state, references, artifacts, and hashes.
-- `help` — show concise usage.
+- `Camp-auto <goal>` — work brief-first, render a valid brief, then ask once whether to continue as `Camp-full`.
+- `Camp-brief <goal>` — render a valid brief without an end promotion offer.
+- `Camp-full <goal-or-campaign>` — begin full planning, or adopt an existing brief and continue the same state.
 
-Invoke this skill through the host's explicit-invocation syntax. `references/hosts.md` is the registry of per-host paths, syntax, and explicit-only policy; these instructions are identical on every host and name none of them.
+`references/hosts.md` is the registry for host paths, wrappers, structured controls, and acceptance; keep these skill instructions identical on every host.
 
-Modes are what the user types; they are not all subcommands. The crosswalk:
+After `Camp-auto` successfully runs `brief-finalize`, ask exactly once: **The research brief is ready. Promote it to `Camp-full`?** Use a structured question control when available, with `Promote to Camp-full` and `Keep brief` choices; otherwise ask the same question in plain prose. Persist the offer and answer. Acceptance applies the internal `promotion` transition to the same state; decline leaves it `brief-ready` and suppresses repeated offers for that unchanged brief. `Camp-brief` never makes this offer. A later explicit `Camp-full` may still adopt either brief. There is no public promote mode.
 
-| Mode | Engine command |
+Planning mode controls artifact level and transition behavior. Assurance profile (`scoped`, `standard`, or `high-assurance`) controls interview and review rigor. Neither selects or implies the other.
+
+Lifecycle commands are level-aware and never silently promote a brief. Briefs use `status`,
+`brief-finalize`, and `audit`. Full campaigns use `status`, `draft`, `quality-loop`,
+`finalize`, and `audit`. “Resume” means load status and continue the next unresolved branch;
+“revise” means apply explicit state edits and rerun `quality-loop`. Comparative `benchmark`
+is always manual.
+
+Public modes are not necessarily engine subcommands. The crosswalk is:
+
+| Public mode | Engine transition |
 |---|---|
-| `start` | `init`, then `turn`/`dimension`/`add`/`set` |
+| `Camp-auto` | `init --planning-mode auto`; `brief-finalize`; accepted offer only: internal `promotion` |
+| `Camp-brief` | `init --planning-mode brief`; `brief-finalize`; no offer |
+| `Camp-full` | New: `init --planning-mode full`; existing brief: internal `promotion` |
 | `resume`, `status` | `status <campaign>` — no separate resume; state is already durable |
-| `draft` | `render --draft` |
-| `finalize` | `finalize` |
+| `draft` | Full only: `render --draft` |
+| `finalize` | Brief: `brief-finalize`; full: `finalize` |
 | `review`, `test` | `quality-loop` |
 | `revise` | `set`/`add` the change, then `quality-loop` — there is no `revise` subcommand |
 | `audit` | `audit --strict` |
@@ -48,13 +53,13 @@ Modes are what the user types; they are not all subcommands. The crosswalk:
 
 After reading the goal and supplied materials:
 
-1. Choose `new-project` unless the request or supplied materials show that material work already exists. For an existing project, inspect the relevant files, logs, tests, outputs, decisions, and user-supplied status before planning. Initialize with `--entry-mode existing-project`.
+1. Choose `new-project` unless the request or supplied materials show that material work already exists. For an existing project, inspect the relevant files, logs, tests, outputs, decisions, and user-supplied status before planning. Initialize with the selected `--planning-mode` and `--entry-mode existing-project`.
 2. For an existing project, present **Project baseline v0**: status as of now, assessment basis, accepted completed work, work in progress, inherited artifacts, decisions in force, deviations, items requiring recheck, and the decision frontier at adoption. Label each basis as inspected, user-reported, or inferred. Never infer completion from a filename or polished summary. Later `status` calls derive the live next branch from unresolved intent dimensions; the baseline remains historical provenance.
 3. Preserve valid completed work and begin prospective stages at the current frontier. Recheck work only when its evidence, provenance, assumptions, or acceptance criteria are missing or no longer fit the goal. Keep prior artifacts under their original provenance.
-4. Preserve the verbatim goal and choose a provisional assurance profile: `scoped`, `standard`, or `high-assurance`.
+4. Preserve the verbatim goal, planning mode, and provisional assurance profile.
 5. Infer one or more research archetypes. These are the exact accepted values: `experimental`, `computational`, `observational`, `qualitative-field`, `humanities-interpretive`, `conceptual-normative`, `evidence-synthesis`, `policy-program-evaluation`, `design-engineering`, `creative-practice`, `mixed-methods`.
-6. Present **Campaign sketch v0**: decision or purpose, scope, core inquiries, likely evidence, rough methods/stages, success or adjudication criteria, major assumptions/risks, and proposed outputs. For an existing project, show how the sketch continues, repairs, or supersedes the baseline.
-7. State that the baseline and sketch are corrigible, save them, and ask the single highest-value unresolved question.
+6. Present **Campaign sketch v0**: decision or purpose, scope, non-goals, core inquiries, likely evidence, rough methods/stages, success or adjudication criteria, major assumptions/risks, proposed outputs, and next action. For an existing project, show how the sketch continues, repairs, or supersedes the baseline.
+7. State that the baseline and sketch are corrigible, save them, and ask the single highest-value question needed for the selected artifact level.
 
 Evidence already observed before adoption is retrospective or exploratory unless a genuinely prior protocol governs it. Never relabel a newly written evaluation rule as preregistered or frozen before those results. Freeze rules prospectively for the remaining work and separate any new confirmatory stage from inherited results.
 
@@ -76,9 +81,11 @@ For every answer:
 
 Use public research for publicly knowable facts. Never ask again for information already supplied. Accept “I do not know”: research it, offer a reversible default, or record a real blocker. Never invent access, data rights, consent, approval, credentials, budget, deadline, risk tolerance, or authority.
 
-Treat unresolved shape as **fog**, not a blank to fill. When a material decision is not yet precise enough to encode, keep its intent dimension `unresolved` or `partial` and record the dependency or blocker. Never create placeholder campaign objects merely to satisfy validation. Drafts may remain incomplete; execution-ready campaigns may not.
+Treat unresolved shape as **fog**, not a blank to fill. When a material decision is not yet precise enough to encode, keep its intent dimension `unresolved` or `partial` and record the dependency or blocker. Never create placeholder campaign objects merely to satisfy validation. Drafts may remain incomplete; brief-ready and execution-ready artifacts must meet their respective gates.
 
-Question budgets are safeguards, not targets:
+Question budgets are safeguards, not targets. Camp-auto and Camp-brief target zero to three
+questions and stop at four unless the user explicitly extends the brief interview. Camp-full
+uses the assurance-profile budgets:
 
 | Profile | Typical | Soft stop | Hard stop |
 |---|---:|---:|---:|
@@ -100,65 +107,50 @@ Use this compact format:
 
 When the host offers a structured question control, use it and put the recommended default first; keep the same fields. Fall back to plain prose when it does not. Never use a picker to force a choice where "I do not know" or a blocker is the honest answer.
 
-## Campaign architecture
+## Artifact-level stopping rules
 
-The final plan and execution prompt must preserve the governing architecture of the Anthropic protein-design campaign while translating it to the user’s field:
+A valid brief records the decision or purpose, scope and non-goals, core inquiries, likely evidence and rough method, assumptions and material unknowns, blockers, proposed outputs, and next action. It is `brief-ready`, not execution-ready, and authorizes no research execution. In `Camp-auto` or `Camp-brief`, stop when those fields are resolved, safely defaulted, defensibly deferred, or exposed as blockers, then run `brief-finalize`.
 
-1. **Campaign constitution** — authority, non-negotiable verification, provenance, safety, and reporting rules inherited by every worker.
-2. **Starting point, mission, and deliverables** — assessed project status, accepted prior work, current decision frontier, decision/purpose, exact outputs, boundaries, non-goals, and completion definition.
-3. **Object and evidence dossier** — exact system, population, corpus, case, construct, historical frame, stakeholders, source hierarchy, and known alternatives.
-4. **Inquiry logic** — questions, claims or hypotheses, discriminating predictions or interpretive implications, rival explanations/readings, counterevidence, and uncertainty.
-5. **Method portfolio** — complementary methods, diversity rules, dependencies, limitations, and why each method can change the decision.
-6. **Tools and canaries** — identities/versions, access, real production-like smoke tests, schemas, sanity checks, and downstream acceptance before scale-up.
-7. **Frozen evaluation instrument** — criteria, controls/comparators or adjudication rules, positive/negative cases where meaningful, scoring or judgment procedures, missing-evidence policy, and stop/no-go rules fixed before production evidence is inspected.
-8. **Staged funnel** — cheap checks before expensive work, promotion gates, iterative refinement, bounded adaptation, and confirmatory work separated from exploration. For broad multi-day campaigns, major gates also name the fresh reviewer, frozen inputs, and `pass`/`revise`/`block` decision.
-9. **Resources and dispatch** — time, budget, access, compute/materials, concurrency, fail-closed dispatch, approvals, and a single source of truth. Budget is a floor as well as a ceiling: declare an expected pace and checkpoints, and treat large under-spend with unexplored branches as an incomplete campaign rather than a thrifty one.
-10. **Delegation** — bounded worker briefs with objective, authoritative inputs, permitted/prohibited actions, exact outputs, verification, resource ceiling, retry, and escalation.
-11. **Durable operations** — active plan digest, append-only events, atomic checkpoints, liveness, interruption recovery, idempotency, restart reconciliation, controlled amendments, and artifact-based completion. A chat is not a scheduler.
-12. **Ethics, safety, rights, and external actions** — consent, privacy, legal or institutional constraints, permissions, reversible boundaries, and human approval points.
-13. **Reporting and claim discipline** — claims linked to admissible support and disconfirming evidence; preserve null, negative, failed, contradictory, and deviating results.
-14. **Transactional closeout** — schema-checked deliverables, acceptance tests, unresolved deviations, hashes, and reproducible handoff.
-15. **Independent challenge** — frozen-version reviewers or auditors appropriate to risk; no reviewer edits canonical state. Name the highest rung of independence actually reached: sequential self-critique < separate agent context < separate agent blinded to conclusions < human domain expert < external adjudicator with its own data. An agent reviewer checks internal coherence; it is not external validation, and no amount of it substitutes for measurement, replication, an archive, or peer review.
-16. **Kickoff** — a compact command that starts execution from the frozen campaign contract.
+`brief-finalize` writes `outputs/RESEARCH_BRIEF.md` and its small hash manifest. It does not
+write the full campaign bundle.
 
-In Anthropic's campaign roughly a third of the prompt was domain guidance and the remaining two thirds were orchestration, verification, and operations. Treat that as a heuristic, not a law: a rich dossier attached to a thin orchestration section is the common failure.
+`Camp-full` continues until the full architecture below is encoded and reviewed. Promotion is monotonic: preserve the brief, verbatim answers, normalized decisions, provenance, and digest; add only missing full-campaign requirements. Repeating an accepted internal promotion is harmless. Rendering a brief view of a full campaign never downgrades canonical state.
 
-Apply this architecture proportionately. A small archival question may satisfy a section in a few lines; a costly autonomous experiment requires exact registries and operational controls. Never add machinery that cannot change the research decision or protect integrity.
+## Full-campaign compilation and QA orchestration
 
-## Automatic quality loop after interviewing
+Load `references/architecture.md` only after the artifact level is full. Compile the mission,
+evidence and inquiry logic, methods, frozen evaluation, tools and canaries, staged gates,
+resources and approvals, delegation, durable operations, rights/safety, claims, deliverables,
+closeout, and kickoff proportionately. Never add machinery that cannot change the decision or
+protect integrity. Load `references/quality-loop.md` when freezing or reviewing.
 
-When the interview stopping rule is met, automatically:
+The engine validates, freezes, and writes role-scoped review packets; it does not execute
+reviewers or repair findings itself. The host agent executes each required packet in a fresh
+read-only context when available, records the actual independence level, ingests the returned
+record, repairs agent-fixable defects, and reruns only affected review scopes. User authority,
+external approval, and accepted risk stay explicit. A required pilot must be genuinely run and
+digest-bound. Finalize only after required gates pass; otherwise render a blocked draft.
 
-1. Freeze a candidate content version and digest.
-2. Run deterministic architecture, reference, graph, budget, permission, and deliverable checks.
-3. Run proportional plan review:
-   - `scoped`: deterministic checks plus one skeptical completeness pass;
-   - `standard`: separate methods/evidence and operations/reproducibility passes when the host supports them;
-   - `high-assurance`: separate methods, operations, and ethics/claim-integrity reviewers; execution readiness remains blocked if required independence is unavailable.
-4. Classify every finding as `agent-fix`, `user-answer`, `external-approval`, or `accepted-risk`.
-5. Fix agent-resolvable defects. Ask the user only the highest-value one or two remaining questions, then re-freeze and rerun the loop.
-6. For expensive or high-assurance campaigns, run a bounded pilot of the rendered campaign before freezing, record what actually failed, and repair. Reviewing a static document is a weaker guarantee than watching it run; label a campaign frozen without a pilot as `reviewed-static`.
-7. Render a final bundle only when required gates pass. Otherwise render a useful draft labeled **NOT EXECUTION-READY** with exact blockers. `execution-ready` means the plan passed its gates, never that a conclusion is validated.
-
-This automatic loop evaluates the current campaign. The manual `benchmark` mode is the broader matched comparison across versions, baselines, or external tools.
-
-## Keep long campaigns aligned
-
-For work spanning multiple days, contexts, or agent teams, compile the plan-continuity and controlled-amendment procedure in `references/architecture.md`, sections 8 and 11. Keep the scientific and authority core locked while tactics adapt inside it. Bind every work brief and checkpoint to the active digest; a pending brief from an older version is stale.
-
-Place a fresh read-only review at each major execution stage that produces a decision-bearing artifact: eight major execution stages normally produce eight review gates, not one review after every task. Bound each review to three material findings and two rounds — and require the reviewer to disclose how many material findings it found when the cap hides any, so a capped review is never read as a clean result. After two rounds, escalate to the gate owner. Route methodological changes through targeted `revise`; stop constitutional changes for user or institutional approval.
+For multi-day or multi-agent work, compile the continuity rules in
+`references/architecture.md`: bind work to the active digest, review major decision-bearing
+gates, preserve completed evidence under its producing version, and stop constitutional
+changes for approval. ResCamp is a compiler and auditor, not a scheduler.
 
 ## Durable tools and selective references
 
 When Python and filesystem access exist, use `scripts/rescamp.py` for state, validation, review packets, rendering, and audit. The working sequence is:
 
 ```text
-init --goal … --profile … --archetypes … [--entry-mode existing-project] [--id <slug>]
-turn / dimension                                          # one per interview exchange
+init --planning-mode auto|brief|full --goal … --profile … --archetypes … [--entry-mode existing-project] [--id <slug>]
+migrate <c>                                                # explicitly upgrade pre-3.2 state as Camp-full
+dimension <c> --id <id> --status <status> [--value …]     # update one decision dimension
+turn <c> --branch <b> --question … --answer … --normalized …
 apply <c> --json @campaign.json                           # many sections at once, fields checked
 add <c> <list-path> --json @section.json                  # one list section, fields checked
 set <c> <dict-path> @section.json                         # replace an existing subtree
-stop <c> --reason <stopping-reason>                       # validates, freezes, writes review packets
+brief-finalize <c>
+promotion <c> --decision accept|decline --source auto-prompt|camp-full --answer …
+stop <c> --reason <stopping-reason>                       # brief: record stop; full: begin QA orchestration
   → execute each packet in working/review_packets/ as a separate read-only reviewer
 ingest-review <c> <record.json>                           # once per required role
 finalize <c>                                              # fail-closed; renders the bundle
@@ -183,9 +175,9 @@ Load only the reference needed for the current branch:
 
 Do not load every reference or schema into context. Prefer deterministic scripts for hashes, schemas, graph checks, state transitions, and scoring; use agents for interpretation, research design, synthesis, and challenge.
 
-## Final bundle
+## Full campaign bundle
 
-Render:
+For `Camp-full`, render:
 
 - `CAMPAIGN_PROMPT.md` — complete execution constitution and research scheme;
 - `KICKOFF.md` — compact start command;

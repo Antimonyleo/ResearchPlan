@@ -2,7 +2,7 @@
 
 **Status:** EXECUTION-READY
 
-**Campaign contract:** `campaign.json` @ `sha256:cec061c58fca6136d0d70765c7c307fa82692a7020455fdb2ce8691f7230bb2d`
+**Campaign contract:** `campaign.json` @ `sha256:5027fd0be0557eb8d85df05f7cfaf0b401cb53b8d44e921242fd400e48948c39`
 
 ## Start here
 
@@ -12,13 +12,13 @@ Begin WU-freeze. Read the campaign constitution and D-target's schema, then retr
 
 **G1**
 
-- The target, environment, and exact compute-allocation record are frozen; all four tool canaries pass deterministic production-setting checks against versioned raw schemas independent of D-thresholds; no threshold table is applied at G1.
+- The target, environment, model provenance, exact allocation evidence, fixed S3 frame, and complete canary specification are frozen and independently checked; all four G1 canaries pass their semantic production-setting checks, raw schemas, and deterministic replays on labelled non-campaign fixtures; missing inputs, unverifiable provenance, missing tolerances, or a process-only canary pass fails G1. No threshold table is applied at G1.
 - **Required evidence:**
   - D-target carrying a verified accession, chain, hotspot residue set, and detached manifest digest.
-  - D-environment carrying every tool version, weight digest, image digest, licence, APR-compute evidence, available GPU-hours, allocation scope, and exact timezone-aware expiry.
-  - All four G1 canary manifests showing positive, negative, schema, and reproducibility checks passed on labelled non-campaign fixtures; every canary ends at versioned raw output independent of D-thresholds.
+  - D-environment carrying every tool identity/version, weight and image digest, licence, independently verifiable model-training provenance or explicit contamination-uncertain fallback, APR-compute evidence digest, hard caps, reserved contingency, fixed S3 frame, allocation scope, and exact timezone-aware expiry.
+  - All four G1 canary manifests showing immutable fixture digests, semantic positive/negative/schema/replay checks, declared units and tolerances or comparison rules, model and seed identity, exact output digests, typed failure status, and pass on labelled non-campaign fixtures; every canary ends at versioned raw output independent of D-thresholds.
 - **Owner:** ROLE-methods
-- **On failure:** S2 does not start and no allocation beyond the S1 budget is consumed. A failed canary is fixed and rerun; a structure that cannot be verified against RCSB sends the epitope definition back for reselection.
+- **On failure:** S2 does not start and no allocation beyond the S1 cap is consumed when any target, environment, allocation, model-provenance, sampling-frame, or canary requirement is missing or unverifiable. An allocation assertion is not evidence; an affected model may be used only for descriptive diagnostics under the provenance fallback and cannot authorize G2 or spend. A failed canary is fixed and rerun under the declared retry cap; the fourth failure escalates to ROLE-pi.
 
 ## Initially unverified backlog
 
@@ -34,6 +34,6 @@ Begin WU-freeze. Read the campaign constitution and D-target's schema, then retr
 - Provenance: every structure, weight file, container image, seed, score table, and runtime record is recorded with its source, version or accession, retrieval time, and digest. Artifact digests are SHA-256 over the exact stored bytes; digests are written to the detached UTF-8 `artifacts/MANIFEST.sha256`, never embedded in the bytes they identify.
 - Controls before candidates: no design is scored until the positive and negative control sets have been run through the identical pipeline and their separation recorded.
 - Fail closed on authority: no worker may order genes, commit synthesis spend, contact a vendor, or begin wet-lab work. The campaign terminates at a recommendation.
-- Reporting: a no-go recommendation is reported with the same completeness as a go, including the full ranked design table and every failed filter.
+- Reporting: after accepted G2, a no-go recommendation is reported with the same completeness as go, including the full ranked design table and every failed filter. After adjudicated nonaccepted G2, the immutable terminal control-failure record is the complete evidence package; generation, scoring, D-designs, a ranked design table, and G3 are prohibited and therefore not required.
 
 Read `CAMPAIGN_PROMPT.md` for the full campaign constitution before acting.

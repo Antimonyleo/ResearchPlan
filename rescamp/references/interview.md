@@ -69,6 +69,11 @@ Stop when all material dimensions are resolved, explicitly defaulted, defensibly
 
 A blocker does not require endless interviewing. It requires an honest non-ready plan.
 
+For Camp-auto and Camp-brief, target zero to three questions and stop at four unless the
+user explicitly extends the brief interview. A brief may expose a material unknown instead
+of resolving every full-campaign decision. Camp-full uses the assurance-profile budgets in
+the main skill.
+
 ## Burden diagnostics
 
 Flag:

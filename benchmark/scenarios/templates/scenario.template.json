@@ -23,7 +23,7 @@
       ],
       "answer_key": "hidden answer",
       "forces_blocker": false,
-      "branch": "scope-object"
+      "branch": "decision-purpose"
     }
   ],
   "forbidden_assumptions": [],

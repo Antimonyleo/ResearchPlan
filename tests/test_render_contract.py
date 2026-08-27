@@ -532,6 +532,29 @@ class IntegrityClaimTests(unittest.TestCase):
         result = engine.validate_state(state, include_reviews=True)
         self.assertTrue(result["execution_ready"], result["errors"])
 
+    def test_non_string_risk_acceptance_authority_cannot_unblock_a_finding(self):
+        state = add_passing_reviews(complete_state())
+        role = state["reviews"]["records"][0]["role"]
+        finding = {
+            "severity": "major", "action": "accepted-risk",
+            "description": "A bounded residual risk remains after mitigation.",
+        }
+        state["reviews"]["records"][0]["findings"] = [finding]
+        state["assurance"]["risk_acceptances"] = [{
+            "finding_digest": engine.finding_digest(role, finding),
+            "content_digest": engine.content_digest(state),
+            "accepted_by": ["principal-investigator"], "authority": {"role": "owner"},
+            "accepted_at": engine.now_iso(), "scope": ["this campaign"],
+            "evidence": {"record": "RA-1"},
+        }]
+
+        result = engine.validate_state(state, include_reviews=True)
+
+        self.assertFalse(result["execution_ready"])
+        self.assertTrue(any(
+            item["code"] == "risk_acceptance.missing" for item in result["errors"]
+        ))
+
     def test_claims_reach_the_execution_prompt(self):
         state = add_passing_reviews(complete_state())
         prompt = engine.render_campaign_prompt(state, "EXECUTION-READY")
@@ -565,6 +588,21 @@ class ReviewPacketScopeTests(unittest.TestCase):
     def test_unknown_role_receives_the_whole_campaign(self):
         frozen = engine.substantive_state(complete_state("observational", "scoped"))
         self.assertEqual(engine.scope_packet_for_role(frozen, "skeptical"), frozen)
+
+    def test_packet_embeds_portable_output_schema(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp)
+            (campaign_dir / "state").mkdir()
+            engine.write_json(campaign_dir / engine.STATE_REL, complete_state())
+            state = engine.load_state(campaign_dir)
+
+            _, _, paths = engine.freeze_and_packets(campaign_dir, state)
+
+            packet = engine.read_json(paths[0])
+            schema = packet["instructions"]["required_output_schema"]
+            self.assertIsInstance(schema, dict)
+            self.assertEqual(schema.get("$schema"), "https://json-schema.org/draft/2020-12/schema")
+            self.assertNotIn(str(engine.SKILL_DIR), json.dumps(packet))
 
 
 

@@ -16,7 +16,7 @@ Each adapter is a stateless command. The harness writes one JSON object to stdin
     "initial_request": "..."
   },
   "history": [{"role": "user", "message": "..."}],
-  "condition": {"id": "rescamp-0.10-live"},
+  "condition": {"id": "rescamp-current-live"},
   "run_dir": "/absolute/path"
 }
 ```
@@ -72,4 +72,4 @@ The harness replaces Team S paths with read-only copies under a random candidate
 
 ## Isolation requirements
 
-Use fresh sessions or processes. Pin model and host versions. Hold tools, network, context, retries, time, and token budgets constant. Randomize blinded labels. Store raw requests, responses, logs, and artifact hashes. A sequential role simulation is a smoke test, not independent evidence.
+Use fresh sessions or processes. Pin model and host versions. Hold tools, network, context, retries, time, and token budgets constant. The harness randomizes job order and blinded labels, records request digests and raw adapter stdout/stderr in `adapter_calls.json`, and hashes persisted artifacts. Keep private raw requests separately only when permissions allow. A sequential role simulation is a smoke test, not independent evidence.

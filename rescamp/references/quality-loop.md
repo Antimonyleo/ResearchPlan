@@ -1,6 +1,9 @@
 # Automatic quality loop
 
-The automatic loop runs after the interview stopping rule and whenever `finalize` or `revise` is used. It is current-campaign quality assurance, not a full comparative benchmark.
+The automatic loop runs for Camp-full after the interview stopping rule and whenever
+`finalize` runs or an explicit revision is applied. Camp-auto and Camp-brief use brief validation and render
+`RESEARCH_BRIEF.md`; they enter this loop only after an accepted promotion. This is
+current-campaign quality assurance, not a full comparative benchmark.
 
 These reviews approve a plan version before execution. A broad long-running campaign may also require fresh reviews at major execution checkpoints; those inspect stage artifacts and decide whether the current plan remains usable. They do not reuse or replace the records here. See `architecture.md`, sections 8 and 11.
 

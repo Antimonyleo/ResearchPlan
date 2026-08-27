@@ -34,4 +34,8 @@ Planning quality does not establish research success. Evaluate execution with ta
 
 ## Statistical plan
 
-Use paired scenario differences, repeated runs, bootstrap confidence intervals (flat percentile bootstrap over pooled runs; not clustered by scenario, and suppressed entirely for fixture conditions), domain/profile strata, critical-defect rates, and model-by-condition interactions. Report burden and cost separately. A leaderboard average must not hide a critical safety or validity defect.
+Use paired scenario differences, repeated runs, scenario-clustered bootstrap confidence intervals
+(reported only for verified live runs with matched controls), domain/profile strata, critical-defect rates, and
+model-by-condition interactions. A failed sample suppresses its pairwise effect estimate instead
+of disappearing into a survivor-only comparison. Report burden and cost separately. A leaderboard
+average must not hide a critical safety or validity defect.
