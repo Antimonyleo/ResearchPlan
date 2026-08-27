@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -25,6 +26,21 @@ VALIDATOR_SPEC = importlib.util.spec_from_file_location(
 skill_validator = importlib.util.module_from_spec(VALIDATOR_SPEC)
 assert VALIDATOR_SPEC.loader
 VALIDATOR_SPEC.loader.exec_module(skill_validator)
+
+
+FAKE_HOST_SOURCE = (
+    "#!/usr/bin/env python3\n"
+    "import json, pathlib, sys\n"
+    "if '--version' in sys.argv:\n"
+    "    print('fake-host 1.0')\n"
+    "else:\n"
+    "    # host body\n"
+    "    pathlib.Path('artifact.txt').write_text('new output', encoding='utf-8')\n"
+    "    if '-o' in sys.argv:\n"
+    "        pathlib.Path(sys.argv[sys.argv.index('-o') + 1])"
+    ".write_text('ok', encoding='utf-8')\n"
+    "    print(json.dumps({'is_error': False, 'result': 'ok'}))\n"
+)
 
 
 class HostAcceptanceTests(unittest.TestCase):
@@ -364,12 +380,68 @@ class HostAcceptanceTests(unittest.TestCase):
                 configured_root = (project / adapter.skill_path).parent
                 configured_root.parent.mkdir(parents=True)
                 configured_root.symlink_to(ROOT / "rescamp", target_is_directory=True)
+                fake = project / "fake-host.py"
+                fake.write_text(FAKE_HOST_SOURCE, encoding="utf-8")
+                fake.chmod(0o755)
 
-                resolved_root = configured_root.resolve()
-                self.assertEqual(
-                    (configured_root / "SKILL.md").resolve(), resolved_root / "SKILL.md"
+                result = self.run_acceptance(
+                    "--host", host, "--project", str(project), "--mode", "Camp-brief",
+                    "--goal", "bounded goal", "--executable", str(fake),
+                    "--expect", "artifact.txt",
                 )
-                self.assertEqual(host_acceptance.skill_installation_errors(resolved_root), [])
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                receipt = json.loads(result.stdout)
+                self.assertTrue(receipt["passed"])
+                self.assertEqual(
+                    receipt["skill_tree_sha256"], receipt["accepted_skill_tree_sha256"]
+                )
+
+    def test_symlinked_install_rewritten_during_the_run_does_not_pass(self):
+        adapter = host_acceptance.HOST_ADAPTERS["codex"]
+        with tempfile.TemporaryDirectory() as temp_str:
+            root = Path(temp_str)
+            canonical = root / "canonical/rescamp"
+            shutil.copytree(ROOT / "rescamp", canonical)
+            project = root / "project"
+            configured_root = (project / adapter.skill_path).parent
+            configured_root.parent.mkdir(parents=True)
+            configured_root.symlink_to(canonical, target_is_directory=True)
+            fake = root / "skill-rewriting-host.py"
+            fake.write_text(
+                FAKE_HOST_SOURCE.replace(
+                    "    # host body\n",
+                    f"    skill = pathlib.Path({str(canonical / 'SKILL.md')!r})\n"
+                    "    skill.write_text(skill.read_text(encoding='utf-8') + 'rewritten\\n',"
+                    " encoding='utf-8')\n",
+                ),
+                encoding="utf-8",
+            )
+            fake.chmod(0o755)
+            receipt_path = root / "receipt.json"
+            argv = [
+                "host_acceptance.py",
+                "--host", "codex", "--project", str(project), "--mode", "Camp-brief",
+                "--goal", "bounded goal", "--executable", str(fake),
+                "--expect", "artifact.txt", "--receipt", str(receipt_path),
+            ]
+
+            with mock.patch.object(host_acceptance, "CANONICAL_SKILL_ROOT", canonical), \
+                    mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(sys, "stdout", io.StringIO()):
+                returncode = host_acceptance.main()
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(returncode, 2)
+        self.assertTrue(receipt["expected_artifacts"]["artifact.txt"])
+        self.assertEqual(
+            receipt["skill_tree_sha256"], receipt["canonical_skill_tree_sha256"],
+            "a symlinked install and its canonical target move together",
+        )
+        self.assertNotEqual(
+            receipt["skill_tree_sha256"], receipt["accepted_skill_tree_sha256"]
+        )
+        self.assertFalse(receipt["passed"])
 
     @unittest.skipUnless(hasattr(os, "killpg"), "process-group termination requires POSIX")
     def test_timeout_cleanup_tolerates_process_exit_race(self):

@@ -5,6 +5,7 @@ import copy
 import io
 import json
 import os
+import random
 import shutil
 import signal
 import subprocess
@@ -998,6 +999,99 @@ class BenchmarkTests(unittest.TestCase):
 
         self.assertTrue(asked)
         self.assertEqual(asked - set(bench.BRANCH_IDS), set())
+
+    def test_confidence_bounds_do_not_depend_on_score_arrival_order(self):
+        scores = []
+        rng = random.Random(11)
+        for scenario in range(6):
+            for replicate in range(3):
+                scores.append({
+                    "run_id": f"s{scenario}-c-{replicate}", "scenario_id": f"s{scenario}",
+                    "condition": "c", "replicate": replicate,
+                    "score": 60.0 + rng.random() * 30.0,
+                    "evidence_class": bench.LIVE_EVIDENCE_CLASS,
+                    "metrics": {"critical_defect_count": 0, "interview_turns": 3,
+                                "interaction_burden_score": 80.0},
+                })
+        attempts = [
+            {"scenario_id": item["scenario_id"], "condition": "c",
+             "replicate": item["replicate"], "succeeded": True}
+            for item in scores
+        ]
+        shuffled = list(scores)
+        random.Random(99).shuffle(shuffled)
+
+        first = bench.aggregate(list(scores), list(attempts))
+        second = bench.aggregate(shuffled, list(attempts))
+
+        self.assertNotEqual([item["run_id"] for item in scores],
+                            [item["run_id"] for item in shuffled])
+        self.assertIsNotNone(first["conditions"]["c"]["score_mean_ci95"][1])
+        self.assertEqual(first["conditions"]["c"]["score_mean_ci95"],
+                         second["conditions"]["c"]["score_mean_ci95"])
+
+    def test_context_usage_totals_report_the_system_under_test_only(self):
+        scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]
+        usage = {"team_s": 100.0, "team_u": 40.0, "team_e": 5000.0}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            evaluation = bench.fixture_team_e(
+                scenario, [], {"declared_resolutions": [], "declared_features": [],
+                               "declared_blockers": [], "readiness_claimed": False},
+                "rescamp-current-fixture",
+            )
+            (root / "evaluation.json").write_text(json.dumps(evaluation), encoding="utf-8")
+            bodies = {
+                "team_s": (
+                    "history = payload['history']\n"
+                    "asked = sum(1 for e in history if e.get('action') == 'ask')\n"
+                    "body = ({'action': 'ask', 'message': 'One question?',\n"
+                    "         'branch': 'decision-purpose', 'question_count': 1}\n"
+                    "        if asked == 0 else\n"
+                    "        {'action': 'final', 'message': 'done', 'declared_resolutions': [],\n"
+                    "         'declared_features': [], 'declared_blockers': [],\n"
+                    "         'readiness_claimed': False})\n"
+                ),
+                "team_u": "body = {'message': 'No stronger private constraint.'}\n",
+                "team_e": f"body = json.load(open({str(root / 'evaluation.json')!r}))\n",
+            }
+            adapters = {}
+            for role, body in bodies.items():
+                script = root / f"{role}.py"
+                script.write_text(
+                    "import json, sys\n"
+                    "payload = json.loads(sys.stdin.readline())\n"
+                    + body
+                    + f"body['usage'] = {{'tokens': {usage[role]}, "
+                    f"'cost_usd': {usage[role] / 1000.0}}}\n"
+                    "print(json.dumps(body))\n",
+                    encoding="utf-8",
+                )
+                adapters[role] = f"{sys.executable} {script}"
+            condition = {
+                "id": "usage-condition", "adapter": "external-command",
+                "command": adapters["team_s"],
+                "user_adapter": adapters["team_u"],
+                "evaluator_adapter": adapters["team_e"],
+                "model_id": "fixture", "host_version": "fixture",
+            }
+
+            score = bench.run_one(scenario, condition, 1, root / "runs", 20, 5)
+            context = json.loads(
+                (root / "runs" / score["run_id"] / "evaluation.json").read_text(encoding="utf-8")
+            )["context"]
+
+        by_role = context["usage_by_role"]
+        self.assertEqual(by_role["team_u"]["tokens"], usage["team_u"])
+        self.assertEqual(by_role["team_e"]["tokens"], usage["team_e"])
+        self.assertEqual(by_role["team_s"]["tokens"], usage["team_s"] * by_role["team_s"]["calls"])
+        self.assertEqual(context["tokens"], by_role["team_s"]["tokens"])
+        self.assertEqual(context["cost_usd"], by_role["team_s"]["cost_usd"])
+        self.assertLess(
+            context["tokens"],
+            sum(item["tokens"] for item in by_role.values()),
+            "the evaluator and hidden user must not inflate the system-under-test total",
+        )
 
     def test_operations_rating_separates_the_skilled_and_bare_fixtures(self):
         scenario = bench.load_scenarios(ROOT / "benchmark/scenarios/public")[0]

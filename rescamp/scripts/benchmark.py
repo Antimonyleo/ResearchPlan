@@ -1040,8 +1040,8 @@ def _run_one_with_workspace(scenario: dict[str, Any], condition: dict[str, Any],
             raise
 
     elapsed = time.monotonic() - started
-    total_tokens = sum(float(item["tokens"]) for item in usage_by_role.values())
-    total_cost = sum(float(item["cost_usd"]) for item in usage_by_role.values())
+    total_tokens = float(usage_by_role["team_s"]["tokens"])
+    total_cost = float(usage_by_role["team_s"]["cost_usd"])
     evidence_class = evidence_class_for(condition, evaluation)
     evaluation.update({
         "evidence_class": evidence_class, "evidence_note": EVIDENCE_NOTE[evidence_class],
@@ -1329,10 +1329,14 @@ def bootstrap_mean_ci(values: list[float], seed: int = 0, iterations: int = 2000
         return [None, None, None]
     if suppress or len(values) < MIN_BOOTSTRAP_N:
         return [round(statistics.fmean(values), 3), None, None]
+    # `rng.choice` selects by index, so an unsorted population makes the seeded bounds
+    # depend on the order samples happened to arrive in. Run order is shuffled, so the
+    # same multiset would otherwise publish different intervals between runs.
     rng = random.Random(seed)
+    population = sorted(values)
     means = []
     for _ in range(iterations):
-        sample = [rng.choice(values) for _ in values]
+        sample = [rng.choice(population) for _ in population]
         means.append(statistics.fmean(sample))
     means.sort()
     lo = means[int(0.025 * (iterations - 1))]

@@ -406,6 +406,11 @@ def main() -> int:
                     "ResCamp installation is incomplete; "
                     + "; ".join(skill_errors)
                 )
+            # A whole-tree symlink install, which hosts.md supports, can resolve onto the
+            # canonical tree itself. Comparing the two after the run then compares a
+            # directory with itself and a mid-run rewrite moves both sides together, so
+            # the accepted bytes are pinned here, before the host is ever executed.
+            accepted_digest = digest_tree(skill_root)
             expected_paths: dict[str, Path] = {}
             expected_before: dict[str, dict[str, object] | None] = {}
             expected_glob_before: dict[str, dict[str, dict[str, object]]] = {}
@@ -497,6 +502,7 @@ def main() -> int:
                 "host_version_returncode": version_result.returncode,
                 "skill_tree_sha256": installed_digest,
                 "canonical_skill_tree_sha256": canonical_digest,
+                "accepted_skill_tree_sha256": accepted_digest,
                 "elapsed_seconds": round(time.monotonic() - started, 3),
                 "timed_out": bool(timeout_stage),
                 "timeout_stage": timeout_stage or None,
@@ -519,7 +525,8 @@ def main() -> int:
                 and not bool(getattr(result, "encoding_error", False))
                 and response_ok(args.host, response) and all(expected.values())
                 and all(expected_globs.values())
-                and installed_digest == canonical_digest,
+                and installed_digest == canonical_digest
+                and installed_digest == accepted_digest,
             })
         text = json.dumps(receipt, indent=2, ensure_ascii=True, sort_keys=True) + "\n"
         if args.evidence_dir and not args.dry_run:

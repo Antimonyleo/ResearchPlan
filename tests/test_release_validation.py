@@ -286,6 +286,37 @@ class ReleaseValidationTests(unittest.TestCase):
             for directory in ("working", "artifacts", "private", "transient"):
                 self.assertFalse((target / directory).exists())
 
+    def test_release_gate_still_sees_nested_example_files(self):
+        validator = load_validator()
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for relative in (
+                "rescamp/SKILL.md",
+                "docs/examples/demo/outputs/artifacts/SKILL.md",
+                "docs/examples/demo/state/working/broken.py",
+                "docs/examples/demo/outputs/artifacts/bad.json",
+                "docs/examples/demo/working/scratch.json",
+                "docs/examples/demo/private/secret.json",
+            ):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("x\n", encoding="utf-8")
+
+            found = {
+                pattern: sorted(
+                    item.relative_to(root).as_posix()
+                    for item in validator.repository_files(root, pattern)
+                )
+                for pattern in ("SKILL.md", "*.py", "*.json")
+            }
+
+        self.assertIn("docs/examples/demo/outputs/artifacts/SKILL.md", found["SKILL.md"])
+        self.assertIn("docs/examples/demo/state/working/broken.py", found["*.py"])
+        self.assertIn("docs/examples/demo/outputs/artifacts/bad.json", found["*.json"])
+        self.assertNotIn("docs/examples/demo/working/scratch.json", found["*.json"])
+        self.assertNotIn("docs/examples/demo/private/secret.json", found["*.json"])
+
     def test_example_audit_copy_keeps_nested_unrecorded_output(self):
         validator = load_validator()
 

@@ -33,9 +33,9 @@ def repository_files(root: Path, pattern: str) -> Iterator[Path]:
                 or relative.parts[0] in EXCLUDED_TOP_LEVEL
                 or "__pycache__" in relative.parts
                 or relative.parts[:2] == ("benchmark", "runs")
-                or (relative.parts[:2] == ("docs", "examples")
-                    and any(part in EXCLUDED_EXAMPLE_DIRS
-                            for part in relative.parts[2:-1]))):
+                or (len(relative.parts) >= 4
+                    and relative.parts[:2] == ("docs", "examples")
+                    and relative.parts[3] in EXCLUDED_EXAMPLE_DIRS)):
             continue
         yield path
 

@@ -117,7 +117,7 @@
       "importance": "material"
     }
   ],
-  "profile": "scoped",
+  "profile": "standard",
   "question_budget": {
     "hard": 8,
     "soft": 6
