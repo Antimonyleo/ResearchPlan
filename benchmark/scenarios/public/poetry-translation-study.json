@@ -119,8 +119,8 @@
   ],
   "profile": "standard",
   "question_budget": {
-    "hard": 8,
-    "soft": 6
+    "hard": 12,
+    "soft": 8
   },
   "required_campaign_features": [
     {
