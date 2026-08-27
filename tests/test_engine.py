@@ -9,6 +9,12 @@ from common import engine, complete_state, add_passing_reviews
 
 
 class EngineTests(unittest.TestCase):
+    def test_validation_without_reviews_cannot_report_execution_readiness(self):
+        result = engine.validate_state(complete_state(), include_reviews=False)
+        self.assertTrue(result["valid"], result["errors"])
+        self.assertFalse(result["execution_ready"])
+        self.assertEqual(result["release_status"], "plan-ready-execution-blocked")
+
     def test_init_records_existing_project_entry_mode(self):
         with tempfile.TemporaryDirectory() as temp:
             args = argparse.Namespace(
@@ -84,6 +90,35 @@ class EngineTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "--id must"):
                 engine.cmd_init(args)
             self.assertFalse((Path(temp) / "escaped").exists())
+
+    def test_init_uses_an_exclusive_campaign_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            existing = root / "existing"
+            existing.mkdir()
+            args = argparse.Namespace(
+                profile="standard", archetypes="evidence-synthesis", root=str(root),
+                id="existing", goal="test goal", force=False,
+            )
+            with self.assertRaisesRegex(SystemExit, "already exists"):
+                engine.cmd_init(args)
+            self.assertEqual(list(existing.iterdir()), [])
+
+            outside = root / "outside"
+            outside.mkdir()
+            linked = root / "linked"
+            linked.symlink_to(outside, target_is_directory=True)
+            args.id = "linked"
+            with self.assertRaisesRegex(SystemExit, "symlink"):
+                engine.cmd_init(args)
+            self.assertEqual(list(outside.iterdir()), [])
+
+            non_directory = root / "file-target"
+            non_directory.write_text("sentinel", encoding="utf-8")
+            args.id = "file-target"
+            with self.assertRaisesRegex(SystemExit, "not a directory"):
+                engine.cmd_init(args)
+            self.assertEqual(non_directory.read_text(encoding="utf-8"), "sentinel")
 
     def test_complete_standard_campaign_validates(self):
         state = add_passing_reviews(complete_state())

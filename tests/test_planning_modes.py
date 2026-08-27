@@ -171,6 +171,10 @@ class PlanningModeContractTests(unittest.TestCase):
             "choices": ["Promote to Camp-full", "Keep brief"],
         })
 
+        repeated = json.loads(self.run_cli("brief-finalize", campaign_dir).stdout)
+        self.assertIsNone(repeated["promotion_prompt"])
+        self.assertEqual(self.load_state(campaign_dir)["workflow"]["promotion"]["status"], "offered")
+
     def test_brief_finalize_fails_closed_when_the_brief_is_incomplete(self):
         campaign_dir = self.init_campaign("incomplete-brief", "brief")
 
@@ -482,10 +486,13 @@ class PlanningModeContractTests(unittest.TestCase):
         del state["campaign"]["starting_point"]
         self.write_state(campaign_dir, state)
 
-        payload = json.loads(self.run_cli("migrate", campaign_dir).stdout)
+        result = self.run_cli("migrate", campaign_dir, check=False)
+        payload = json.loads(result.stdout)
         migrated = self.load_state(campaign_dir)
 
+        self.assertNotEqual(result.returncode, 0)
         self.assertTrue(payload["changed"])
+        self.assertEqual(payload["status"], "repair-required")
         self.assertEqual(migrated["schema_version"], "3.2")
         self.assertEqual(migrated["workflow"]["requested_mode"], "full")
         self.assertEqual(migrated["workflow"]["artifact_level"], "full")
@@ -507,9 +514,76 @@ class PlanningModeContractTests(unittest.TestCase):
         self.assertTrue(payload["valid"])
         self.assertFalse(payload["execution_ready"])
         self.assertEqual(payload["release_status"], "plan-ready-execution-blocked")
+
+    def test_migrate_31_backfills_sketch_fields_from_existing_campaign_fields(self):
+        campaign_dir = self.root / "legacy"
+        for rel in ("state", "working", "outputs", "artifacts"):
+            (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+        state = complete_state()
+        state["schema_version"] = "3.1"
+        state["sketch"].pop("non_goals")
+        state["sketch"].pop("next_action")
+        self.write_state(campaign_dir, state)
+
+        result = self.run_cli("migrate", campaign_dir)
+        payload = json.loads(result.stdout)
+        migrated = self.load_state(campaign_dir)
+
+        self.assertEqual(payload["status"], "migrated")
+        self.assertTrue(payload["valid"])
+        self.assertEqual(
+            migrated["sketch"]["non_goals"],
+            migrated["campaign"]["mission"]["non_goals"],
+        )
+        self.assertEqual(
+            migrated["sketch"]["next_action"],
+            migrated["campaign"]["kickoff"]["command"],
+        )
+
+    def test_migrate_reports_repair_required_when_31_state_remains_invalid(self):
+        campaign_dir = self.root / "broken-legacy"
+        for rel in ("state", "working", "outputs", "artifacts"):
+            (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+        state = complete_state()
+        state["schema_version"] = "3.1"
+        state["campaign"]["mission"]["scope"] = ""
+        self.write_state(campaign_dir, state)
+
+        result = self.run_cli("migrate", campaign_dir, check=False)
+        payload = json.loads(result.stdout)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(payload["status"], "repair-required")
+        self.assertFalse(payload["valid"])
         self.assertTrue(any(
-            item["code"] == "review.not_checked" for item in payload["warnings"]
+            item["code"] == "mission.missing"
+            for item in payload["validation"]["errors"]
         ))
+        self.assertTrue(any(
+            item["code"] == "review.not_checked"
+            for item in payload["validation"]["warnings"]
+        ))
+
+    def test_migrate_does_not_replace_malformed_legacy_containers(self):
+        for field, malformed in (("campaign", []), ("sketch", "not-an-object")):
+            with self.subTest(field=field):
+                campaign_dir = self.root / f"malformed-{field}"
+                for rel in ("state", "working", "outputs", "artifacts"):
+                    (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+                state = complete_state()
+                state["schema_version"] = "3.1"
+                state[field] = malformed
+                self.write_state(campaign_dir, state)
+                before = (campaign_dir / "state/campaign.json").read_bytes()
+
+                result = self.run_cli("migrate", campaign_dir, check=False)
+
+                self.assertNotEqual(result.returncode, 0)
+                payload = json.loads(result.stdout)
+                self.assertEqual(payload["status"], "repair-required")
+                self.assertFalse(payload["changed"])
+                self.assertEqual((campaign_dir / "state/campaign.json").read_bytes(), before)
+                self.assertEqual(self.load_state(campaign_dir)[field], malformed)
 
     def test_edit_after_decline_reopens_auto_offer_for_changed_brief(self):
         campaign_dir = self.finalize_brief("changed-after-decline", "auto")

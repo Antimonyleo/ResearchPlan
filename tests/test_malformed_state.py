@@ -144,7 +144,7 @@ class MalformedStateTests(unittest.TestCase):
 
             result = subprocess.run(
                 [sys.executable, str(engine.__file__), "ingest-review",
-                 str(campaign_dir), "--file", str(review)],
+                 str(campaign_dir), str(review)],
                 capture_output=True, text=True,
             )
 
@@ -252,6 +252,27 @@ class MalformedStateTests(unittest.TestCase):
                         for item in payload["validation"]["errors"]
                     ))
                     self.assertEqual(list((campaign_dir / "outputs").iterdir()), [])
+
+    def test_public_render_refuses_semantically_malformed_review_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir = Path(temp) / "campaign"
+            (campaign_dir / "state").mkdir(parents=True)
+            state = add_passing_reviews(complete_state())
+            state["reviews"]["records"][0]["execution_evidence"]["started_at"] = "not-an-iso-time"
+            engine.write_json(campaign_dir / engine.STATE_REL, state)
+
+            result = subprocess.run(
+                [sys.executable, str(engine.__file__), "render", str(campaign_dir)],
+                capture_output=True, text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("Traceback", result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertFalse(payload["rendered"])
+            self.assertTrue(any(item["code"] == "review.record_invalid"
+                                for item in payload["validation"]["errors"]),
+                            payload["validation"]["errors"])
 
     def test_structurally_valid_incomplete_draft_still_renders(self):
         with tempfile.TemporaryDirectory() as temp:

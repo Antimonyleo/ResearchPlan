@@ -22,7 +22,99 @@ class AutomaticLoopTests(unittest.TestCase):
                 packet = engine.read_json(path)
                 self.assertEqual(packet["content_digest"], digest)
                 self.assertEqual(packet["rubric_digest"], rubric)
+                self.assertRegex(packet["packet_digest"], r"^sha256:[0-9a-f]{64}$")
                 self.assertTrue(packet["instructions"]["read_only"])
+                self.assertIn(
+                    "packet_digest",
+                    packet["instructions"]["required_output_schema"]["required"],
+                )
+
+    def _campaign(self, temp):
+        campaign_dir = Path(temp) / "campaign"
+        for rel in ("state", "working", "outputs", "artifacts"):
+            (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
+        state = complete_state(profile="standard")
+        engine.save_state(campaign_dir, state)
+        return campaign_dir, state
+
+    @staticmethod
+    def _record(packet, reviewer_id):
+        return {
+            "role": packet["role"], "reviewer_id": reviewer_id,
+            "mode": "separate-session", "verdict": "pass",
+            "content_digest": packet["content_digest"],
+            "rubric_digest": packet["rubric_digest"],
+            "packet_digest": packet["packet_digest"],
+            "reviewed_sections": packet["reviewed_sections"],
+            "summary": "No blocking defect found.", "findings": [],
+            "execution_evidence": {
+                "executor_id": reviewer_id,
+                "started_at": engine.now_iso(), "completed_at": engine.now_iso(),
+            },
+        }
+
+    def test_ingest_requires_a_current_freeze_and_packet_metadata(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir, state = self._campaign(temp)
+            forged = {
+                "role": "methods-evidence", "reviewer_id": "forged",
+                "mode": "sequential-pass", "verdict": "pass",
+                "content_digest": engine.content_digest(state),
+                "rubric_digest": engine.rubric_digest(state["profile"]),
+                "summary": "Forged before freeze", "findings": [],
+            }
+            review_path = Path(temp) / "forged.json"
+            engine.write_json(review_path, forged)
+
+            with self.assertRaisesRegex(SystemExit, "current content freeze"):
+                engine.cmd_ingest_review(argparse.Namespace(
+                    campaign=str(campaign_dir), file=str(review_path),
+                ))
+
+            self.assertEqual(engine.load_state(campaign_dir)["reviews"]["records"], [])
+            engine.freeze_and_packets(campaign_dir, engine.load_state(campaign_dir))
+            self.assertEqual(engine.load_state(campaign_dir)["reviews"]["records"], [])
+
+    def test_ingested_packet_binding_survives_unrelated_section_repair(self):
+        with tempfile.TemporaryDirectory() as temp:
+            campaign_dir, _ = self._campaign(temp)
+            state = engine.load_state(campaign_dir)
+            _, _, paths = engine.freeze_and_packets(campaign_dir, state)
+            for index, path in enumerate(paths, 1):
+                packet = engine.read_json(path)
+                review_path = Path(temp) / f"{packet['role']}-review.json"
+                engine.write_json(review_path, self._record(packet, f"reviewer-{index}"))
+                engine.cmd_ingest_review(argparse.Namespace(
+                    campaign=str(campaign_dir), file=str(review_path),
+                ))
+
+            state = engine.load_state(campaign_dir)
+            old_methods_digest = next(
+                item["packet_digest"] for item in state["reviews"]["records"]
+                if item["role"] == "methods-evidence"
+            )
+            old_operations_digest = next(
+                item["packet_digest"] for item in state["reviews"]["records"]
+                if item["role"] == "operations-reproducibility"
+            )
+            state["campaign"]["resources_dispatch"]["budgets"] = ["Revised ceiling"]
+            state["content_version"] += 1
+            engine.save_state(campaign_dir, state)
+            engine.freeze_and_packets(campaign_dir, engine.load_state(campaign_dir))
+
+            after = engine.load_state(campaign_dir)
+            roles = sorted(item["role"] for item in after["reviews"]["records"])
+            self.assertEqual(roles, ["methods-evidence"])
+            methods = after["reviews"]["records"][0]
+            self.assertEqual(methods["packet_digest"], old_methods_digest)
+            self.assertTrue(engine.record_is_current(methods, after))
+            self.assertNotEqual(
+                after["reviews"]["current_packets"]["methods-evidence"],
+                old_methods_digest,
+            )
+            self.assertIn(old_methods_digest, after["reviews"]["packet_metadata"])
+            self.assertNotIn(old_operations_digest, after["reviews"]["packet_metadata"])
+            self.assertEqual(len(after["reviews"]["packet_metadata"]), 3)
 
     def test_invalid_design_does_not_offer_stale_review_work(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -256,6 +348,42 @@ class AutomaticLoopTests(unittest.TestCase):
         self.assertTrue(any(
             item["code"] == "review.record_invalid" for item in result["errors"]
         ), result["errors"])
+
+    def test_duplicate_current_roles_cannot_bypass_a_blocking_review(self):
+        state = add_passing_reviews(complete_state())
+        duplicate = dict(state["reviews"]["records"][0])
+        duplicate["reviewer_id"] = "second-reviewer"
+        duplicate["verdict"] = "block"
+        state["reviews"]["records"].append(duplicate)
+
+        result = engine.validate_state(state, include_reviews=True)
+
+        self.assertFalse(result["execution_ready"])
+        self.assertTrue(any(item["code"] == "review.duplicate_role"
+                            for item in result["errors"]), result["errors"])
+        self.assertIn("methods-evidence", result["review"]["blocking"])
+
+    def test_review_record_errors_require_typed_digests_and_independence_evidence(self):
+        state = complete_state()
+        record = {
+            "role": ["methods-evidence"], "reviewer_id": {"id": "r1"},
+            "mode": "separate-session", "verdict": "pass",
+            "content_digest": [engine.content_digest(state)],
+            "rubric_digest": engine.rubric_digest(state["profile"]),
+            "summary": ["looks fine"], "findings": [],
+            "execution_evidence": {
+                "executor_id": 7, "started_at": "yesterday", "completed_at": engine.now_iso(),
+            },
+        }
+
+        errors = engine.review_record_errors(record)
+
+        self.assertTrue(any("role" in item for item in errors), errors)
+        self.assertTrue(any("reviewer_id" in item for item in errors), errors)
+        self.assertIn("invalid content_digest", errors)
+        self.assertTrue(any("summary" in item for item in errors), errors)
+        self.assertTrue(any("executor_id" in item for item in errors), errors)
+        self.assertTrue(any("started_at" in item for item in errors), errors)
 
     def test_review_digests_require_exact_sha256_format(self):
         state = complete_state()

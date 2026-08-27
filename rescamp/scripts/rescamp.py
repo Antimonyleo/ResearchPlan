@@ -346,8 +346,48 @@ def write_json(path: Path, value: Any) -> None:
     atomic_write(path, json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def campaign_directory(campaign_dir: Path, relative: str | Path,
+                       label: str, create: bool = False) -> Path:
+    """Return a real, contained campaign directory.
+
+    The engine writes several derived files below ``working``. Checking only the
+    final path is insufficient: a symlinked parent would redirect every write to
+    an unrelated tree. Walk each component before creating anything and reject
+    links, non-directories, and resolved paths outside the campaign.
+    """
+    root = Path(campaign_dir).resolve()
+    relative_path = Path(relative)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise SystemExit(f"{label} path must stay inside the campaign")
+    current = root
+    for component in relative_path.parts:
+        current = current / component
+        if current.is_symlink():
+            raise SystemExit(f"Campaign {label} must not be a symlink")
+        if current.exists() and not current.is_dir():
+            raise SystemExit(f"Campaign {label} must be a directory")
+    if create and not current.exists():
+        current.mkdir(parents=True, exist_ok=True)
+    if current.exists():
+        try:
+            current.resolve().relative_to(root)
+        except (OSError, ValueError):
+            raise SystemExit(f"Campaign {label} escapes the campaign") from None
+    return current
+
+
+def campaign_working_dir(campaign_dir: Path, create: bool = False) -> Path:
+    return campaign_directory(campaign_dir, "working", "working directory", create=create)
+
+
 def staged_directory(target: Path) -> Path:
+    if target.is_symlink():
+        raise SystemExit(f"Refusing to stage into symlinked directory: {target}")
+    if target.parent.is_symlink():
+        raise SystemExit(f"Refusing to stage through symlinked parent: {target.parent}")
     target.parent.mkdir(parents=True, exist_ok=True)
+    if target.parent.is_symlink() or not target.parent.is_dir():
+        raise SystemExit(f"Staging parent must be a real directory: {target.parent}")
     return Path(tempfile.mkdtemp(prefix=f".{target.name}.staged-", dir=target.parent))
 
 
@@ -360,6 +400,7 @@ def commit_state_and_directory(campaign_dir: Path, state: dict[str, Any],
     leave new derived data beside old canonical state, which the digest audit rejects;
     canonical state never claims files that were not published.
     """
+    campaign_working_dir(campaign_dir, create=True)
     if target.is_symlink():
         raise SystemExit(f"Refusing to replace symlinked generated directory: {target}")
     if target.exists() and not target.is_dir():
@@ -556,11 +597,9 @@ _STATE_BASELINES: dict[Path, str] = {}
 
 def save_state(campaign_dir: Path, state: dict[str, Any]) -> None:
     """Atomically save unless another process changed the state after this load."""
+    campaign_working_dir(campaign_dir, create=True)
     path = campaign_state_path(campaign_dir, require_exists=False)
-    lock_path = campaign_dir / "working/.state.lock"
-    if lock_path.parent.is_symlink():
-        raise SystemExit("Campaign working directory must not be a symlink")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = campaign_working_dir(campaign_dir) / ".state.lock"
     with lock_path.open("a+", encoding="utf-8") as lock:
         if fcntl is not None:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
@@ -700,7 +739,13 @@ def default_state(goal: str, profile: str, archetypes: list[str], campaign_id: s
         "contradictions": [],
         "blockers": [],
         "assurance": {"pilot_required": profile == "high-assurance", "pilot": {}, "risk_acceptances": []},
-        "reviews": {"frozen_content_digest": "", "rubric_digest": "", "records": []},
+        "reviews": {
+            "frozen_content_digest": "", "rubric_digest": "", "records": [],
+            # Packet metadata is keyed by immutable packet digest so a review that
+            # survives an unrelated section repair can remain bound to its original
+            # packet while the new freeze publishes replacement packets.
+            "packet_metadata": {}, "current_packets": {},
+        },
         "outputs": {"last_rendered_digest": "", "manifest": {}},
         "last_validation": {},
     }
@@ -815,8 +860,20 @@ def cmd_init(args: argparse.Namespace) -> None:
     if len(campaign_id) > 56 or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", campaign_id):
         raise SystemExit("--id must be at most 56 lowercase letters, digits, and hyphens")
     campaign_dir = base / campaign_id
-    if campaign_dir.exists() and any(campaign_dir.iterdir()):
+    # A pre-existing empty directory is not safe to reuse: another initializer may
+    # have created it between our check and the child-directory writes. Symlinks and
+    # non-directories are rejected explicitly instead of being followed.
+    if campaign_dir.is_symlink():
+        raise SystemExit(f"Campaign target already exists and is a symlink: {campaign_dir}")
+    if campaign_dir.exists():
+        if not campaign_dir.is_dir():
+            raise SystemExit(f"Campaign target already exists and is not a directory: {campaign_dir}")
         raise SystemExit(f"Campaign directory already exists: {campaign_dir}")
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        campaign_dir.mkdir()
+    except FileExistsError:
+        raise SystemExit(f"Campaign directory already exists: {campaign_dir}") from None
     for rel in ("state", "working", "working/review_packets", "outputs", "artifacts"):
         (campaign_dir / rel).mkdir(parents=True, exist_ok=True)
     state = default_state(
@@ -1028,6 +1085,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
     if args.reason not in STOP_REASONS:
         raise SystemExit("Invalid stopping reason")
     campaign_dir = resolve_campaign(args.campaign)
+    campaign_working_dir(campaign_dir, create=True)
     state = load_state(campaign_dir)
     state["interview"]["stopping_reason"] = args.reason
     state["interview"]["stopping_note"] = args.note
@@ -1058,7 +1116,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
         return
     state = load_state(campaign_dir)
     pre = validate_plan_content(state, include_reviews=False)
-    write_json(campaign_dir / VALIDATION_REL, pre)
+    write_json(campaign_working_dir(campaign_dir) / VALIDATION_REL.name, pre)
     digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
     state = load_state(campaign_dir)
     still_current, needs_review = review_status(state)
@@ -1083,7 +1141,7 @@ def cmd_stop(args: argparse.Namespace) -> None:
         "roles_pending_after_design_repair": needs_review if not pre["valid"] else [],
         "next_action": "Resolve deterministic findings and ask only material follow-up questions" if not pre["valid"] else _review_next_action(needs_review),
     }
-    write_json(campaign_dir / "working/quality_loop.json", payload)
+    write_json(campaign_working_dir(campaign_dir) / "quality_loop.json", payload)
     print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
@@ -1570,7 +1628,7 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                     require_string(item, field, f"{key}.{index}.{field}")
 
     for index, record in enumerate(reviews["records"]):
-        for key in ("role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest"):
+        for key in ("role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest", "summary"):
             if key in record:
                 require_string(record, key, f"reviews.records.{index}.{key}")
         if "reviewed_sections" in record and not isinstance(record["reviewed_sections"], dict):
@@ -2083,10 +2141,26 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                 continue
             if record_is_current(record, state, leaves):
                 valid_records.append(record)
-        role_map = {item.get("role"): item for item in valid_records if item.get("role")}
+        records_by_role: dict[str, list[dict[str, Any]]] = {}
+        for record in valid_records:
+            role = record.get("role")
+            if isinstance(role, str) and role:
+                records_by_role.setdefault(role, []).append(record)
+        # A dict comprehension here used to let the last record for a role replace a
+        # blocking earlier record. Keep a deterministic representative for reporting,
+        # but make every duplicate role an execution blocker and aggregate verdicts.
+        role_map = {role: items[0] for role, items in records_by_role.items()}
         required = PROFILES[profile]["review_roles"]
         missing = [role for role in required if role not in role_map]
-        blocking = [role for role, item in role_map.items() if role in required and item.get("verdict") != "pass"]
+        duplicate_roles = sorted(role for role, items in records_by_role.items() if len(items) > 1)
+        if duplicate_roles:
+            issue("error", "review.duplicate_role",
+                  "Multiple current review records claim the same role: " + ", ".join(duplicate_roles),
+                  "reviews.records")
+        blocking = sorted({
+            role for role, items in records_by_role.items()
+            if role in required and any(item.get("verdict") != "pass" for item in items)
+        })
         review_summary.update({"required": required, "current": sorted(role_map), "missing": missing, "blocking": blocking})
         if missing:
             issue("error", "review.missing", "Missing current reviews: " + ", ".join(missing), "reviews.records")
@@ -2101,42 +2175,43 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
                                and item.get("content_digest") == current_content]
         # A verdict is only a review summary. Major and critical findings remain
         # blocking until a different, authorized actor accepts that exact finding.
-        for role, record in sorted(role_map.items()):
-            for finding in record.get("findings", []):
-                severity = finding.get("severity")
-                if severity not in {"major", "critical"}:
-                    continue
-                digest = finding_digest(role, finding)
-                accepted = any(
-                    item.get("finding_digest") == digest
-                    and isinstance(item.get("accepted_by"), str)
-                    and bool(item["accepted_by"].strip())
-                    and item.get("accepted_by") != record.get("reviewer_id")
-                    and isinstance(item.get("authority"), str)
-                    and bool(item["authority"].strip())
-                    and _is_iso_timestamp(item.get("accepted_at"))
-                    and isinstance(item.get("scope"), str)
-                    and bool(item["scope"].strip())
-                    and (
-                        (isinstance(item.get("evidence"), str)
-                         and bool(item["evidence"].strip()))
-                        or _required_list(item.get("evidence"))
+        for role, records_for_role in sorted(records_by_role.items()):
+            for record in records_for_role:
+                for finding in record.get("findings", []):
+                    severity = finding.get("severity")
+                    if severity not in {"major", "critical"}:
+                        continue
+                    digest = finding_digest(role, finding)
+                    accepted = any(
+                        item.get("finding_digest") == digest
+                        and isinstance(item.get("accepted_by"), str)
+                        and bool(item["accepted_by"].strip())
+                        and item.get("accepted_by") != record.get("reviewer_id")
+                        and isinstance(item.get("authority"), str)
+                        and bool(item["authority"].strip())
+                        and _is_iso_timestamp(item.get("accepted_at"))
+                        and isinstance(item.get("scope"), str)
+                        and bool(item["scope"].strip())
+                        and (
+                            (isinstance(item.get("evidence"), str)
+                             and bool(item["evidence"].strip()))
+                            or _required_list(item.get("evidence"))
+                        )
+                        for item in current_acceptances
                     )
-                    for item in current_acceptances
-                )
-                if accepted:
-                    continue
-                code = ("risk_acceptance.missing" if finding.get("action") == "accepted-risk"
-                        else f"review.unresolved_{severity}")
-                issue("error", code,
-                      f"Review {role} records an unresolved {severity} finding "
-                      f"({finding.get('action', 'unclassified')}): {finding.get('description', '')}. "
-                      f"Separate acceptance must bind finding {digest} to the current campaign digest.",
-                      "reviews.records")
-                if record.get("verdict") == "pass":
-                    issue("warning", "review.verdict_conflict",
-                          f"Review {role} returned verdict 'pass' while recording a {severity} finding",
+                    if accepted:
+                        continue
+                    code = ("risk_acceptance.missing" if finding.get("action") == "accepted-risk"
+                            else f"review.unresolved_{severity}")
+                    issue("error", code,
+                          f"Review {role} records an unresolved {severity} finding "
+                          f"({finding.get('action', 'unclassified')}): {finding.get('description', '')}. "
+                          f"Separate acceptance must bind finding {digest} to the current campaign digest.",
                           "reviews.records")
+                    if record.get("verdict") == "pass":
+                        issue("warning", "review.verdict_conflict",
+                              f"Review {role} returned verdict 'pass' while recording a {severity} finding",
+                              "reviews.records")
         review_summary["attested_modes"] = {role: item.get("mode") for role, item in sorted(role_map.items())}
         review_summary["independence_is_self_attested"] = True
         if PROFILES[profile]["independent_required"]:
@@ -2173,13 +2248,26 @@ def validate_state(state: dict[str, Any], include_reviews: bool = True) -> dict[
     release_status = "execution-ready" if not errors else (
         "plan-ready-execution-blocked" if plan_ready else "draft"
     )
+    execution_ready = not errors
+    if not include_reviews:
+        # Deterministic design validation is useful preparation, but it cannot
+        # establish execution authority. Keep this rule here so every caller
+        # (quality-loop, stop, validate, and finalize) receives the same truth.
+        execution_ready = False
+        if release_status == "execution-ready":
+            release_status = "plan-ready-execution-blocked"
+        warnings.append({
+            "code": "review.not_checked",
+            "message": "Review checks were excluded; this result cannot establish execution readiness",
+            "path": "reviews.records",
+        })
     result = {
         "rescamp_version": VERSION,
         "checked_at": now_iso(),
         "content_digest": input_digest,
         "rubric_digest": rubric_digest(profile),
         "valid": not errors,
-        "execution_ready": not errors,
+        "execution_ready": execution_ready,
         "release_status": release_status,
         "errors": errors,
         "warnings": warnings,
@@ -2265,17 +2353,8 @@ def cmd_validate(args: argparse.Namespace) -> None:
         result = validate_brief_state(state)
     else:
         result = validate_state(state, include_reviews=not args.no_reviews)
-        if args.no_reviews:
-            result["execution_ready"] = False
-            if result["valid"]:
-                result["release_status"] = "plan-ready-execution-blocked"
-            result.setdefault("warnings", []).append({
-                "code": "review.not_checked",
-                "message": "Review checks were excluded; this result cannot establish execution readiness",
-                "path": "reviews.records",
-            })
     state["last_validation"] = result
-    write_json(campaign_dir / VALIDATION_REL, result)
+    write_json(campaign_working_dir(campaign_dir, create=True) / VALIDATION_REL.name, result)
     save_state(campaign_dir, state)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     if args.strict and not result["valid"]:
@@ -2391,8 +2470,25 @@ def record_is_current(record: dict[str, Any], state: dict[str, Any], leaves: dic
     whole-campaign `content_digest` fall back to the old all-or-nothing rule, which is
     strictly stronger, so older records stay valid rather than silently expiring.
     """
+    if review_record_errors(record):
+        return False
     if record.get("rubric_digest") != rubric_digest(state["profile"]):
         return False
+    packet_digest = record.get("packet_digest")
+    if packet_digest is not None:
+        if not isinstance(packet_digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", packet_digest):
+            return False
+        reviews = state.get("reviews")
+        metadata_map = reviews.get("packet_metadata") if isinstance(reviews, dict) else None
+        metadata = metadata_map.get(packet_digest) if isinstance(metadata_map, dict) else None
+        if not isinstance(metadata, dict):
+            return False
+        if (metadata.get("role") != record.get("role")
+                or metadata.get("content_digest") != record.get("content_digest")
+                or metadata.get("rubric_digest") != record.get("rubric_digest")):
+            return False
+        if metadata.get("reviewed_sections") != record.get("reviewed_sections"):
+            return False
     reviewed = record.get("reviewed_sections")
     if not isinstance(reviewed, dict):
         return record.get("content_digest") == content_digest(state)
@@ -2417,25 +2513,65 @@ def scope_packet_for_role(frozen: dict[str, Any], role: str) -> dict[str, Any]:
     if scope is None:
         return frozen
     campaign = frozen.get("campaign", {})
-    projected = {key: value for key, value in campaign.items() if key in scope["sections"]}
+    # The invalidation closure is the reviewer's responsibility, not just bookkeeping.
+    # Include every referenced section in the packet so a reviewer can actually inspect
+    # the content whose digest will later make the record stale.
+    reviewed_campaign = {name for name in invalidation_sections(role, campaign)
+                         if not name.startswith("@")}
+    projected = {key: value for key, value in campaign.items() if key in reviewed_campaign}
     result = {key: frozen[key] for key in scope["top_level"] if key in frozen}
     result["campaign"] = projected
     return result
 
 
+def packet_identity(packet: dict[str, Any]) -> dict[str, Any]:
+    """The immutable packet bytes that a reviewer is expected to inspect."""
+    return {key: packet[key] for key in (
+        "packet_version", "campaign_id", "role", "content_version", "content_digest",
+        "rubric", "rubric_digest", "instructions", "scoped_sections", "reviewed_sections",
+        "campaign",
+    )}
+
+
 def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, str, list[Path]]:
+    campaign_working_dir(campaign_dir, create=True)
+    reviews = state.get("reviews")
+    if not isinstance(reviews, dict):
+        raise SystemExit("Cannot freeze: reviews must be an object")
+    records = reviews.get("records", [])
+    if not isinstance(records, list):
+        raise SystemExit("Cannot freeze: reviews.records must be a list")
+    packet_metadata = reviews.get("packet_metadata", {})
+    if not isinstance(packet_metadata, dict):
+        raise SystemExit("Cannot freeze: reviews.packet_metadata must be an object")
+    current_packets = reviews.get("current_packets", {})
+    if not isinstance(current_packets, dict):
+        raise SystemExit("Cannot freeze: reviews.current_packets must be an object")
     digest = content_digest(state)
     r_digest = rubric_digest(state["profile"])
     leaves = section_digests(state)
-    state["reviews"]["frozen_content_digest"] = digest
-    state["reviews"]["rubric_digest"] = r_digest
-    state["reviews"]["section_digests"] = leaves
+    reviews["frozen_content_digest"] = digest
+    reviews["rubric_digest"] = r_digest
+    reviews["section_digests"] = leaves
     # Records for sections that did not move survive the re-freeze: a repair to one
     # section no longer forces every reviewer to start over.
-    state["reviews"]["records"] = [
-        item for item in state["reviews"].get("records", [])
+    reviews["records"] = [
+        item for item in records
         if record_is_current(item, state, leaves)
     ]
+    # Retain only metadata that still authenticates a surviving review. Current
+    # packets are rebuilt below, so obsolete freezes do not accumulate forever.
+    surviving_packet_digests = {
+        item.get("packet_digest") for item in reviews["records"]
+        if isinstance(item, dict) and isinstance(item.get("packet_digest"), str)
+    }
+    packet_metadata = {
+        digest: metadata for digest, metadata in packet_metadata.items()
+        if digest in surviving_packet_digests
+    }
+    current_packets = {}
+    reviews["packet_metadata"] = packet_metadata
+    reviews["current_packets"] = current_packets
     packet_dir = campaign_dir / REVIEW_DIR_REL
     staged = staged_directory(packet_dir)
     names: list[str] = []
@@ -2467,6 +2603,15 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
                                   if name in leaves},
             "campaign": scoped,
         }
+        packet["packet_digest"] = sha256_json(packet_identity(packet))
+        packet_metadata[packet["packet_digest"]] = {
+            "role": role,
+            "packet_digest": packet["packet_digest"],
+            "content_digest": digest,
+            "rubric_digest": r_digest,
+            "reviewed_sections": copy.deepcopy(packet["reviewed_sections"]),
+        }
+        current_packets[role] = packet["packet_digest"]
         name = f"{role}.json"
         path = staged / name
         write_json(path, packet)
@@ -2478,11 +2623,12 @@ def freeze_and_packets(campaign_dir: Path, state: dict[str, Any]) -> tuple[str, 
 
 def cmd_quality_loop(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
+    campaign_working_dir(campaign_dir, create=True)
     state = load_state(campaign_dir)
     if workflow_state(state).get("artifact_level") == "brief":
         raise SystemExit("A brief has no campaign review loop; use `brief-finalize` or promote it")
     pre = validate_plan_content(state, include_reviews=False)
-    write_json(campaign_dir / VALIDATION_REL, pre)
+    write_json(campaign_working_dir(campaign_dir) / VALIDATION_REL.name, pre)
     digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
     state = load_state(campaign_dir)
     still_current, needs_review = review_status(state)
@@ -2505,13 +2651,16 @@ def cmd_quality_loop(args: argparse.Namespace) -> None:
         "roles_pending_after_design_repair": needs_review if not pre["valid"] else [],
         "next_action": "Resolve deterministic errors before review" if not pre["valid"] else _review_next_action(needs_review),
     }
-    write_json(campaign_dir / "working/quality_loop.json", payload)
+    write_json(campaign_working_dir(campaign_dir) / "quality_loop.json", payload)
     print(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
 def review_status(state: dict[str, Any]) -> tuple[list[str], list[str]]:
     """Which required reviews survived the freeze, and which must actually be re-run."""
-    held = {item.get("role") for item in state.get("reviews", {}).get("records", [])}
+    records = state.get("reviews", {}).get("records", [])
+    leaves = section_digests(state)
+    held = {item.get("role") for item in records
+            if isinstance(item, dict) and record_is_current(item, state, leaves)}
     required = PROFILES[state["profile"]]["review_roles"]
     return sorted(role for role in required if role in held), sorted(role for role in required if role not in held)
 
@@ -2528,15 +2677,20 @@ def review_record_errors(record: Any) -> list[str]:
         return ["review record must be an object"]
     errors: list[str] = []
     for field in ("role", "reviewer_id", "mode", "verdict", "content_digest", "rubric_digest", "summary"):
-        if not _nonempty(record.get(field)):
+        value = record.get(field)
+        if field not in record or value is None or (isinstance(value, str) and not value.strip()):
             errors.append(f"missing {field}")
+        elif not isinstance(value, str):
+            errors.append(f"invalid {field}" if field.endswith("_digest") else f"invalid {field} type")
     for field in ("content_digest", "rubric_digest"):
         value = record.get(field)
-        if _nonempty(value) and (
-            not isinstance(value, str)
-            or not re.fullmatch(r"sha256:[0-9a-f]{64}", value)
-        ):
+        if isinstance(value, str) and value.strip() and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
             errors.append(f"invalid {field}")
+    if "packet_digest" in record and (
+        not isinstance(record.get("packet_digest"), str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", record.get("packet_digest", ""))
+    ):
+        errors.append("invalid packet_digest")
     reviewed = record.get("reviewed_sections")
     if reviewed is not None:
         if not isinstance(reviewed, dict) or not reviewed:
@@ -2554,14 +2708,25 @@ def review_record_errors(record: Any) -> list[str]:
         errors.append("missing findings")
     if not isinstance(record.get("mode"), str) or record.get("mode") not in REVIEW_MODES:
         errors.append("invalid mode")
-    elif record["mode"] in INDEPENDENCE_CLAIMING_MODES:
-        evidence = record.get("execution_evidence")
+    evidence = record.get("execution_evidence")
+    if "execution_evidence" in record and not isinstance(evidence, dict):
+        errors.append("execution_evidence must be an object")
+    elif isinstance(record.get("mode"), str) and record["mode"] in INDEPENDENCE_CLAIMING_MODES:
         if not isinstance(evidence, dict):
             errors.append(f"mode {record['mode']} requires execution_evidence (self-attested; recorded for audit)")
         else:
-            for field in ("executor_id", "started_at", "completed_at"):
-                if not _nonempty(evidence.get(field)):
+            executor_id = evidence.get("executor_id")
+            if "executor_id" not in evidence or executor_id is None \
+                    or (isinstance(executor_id, str) and not executor_id.strip()):
+                errors.append("execution_evidence missing executor_id")
+            elif not isinstance(executor_id, str):
+                errors.append("execution_evidence invalid executor_id")
+            for field in ("started_at", "completed_at"):
+                value = evidence.get(field)
+                if field not in evidence or value is None or (isinstance(value, str) and not value.strip()):
                     errors.append(f"execution_evidence missing {field}")
+                elif not _is_iso_timestamp(value):
+                    errors.append(f"execution_evidence invalid {field}")
     if (not isinstance(record.get("verdict"), str)
             or record.get("verdict") not in REVIEW_VERDICTS):
         errors.append("invalid verdict")
@@ -2578,8 +2743,8 @@ def review_record_errors(record: Any) -> list[str]:
             if (not isinstance(finding.get("action"), str)
                     or finding.get("action") not in FINDING_ACTIONS):
                 errors.append(f"finding {index} invalid action")
-            if not _nonempty(finding.get("description")):
-                errors.append(f"finding {index} missing description")
+            if not isinstance(finding.get("description"), str) or not finding.get("description", "").strip():
+                errors.append(f"finding {index} description must be a non-empty string")
     return errors
 
 
@@ -2594,6 +2759,60 @@ def cmd_ingest_review(args: argparse.Namespace) -> None:
     if record["role"] not in required:
         raise SystemExit(f"Unexpected review role {record['role']}; required: {', '.join(required)}")
     current_rubric = rubric_digest(state["profile"])
+    current_digest = content_digest(state)
+    reviews = state.get("reviews")
+    if not isinstance(reviews, dict):
+        raise SystemExit("Cannot ingest review: reviews must be an object")
+    if reviews.get("frozen_content_digest") != current_digest:
+        raise SystemExit(
+            "Cannot ingest review: the campaign has no current content freeze; "
+            "run quality-loop first"
+        )
+    if reviews.get("rubric_digest") != current_rubric:
+        raise SystemExit(
+            "Cannot ingest review: the campaign freeze uses an older rubric; "
+            "run quality-loop again"
+        )
+    packet_digest = record.get("packet_digest")
+    metadata_map = reviews.get("packet_metadata")
+    current_packets = reviews.get("current_packets")
+    if (not isinstance(metadata_map, dict) or not isinstance(current_packets, dict)
+            or not isinstance(packet_digest, str)):
+        raise SystemExit(
+            "Cannot ingest review: packet_digest and current role packet metadata are required; "
+            "copy them from the role packet"
+        )
+    if current_packets.get(record["role"]) != packet_digest:
+        raise SystemExit(
+            "Cannot ingest review: packet_digest is not the current role packet; "
+            "use the packet produced by the latest quality-loop"
+        )
+    metadata = metadata_map.get(packet_digest)
+    if not isinstance(metadata, dict):
+        raise SystemExit("Cannot ingest review: packet_digest is not from a current role packet")
+    if (metadata.get("content_digest") != current_digest
+            or metadata.get("rubric_digest") != current_rubric):
+        raise SystemExit(
+            "Cannot ingest review: packet metadata is not bound to the current freeze"
+        )
+    if (metadata.get("role") != record.get("role")
+            or metadata.get("content_digest") != record.get("content_digest")
+            or metadata.get("rubric_digest") != record.get("rubric_digest")
+            or metadata.get("reviewed_sections") != record.get("reviewed_sections")):
+        raise SystemExit(
+            "Cannot ingest review: packet metadata, content_digest, rubric_digest, or "
+            "reviewed_sections do not match the role packet"
+        )
+    packet_dir = campaign_directory(campaign_dir, REVIEW_DIR_REL, "review packet directory")
+    packet_path = packet_dir / f"{record['role']}.json"
+    if packet_path.is_symlink() or not packet_path.is_file():
+        raise SystemExit("Cannot ingest review: the current role packet is missing or not a regular file")
+    packet = read_json(packet_path)
+    if (packet.get("packet_digest") != packet_digest
+            or sha256_json(packet_identity(packet)) != packet_digest
+            or packet.get("role") != record.get("role")
+            or packet.get("reviewed_sections") != record.get("reviewed_sections")):
+        raise SystemExit("Cannot ingest review: the role packet bytes do not match its metadata")
     if not record_is_current(record, state):
         detail = []
         if record.get("rubric_digest") != current_rubric:
@@ -2618,7 +2837,8 @@ def cmd_ingest_review(args: argparse.Namespace) -> None:
                           f"                  campaign is {content_digest(state)}\n"
                           "                  the campaign changed after this review; re-run it against the current freeze")
         raise SystemExit("Review does not match the current freeze:\n" + "\n".join(detail))
-    records = [item for item in state["reviews"].get("records", []) if item.get("role") != record["role"]]
+    records = [item for item in reviews.get("records", [])
+               if isinstance(item, dict) and item.get("role") != record["role"]]
     record["ingested_at"] = now_iso()
     records.append(record)
     state["reviews"]["records"] = records
@@ -2842,6 +3062,7 @@ def render_research_brief(state: dict[str, Any]) -> str:
 
 def render_brief_outputs(campaign_dir: Path, state: dict[str, Any],
                          validation: dict[str, Any]) -> dict[str, Any]:
+    campaign_working_dir(campaign_dir, create=True)
     out_dir = campaign_dir / OUTPUT_DIR_REL
     staged = staged_directory(out_dir)
     try:
@@ -2881,6 +3102,7 @@ def render_brief_outputs(campaign_dir: Path, state: dict[str, Any],
 
 def cmd_brief_finalize(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
+    campaign_working_dir(campaign_dir, create=True)
     state = load_state(campaign_dir)
     workflow = workflow_state(state)
     if workflow.get("artifact_level") != "brief":
@@ -2893,7 +3115,7 @@ def cmd_brief_finalize(args: argparse.Namespace) -> None:
             shutil.rmtree(out_dir)
         state["outputs"] = {"last_rendered_digest": "", "manifest": {}}
         state["last_validation"] = pre
-        write_json(campaign_dir / BRIEF_VALIDATION_REL, pre)
+        write_json(campaign_working_dir(campaign_dir) / BRIEF_VALIDATION_REL.name, pre)
         save_state(campaign_dir, state)
         print(json.dumps({
             "rendered": False, "status": "brief-draft", "validation": pre,
@@ -2902,6 +3124,7 @@ def cmd_brief_finalize(args: argparse.Namespace) -> None:
         raise SystemExit(2)
 
     promotion = workflow["promotion"]
+    promotion_offered_now = False
     if workflow.get("requested_mode") == "auto" and promotion.get("status") == "pending":
         promotion.update({
             "status": "offered",
@@ -2911,23 +3134,24 @@ def cmd_brief_finalize(args: argparse.Namespace) -> None:
             "offered_at": now_iso(),
             "decided_at": "",
         })
+        promotion_offered_now = True
 
     validation = validate_brief_content(state)
-    write_json(campaign_dir / BRIEF_VALIDATION_REL, validation)
+    write_json(campaign_working_dir(campaign_dir) / BRIEF_VALIDATION_REL.name, validation)
     result = render_brief_outputs(campaign_dir, state, validation)
-    promotion = workflow_state(load_state(campaign_dir)).get("promotion", {})
     result["promotion_prompt"] = (
         {
             "question": "The research brief is ready. Promote it to Camp-full?",
             "choices": ["Promote to Camp-full", "Keep brief"],
         }
-        if promotion.get("status") == "offered" else None
+        if promotion_offered_now else None
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
 def cmd_promotion(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
+    campaign_working_dir(campaign_dir, create=True)
     state = load_state(campaign_dir)
     workflow = workflow_state(state)
     promotion = workflow.get("promotion", {})
@@ -2978,7 +3202,7 @@ def cmd_promotion(args: argparse.Namespace) -> None:
 
     validation = validate_brief_state(state)
     if not validation["valid"]:
-        write_json(campaign_dir / BRIEF_VALIDATION_REL, validation)
+        write_json(campaign_working_dir(campaign_dir) / BRIEF_VALIDATION_REL.name, validation)
         raise SystemExit("The current brief is not ready; resolve brief validation before promotion")
     accepted_digest = brief_digest(state)
     accepted_brief = copy.deepcopy(brief_payload(state))
@@ -3008,7 +3232,10 @@ def cmd_promotion(args: argparse.Namespace) -> None:
     soft_limit, hard_limit = question_limits(state["profile"], "full")
     state["interview"]["soft_limit"] = soft_limit
     state["interview"]["hard_limit"] = hard_limit
-    state["reviews"] = {"frozen_content_digest": "", "rubric_digest": "", "records": []}
+    state["reviews"] = {
+        "frozen_content_digest": "", "rubric_digest": "", "records": [],
+        "packet_metadata": {}, "current_packets": {},
+    }
     state["status"] = "full-draft"
     state["content_version"] += 1
     save_state(campaign_dir, state)
@@ -3028,20 +3255,73 @@ def cmd_migrate(args: argparse.Namespace) -> None:
         return
     if current != "3.1":
         raise SystemExit(f"No migration path from schema {current!r} to {SCHEMA_VERSION}")
-    state["schema_version"] = SCHEMA_VERSION
-    state["rescamp_version"] = VERSION
-    state["workflow"] = workflow_state({})
-    campaign = state.get("campaign")
+    malformed_containers = [
+        key for key in ("campaign", "sketch")
+        if key in state and not isinstance(state[key], dict)
+    ]
+    if malformed_containers:
+        # Do not turn a malformed legacy container into an empty object and persist the
+        # loss. Validate a private migration candidate only to give the harness a useful
+        # repair report; the on-disk legacy state remains byte-for-byte untouched.
+        candidate = copy.deepcopy(state)
+        candidate["schema_version"] = SCHEMA_VERSION
+        candidate["rescamp_version"] = VERSION
+        candidate["workflow"] = workflow_state({})
+        validation = validate_state(candidate, include_reviews=False)
+        payload = {
+            "changed": False, "from_schema": current, "schema_version": SCHEMA_VERSION,
+            "planning_mode": "full", "status": "repair-required", "valid": False,
+            "next_action": "Repair the malformed legacy containers, then rerun migrate",
+            "validation": cap_validation_for_stdout(validation),
+        }
+        print(json.dumps(payload, indent=2))
+        raise SystemExit(2)
+
+    candidate = copy.deepcopy(state)
+    candidate["schema_version"] = SCHEMA_VERSION
+    candidate["rescamp_version"] = VERSION
+    candidate["workflow"] = workflow_state({})
+    campaign = candidate.get("campaign")
     if not isinstance(campaign, dict):
-        raise SystemExit("Cannot migrate: campaign must be an object")
+        campaign = {}
+        candidate["campaign"] = campaign
     campaign.setdefault("starting_point", {"entry_mode": "new-project"})
-    state["status"] = "full-draft"
-    state["content_version"] = int(state.get("content_version", 0)) + 1
-    save_state(campaign_dir, state)
+    sketch = candidate.get("sketch")
+    if not isinstance(sketch, dict):
+        sketch = {}
+        candidate["sketch"] = sketch
+    # Schema 3.1 did not require these two fields. Reuse explicit existing
+    # campaign fields when available; otherwise record conservative placeholders
+    # that deliberately keep the migrated campaign in a repair-required state.
+    if not _required_list(sketch.get("non_goals")):
+        mission = campaign.get("mission") if isinstance(campaign.get("mission"), dict) else {}
+        inherited = mission.get("non_goals")
+        sketch["non_goals"] = copy.deepcopy(inherited) if _required_list(inherited) else [
+            "No work outside the declared scope is authorized until migration is reviewed"
+        ]
+    if not _required_text(sketch.get("next_action")):
+        kickoff = campaign.get("kickoff") if isinstance(campaign.get("kickoff"), dict) else {}
+        inherited_action = kickoff.get("command") or candidate.get("next_action")
+        sketch["next_action"] = inherited_action if _required_text(inherited_action) else (
+            "Repair and validate the migrated sketch before execution"
+        )
+    candidate["status"] = "full-draft"
+    old_content_version = candidate.get("content_version", 0)
+    if isinstance(old_content_version, int) and not isinstance(old_content_version, bool):
+        candidate["content_version"] = old_content_version + 1
+    validation = validate_state(candidate, include_reviews=False)
+    migration_status = "migrated" if validation["valid"] else "repair-required"
+    save_state(campaign_dir, candidate)
     print(json.dumps({
         "changed": True, "from_schema": current, "schema_version": SCHEMA_VERSION,
-        "planning_mode": "full", "next_action": "Revalidate and re-render stale outputs",
+        "planning_mode": "full", "status": migration_status,
+        "valid": validation["valid"],
+        "next_action": ("Revalidate and re-render stale outputs" if validation["valid"] else
+                         "Repair the migrated fields listed in validation, then revalidate"),
+        "validation": cap_validation_for_stdout(validation),
     }, indent=2))
+    if not validation["valid"]:
+        raise SystemExit(2)
 
 
 def _coverage_note(state: dict[str, Any]) -> str:
@@ -3353,7 +3633,8 @@ def runbook(state: dict[str, Any]) -> str:
 def render_blocking_errors(validation: dict[str, Any]) -> list[dict[str, str]]:
     """Errors that make the original state unsafe for renderers to dereference."""
     return [item for item in validation.get("errors", [])
-            if item.get("code") in {"structure.type", "profile.invalid"}]
+            if item.get("code") in {"structure.type", "profile.invalid",
+                                     "review.record_invalid", "review.duplicate_role"}]
 
 
 def render_refusal(validation: dict[str, Any]) -> dict[str, Any]:
@@ -3368,6 +3649,7 @@ def render_refusal(validation: dict[str, Any]) -> dict[str, Any]:
 
 
 def render_outputs(campaign_dir: Path, state: dict[str, Any], force_draft: bool = False) -> dict[str, Any]:
+    campaign_working_dir(campaign_dir, create=True)
     validation = validate_plan_content(state, include_reviews=True)
     if render_blocking_errors(validation):
         return render_refusal(validation)
@@ -3457,15 +3739,16 @@ def cmd_render(args: argparse.Namespace) -> None:
 
 def cmd_finalize(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
+    campaign_working_dir(campaign_dir, create=True)
     state = load_state(campaign_dir)
     if workflow_state(state).get("artifact_level") == "brief":
         raise SystemExit("A research brief is non-executable; accept promotion before finalizing Camp-full")
     pre = validate_plan_content(state, include_reviews=False)
     if render_blocking_errors(pre):
-        write_json(campaign_dir / VALIDATION_REL, pre)
+        write_json(campaign_working_dir(campaign_dir) / VALIDATION_REL.name, pre)
         print(json.dumps(render_refusal(pre), indent=2, ensure_ascii=False))
         raise SystemExit(2)
-    write_json(campaign_dir / VALIDATION_REL, pre)
+    write_json(campaign_working_dir(campaign_dir) / VALIDATION_REL.name, pre)
     if not pre["valid"]:
         digest, r_digest, paths = freeze_and_packets(campaign_dir, state)
         result = render_outputs(campaign_dir, load_state(campaign_dir), force_draft=True)
@@ -3595,6 +3878,7 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 def cmd_audit(args: argparse.Namespace) -> None:
     campaign_dir = resolve_campaign(args.campaign)
+    campaign_working_dir(campaign_dir, create=True)
     state = load_state(campaign_dir)
     errors: list[str] = []
     out_dir = campaign_dir / OUTPUT_DIR_REL
@@ -3618,6 +3902,15 @@ def cmd_audit(args: argparse.Namespace) -> None:
         except (OSError, ValueError):
             errors.append("outputs directory escapes the campaign")
             out_dir_safe = False
+
+    if out_dir_safe and out_dir.exists():
+        symlink_entries = sorted(
+            path.relative_to(out_dir).as_posix()
+            for path in out_dir.rglob("*")
+            if path.is_symlink()
+        )
+        for name in symlink_entries:
+            errors.append(f"outputs contains a symlink entry: {name}")
 
     if out_dir_safe and manifest_path.exists():
         if manifest_path.is_symlink() or not manifest_path.is_file():
@@ -3712,7 +4005,7 @@ def cmd_audit(args: argparse.Namespace) -> None:
         result["errors"].append(
             "strict audit requires an EXECUTION-READY full campaign bundle"
         )
-    write_json(campaign_dir / "working/audit.json", result)
+    write_json(campaign_working_dir(campaign_dir) / "audit.json", result)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     if not result["ok"]:
         # Non-strict used to print `"ok": false` and exit 0, which reads as success to
@@ -3782,7 +4075,10 @@ def cmd_profile(args: argparse.Namespace) -> None:
     state["interview"]["hard_limit"] = hard_limit
     state["content_version"] += 1
     mark_content_changed(state)
-    state["reviews"] = {"frozen_content_digest": "", "rubric_digest": "", "records": []}
+    state["reviews"] = {
+        "frozen_content_digest": "", "rubric_digest": "", "records": [],
+        "packet_metadata": {}, "current_packets": {},
+    }
     save_state(campaign_dir, state)
     print(args.profile)
 
@@ -3922,7 +4218,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+    except SystemExit:
+        raise
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError, OSError, UnicodeError) as exc:
+        # Public CLI inputs include dotted paths, JSON/@file payloads, and
+        # hand-authored review records. Normalize malformed inputs to one concise
+        # diagnostic instead of leaking a Python traceback or partially successful
+        # command narrative to an agent harness.
+        raise SystemExit(f"Invalid campaign input or state: {exc}") from None
     return 0
 
 

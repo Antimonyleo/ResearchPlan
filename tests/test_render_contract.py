@@ -574,7 +574,17 @@ class ReviewPacketScopeTests(unittest.TestCase):
         self.assertIn("inquiries", methods["campaign"])
         self.assertNotIn("runtime", methods["campaign"])
         self.assertIn("runtime", operations["campaign"])
-        self.assertNotIn("inquiries", operations["campaign"])
+        self.assertIn("inquiries", operations["campaign"],
+                      "operations dependencies must be present in the packet they bind")
+
+        operations_reviewed = set(engine.invalidation_sections(
+            "operations-reproducibility", frozen["campaign"], engine.section_digests(frozen)
+        ))
+        self.assertTrue(
+            operations_reviewed - {name for name in operations_reviewed if name.startswith("@")}
+            <= set(operations["campaign"]),
+            "every campaign section in the invalidation closure must be reviewable in the packet",
+        )
 
     def test_every_campaign_section_is_reviewed_by_someone(self):
         """Scoping must not silently drop a section out of all review."""

@@ -189,6 +189,21 @@ class EndToEndTests(unittest.TestCase):
                 payload["errors"],
             )
 
+    def test_audit_rejects_symlinked_entries_inside_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            campaign_dir = self.finalized_campaign(root, "nested-output-symlink")
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "private.txt").write_text("private", encoding="utf-8")
+            (campaign_dir / "outputs/private-dir").symlink_to(outside, target_is_directory=True)
+
+            result = run_cli(ENGINE, "audit", campaign_dir, "--strict", check=False)
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(result.returncode, 5)
+            self.assertIn("outputs contains a symlink entry: private-dir", payload["errors"])
+
     def test_audit_rejects_manifest_directory_without_a_traceback(self):
         with tempfile.TemporaryDirectory() as temp:
             campaign_dir = self.finalized_campaign(Path(temp), "manifest-directory")
